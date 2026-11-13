@@ -31,8 +31,8 @@ jobs:
       # The build wants devourer as a SIBLING directory (DEVOURER_DIR defaults
       # to ../devourer), and tests/integration/run_gs_e2e.sh imports
       # ../devourer/tools/precoder/rc_proto.py. Hence the two-checkout layout.
-      # Tracking devourer's master mirrors the dev box; the third_party/devourer
-      # submodule pin is NOT the build input and is routinely stale.
+      # Tracking devourer's master mirrors the dev box; mabur's own
+      # third_party/devourer submodule is never checked out or used.
       - uses: actions/checkout@v5
         with:
           path: mabur-ground

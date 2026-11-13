@@ -21,7 +21,8 @@ cover the GS itself.
 Clone with the mabur submodule, and devourer as a sibling checkout:
 
 ```sh
-git clone --recurse-submodules https://github.com/gilankpam/mabur-ground.git
+git clone https://github.com/gilankpam/mabur-ground.git
+git -C mabur-ground submodule update --init third_party/mabur
 git clone https://github.com/gilankpam/devourer.git
 ```
 

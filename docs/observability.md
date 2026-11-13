@@ -722,7 +722,7 @@ are all the sensor steer. reglog 4 appends the burned recorder's counters
 `burn_in= burn_enc= burn_drop=`; reglog 3 rows end at `recstarts=` and
 carry the release thread's fields `rlate= hand= rt=` and the event
 counters `flushes= recstarts=`; reglog 2 rows end at `ioctl=` and carry
-the phase-lock fields `lock= lerr= loff= lctr=` (docs/phase-lock.md);
+the phase-lock fields `lock= lerr= loff= lctr=` ([mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md));
 reglog 1 rows end at `lslot=` before `present=`.
 
 ### `cal.log` (`callog 5`)
@@ -791,7 +791,7 @@ burn_drop=` (`regulator: off present_jitter= rlate= hand= rt= flushes=
 recstarts= burn_in= burn_enc= burn_drop=` with `display.regulate_ms = 0`;
 `present=` through `ioctl=` only with a display).
 
-The release thread (docs/phase-lock.md "Threads") makes every release
+The release thread ([mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Threads") makes every release
 decision and every present() call, so the timing fields below all read
 against it, not against the housekeeping loop that prints the line.
 
@@ -902,7 +902,7 @@ against it, not against the housekeeping loop that prints the line.
   [`docs/findings/2026-10-15-regulator-chain-cuts.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-regulator-chain-cuts.md) (budget 0 chosen).
 - `alw=`/`lslot=` — capture-time scheduling (`display.sched_cap_ms`, 0 = off
   in code; the bundle runs 16, the phase lock's placement switch —
-  docs/phase-lock.md; bench result and cost:
+  [mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md); bench result and cost:
   [`docs/findings/2026-10-15-capture-sched.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-capture-sched.md)). In servo mode a frame's vblank follows its
   capture time, not its arrival: the first vblank whose release is at or
   after capture + delivery floor + `alw`. The window holds each frame's
@@ -920,7 +920,7 @@ against it, not against the housekeeping loop that prints the line.
   frame that claims the same vblank wins it, so a stall costs a local
   freeze and catch-up with no trailing chain.
 - `lock=`/`lerr=`/`loff=`/`lctr=`/`lact=` — the phase lock
-  (docs/phase-lock.md) from whichever actuator runs, named by `lact=`.
+  ([mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md)) from whichever actuator runs, named by `lact=`.
   `lact=sensor`: the state (`wait`/`acq`/`lock`/`oor`; `off` when
   `display.phase_lock` is false or no actuator runs yet), the last
   window's error, the offset it sends and its centre, mfps.
