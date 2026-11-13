@@ -105,7 +105,7 @@ Validation (`gs/src/config.cpp`, `drone/src/config.cpp`, shared code in
 
 | key | range |
 |---|---|
-| `radio.channels` | 1–8 members, unique, each in `[1,177]`; when the derived receiver width is 40 every member must be a standard HT40 pair primary and all members must share one `ht40_offset` (`docs/bw40.md` "Channels") |
+| `radio.channels` | 1–8 members, unique, each in `[1,177]`; when the derived receiver width is 40 every member must be a standard HT40 pair primary and all members must share one `ht40_offset` ([`docs/bw40.md`](https://github.com/gilankpam/mabur/blob/master/docs/bw40.md) "Channels") |
 | GS `radio.channel` | the string `"auto"`, or an integer that is a member of `radio.channels` — anything else fails |
 | `radio.scan.dwell_ms` | 50–10000 |
 | `radio.scan.settle_ms` | 0–1000 |
@@ -143,7 +143,7 @@ next boot: the drone falls back to `radio.channels[0]`, the GS searches
 from `channels[0]` (or the pin) rather than re-finding a drone sitting on a
 channel the GS already "knows". Useful when a device was last parked
 somewhere you no longer want it defaulting to. The 2026-10-03 deploy of the
-channel set is recorded in `docs/findings/2026-08-29-deploy-flag-days.md`.
+channel set is recorded in [`docs/findings/2026-08-29-deploy-flag-days.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-08-29-deploy-flag-days.md).
 
 ## Drone behaviour (`RcAgent`, `drone/src/`)
 
@@ -214,7 +214,7 @@ width and sits idle.
 
 **Dwell schedule.** Round-robin over the members, config order, at every
 width, pinned or measuring. At width 40 a member is a pair's primary and
-the card is tuned 40, so one dwell reads the whole pair (`docs/bw40.md`
+the card is tuned 40, so one dwell reads the whole pair ([`docs/bw40.md`](https://github.com/gilankpam/mabur/blob/master/docs/bw40.md)
 "Boot scan dwells once per pair"). Per dwell:
 
 | phase | when | what |
@@ -260,7 +260,7 @@ provisional: bench row 7 could not fit it ("Open items").
 Why every dwell is silent and why `cca − own` is subtracted: the scout
 card sits centimetres from the beaconing card, whose TX otherwise reads as
 busy on every candidate; and one decoded single-MPDU frame costs one CCA
-event (bench record: `docs/findings/2026-09-13-channel-select-bench.md`).
+event (bench record: [`docs/findings/2026-09-13-channel-select-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-13-channel-select-bench.md)).
 
 **One card.** Cycle: op window of `op_window_ms` on `op` (DISC every
 beacon period, listen; leave only after one quiet beacon period), then one
@@ -317,7 +317,7 @@ one entry is how you fly one card with two plugged in.
 
 **A DISC is discovery only; every move of a linked link is a hop order.**
 The drone retunes only after the first RCF that verifies under the pending
-pair (`docs/link-pairing.md` "Rendezvous, as built"), so a drone found on a
+pair ([`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md) "Rendezvous, as built"), so a drone found on a
 member X ≠ `op` must be linked on X first — RCFs sent on `op` would never
 reach it.
 
@@ -488,7 +488,7 @@ relocation lands ≈ 0.5 s later.
 
 ## Calibration pick
 
-Before its first sweep a `maburcal` run (`docs/calibration.md`) moves the
+Before its first sweep a `maburcal` run ([`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md)) moves the
 pair onto the quietest member of the set. Only in auto mode with a scout
 card (two or more cards, not relay-only); pinned and one-card GSs run on
 `op` with no measurement.
@@ -689,8 +689,8 @@ the in-flight thread picks the reactive hop back up on its next tick.
 - **`scan.log`** (`gs/src/scan_log.h`): marker `scanlog 8`. Header line:
   `scanlog 8 channels=<c1,c2,...> mode=<auto|pinned> dwell_ms=<n>
   min_rounds=<n> cards=<n>`. Record shapes are documented in
-  `scan_log.h` (`docs/bw40.md`,
-  `docs/findings/2026-09-25-nhm-airtime-spike.md` for the width and NHM
+  `scan_log.h` ([`docs/bw40.md`](https://github.com/gilankpam/mabur/blob/master/docs/bw40.md),
+  [`docs/findings/2026-09-25-nhm-airtime-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-nhm-airtime-spike.md) for the width and NHM
   fields); D ends with the dwell's NHM busy % and a relay-sweep rx % (`-`
   for USB dwells). `M` reasons: `commit`, `ack_override`, `link_found`,
   plus the in-flight hop's `hop_lead`/`hop_follow`/`hop_withdraw`/
@@ -700,7 +700,7 @@ the in-flight thread picks the reactive hop back up on its next tick.
   closes a calibration measure round. Files from before `scanlog 5` have
   `split_home`/`reunite` in `M` and no `relocate`; pre-merge 2026-10-03
   bench builds named `relocate` `boot_order` — read them as what they were
-  (`docs/data-provenance.md`).
+  ([`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md)).
 - **Sideport**: `scan.state` ∈ `off | scouting | moving | frozen` (`off` —
   pinned, no scout-capable card, or a relay-only GS; `scouting` — the pick
   is open; `moving` — the pick's relocation (the boot hop) is in flight;
@@ -739,12 +739,12 @@ the in-flight thread picks the reactive hop back up on its next tick.
   (and the bench builds' `boot_order`) as a HOP-section order kind
   alongside `order`/`verify_fail`/`escape`; still parses `split_home` out
   of an older-marker file, since recordings made before 2026-10-03 carry it
-  (`docs/data-provenance.md`).
+  ([`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md)).
 
 ## Open items
 
 Bench record (2026-10-04, rows 1-10 and the channel-core extraction
-regression check): `docs/findings/2026-10-04-channel-set-bench.md`. Still
+regression check): [`docs/findings/2026-10-04-channel-set-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-04-channel-set-bench.md). Still
 open from it:
 
 - **Row 6 — the event-score ranker is fooled by a strong co-located
@@ -761,7 +761,7 @@ open from it:
   measure with the drone ≥ 20 m away or on a dummy load.
 - **Row 8 — the default set.** `maburcal` on 64 and 112 and a fixed-rung
   linkbench 40/2 on 64 vs 136 have not run; swap 64 for 128 if 64 fails
-  (`docs/findings/2026-09-26-bw40-channel-candidates.md`).
+  ([`docs/findings/2026-09-26-bw40-channel-candidates.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-26-bw40-channel-candidates.md)).
 - Row 5's pinned one-card case has not run.
 
 ## Out of scope
@@ -778,8 +778,8 @@ scan has no way to ask the relay). 2.4 GHz, per-card channels.
 
 - The pre-2026-10-03 design (a privileged home channel plus candidates,
   boot-only pick, split/reunite on link loss) and its spike:
-  `docs/findings/2026-09-13-channel-scan.md`; its bench, which established
+  [`docs/findings/2026-09-13-channel-scan.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-13-channel-scan.md); its bench, which established
   the silent dwell and the `cca − own` subtraction:
-  `docs/findings/2026-09-13-channel-select-bench.md`.
+  [`docs/findings/2026-09-13-channel-select-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-13-channel-select-bench.md).
 - The no-home channel set's bench (2026-10-04):
-  `docs/findings/2026-10-04-channel-set-bench.md`.
+  [`docs/findings/2026-10-04-channel-set-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-04-channel-set-bench.md).

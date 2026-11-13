@@ -1,8 +1,9 @@
 name: CI
 
-# Host test suite only. The cross-builds (tools/build-arm.sh, build-arm64.sh)
-# need the OpenIPC toolchain plus MPP/DRM roots that live outside this repo, so
-# they cannot run here; see docs/deploy.md.
+# Host test suite only. The cross-build (tools/build-arm64.sh) needs MPP/DRM
+# roots and toolchains that live outside this repo, so it cannot run here.
+# mabur comes from the third_party/mabur submodule pin; mabur's own CI builds
+# this repo's master against every mabur PR.
 on:
   push:
     branches: [master]
@@ -20,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: mabur
+        working-directory: mabur-ground
     env:
       # run_player_e2e.sh calls `nix-shell -p ffmpeg` itself for the ffprobe /
       # libx265 gates, so <nixpkgs> has to resolve inside the TEST process, not
@@ -34,7 +35,10 @@ jobs:
       # submodule pin is NOT the build input and is routinely stale.
       - uses: actions/checkout@v5
         with:
-          path: mabur
+          path: mabur-ground
+          # Top level only: the build reads devourer from the sibling
+          # checkout below, never mabur's own third_party/devourer.
+          submodules: true
       - uses: actions/checkout@v5
         with:
           repository: gilankpam/devourer
@@ -55,19 +59,18 @@ jobs:
           nix-shell -p pkg-config libusb1 --run \
             "cmake --build build -j$(nproc)"
 
-      # The two filters CLAUDE.md names, in one run: the host suite (test_ /
-      # host_e2e) plus the standing gs/player regression gates, which do NOT
-      # match the host-suite pattern. Left out: sim_shed_lag (red, and
-      # deliberately not test_-prefixed) and burst_sim_selfcheck.
+      # The host suite CLAUDE.md names: the unit tests (test_) plus the
+      # standing gs/player regression gates and the web parity gate, which do
+      # NOT match test_. gsparam_py (6 rungs vs an expected 5) is left out.
       - name: Test
         run: |
           nix-shell -p pkg-config libusb1 --run \
-            "ctest --test-dir build -R 'test_|sim_|host_e2e|gs_e2e|gs_au_e2e|player_e2e' -j$(nproc) --output-on-failure"
+            "ctest --test-dir build -R 'test_|gs_e2e|gs_au_e2e|player_e2e|web_au_parity' -j$(nproc) --output-on-failure"
 
       - name: Upload ctest log
         if: failure()
         uses: actions/upload-artifact@v5
         with:
           name: ctest-log
-          path: mabur/build/Testing/Temporary/LastTest.log
+          path: mabur-ground/build/Testing/Temporary/LastTest.log
           if-no-files-found: warn

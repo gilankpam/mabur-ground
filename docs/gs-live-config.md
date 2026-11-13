@@ -192,7 +192,7 @@ the live derived width throughout (`docs/observability.md`).
 
 | Key | Type | Apply rule | Notes |
 |---|---|---|---|
-| `screen_mode` | string (`"auto"`, `"WxH"` or `"WxH@R"`) | Presenter rebuild | Refused as `mode not offered: <mode>` before anything is torn down: a `WxH@R` the connector's current mode list does not carry, or a `WxH` it has no mode of at the camera's measured rate (at any rate while that is not measured yet). `"auto"` is never refused. `get` reads the configured value; the display following the camera (`docs/phase-lock.md` "Configuration") rebuilds in process and writes nothing. |
+| `screen_mode` | string (`"auto"`, `"WxH"` or `"WxH@R"`) | Presenter rebuild | Refused as `mode not offered: <mode>` before anything is torn down: a `WxH@R` the connector's current mode list does not carry, or a `WxH` it has no mode of at the camera's measured rate (at any rate while that is not measured yet). `"auto"` is never refused. `get` reads the configured value; the display following the camera ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Configuration") rebuilds in process and writes nothing. |
 | `colortrans.enable` | bool | Presenter rebuild | The LUT/CTM setters are call-once per presenter, so a toggle has to recreate it (`docs/colortrans.md`). |
 | `osd.enable` | bool | Presenter rebuild if it changes whether *any* OSD plane is wanted, else an in-place layer open/close | Switching an overlay on loads its font first; a missing font refuses the set before anything else changes. With the settings menu's buttons wired the menu always wants the plane, so an overlay switch never rebuilds the presenter. |
 | `osd.gs.enable` | bool | same rule as `osd.enable` | |
@@ -234,7 +234,7 @@ reading it as a missed latch.
   a live set of it can land.
 - **`.pre-live` backup, written once per daemon run**, before the first
   successful publish — the same `.pre-*` operator-rollback convention as
-  `maburcal`'s `.pre-cal` (`docs/calibration.md`, `docs/deploy.md`).
+  `maburcal`'s `.pre-cal` ([`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md), [`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)).
 - The candidate scratch file is `<realpath>.new`, written beside the
   config's **resolved** target — the same scratch name the drone's own
   config writer uses (`common/include/mabur/config_write.h`).

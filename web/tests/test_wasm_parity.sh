@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Same WebGs code, native vs WASM: identical AU records and identical
 # control trace (gs mode, synthetic DISC_ACK) over clean and lossy replays.
-# Needs the host build (BUILD: drone/maburd, web/webgs) and the WASM build
+# Needs the host build (BUILD: mabur/drone/maburd, web/webgs) and the WASM build
 # (web/build-wasm/webgs_node.js, see web/CMakeLists.txt).
 # Run: nix-shell -p nodejs python3 --run "BUILD=$PWD/build web/tests/test_wasm_parity.sh"
 set -euo pipefail

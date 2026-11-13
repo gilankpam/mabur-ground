@@ -1,114 +1,50 @@
-# mabur
+# mabur-ground
 
-`mabur` turns an SSC338Q (SigmaStar Infinity6E) FPV camera into an adaptive
-video transmitter. `maburd` owns the whole drone side in one process: it
-drives the SigmaStar MI encoder pipeline directly (H.265/SVC-T, the venc
-core ported from **waybeam** at `../waybeam_venc` f956a52 and folded in on
-2026-08-29 — waybeam itself is retired), classifies each frame by temporal
-layer, applies per-layer sliding-window UEP FEC with SBI framing (the
-window sealed at every frame boundary), injects the bodies with per-layer
-modulation/power through **devourer** (RTL8812EU raw-injection driver, used
-as a library), consumes the ground-station adaptive-link feedback (RC/RCF),
-and actuates the encoder knobs (bitrate, ROI QP, IDR) in response — as
-in-process function calls now, not HTTP to a second daemon. The ground
-station publishes reassembled access units to a shm ring consumed by
-maburplay (MPP hardware decode to DRM/KMS, plus the fMP4 DVR); there is no
-RTP anywhere in the system.
+The ground station of [mabur](https://github.com/gilankpam/mabur), an
+RTP-free FPV video link. `maburgs` receives the drone's bodies on
+RTL88xx USB cards through [devourer](https://github.com/gilankpam/devourer),
+FEC-decodes them, drives the link (bitrate ladder, channel selection and
+hops, NACK repair, TX-power calibration) and publishes whole access units
+to a shm AU ring. `maburplay` (`gs/player/`) consumes the ring: MPP
+hardware decode straight to DRM/KMS, the OSD, and the fMP4 DVR. `web/` is
+the same receive + control core in the browser (WebUSB + WASM), as a
+single-card GS or a passive spotter, served from this repo's GitHub Pages.
 
-The full design — architecture, wire formats, protocol, and the testing
-strategy — is in
-[`docs/superpowers/specs/2026-07-10-mabur-system-bundle-design.md`](docs/superpowers/specs/2026-07-10-mabur-system-bundle-design.md).
-Start there for anything beyond "how do I build/run this."
-
-This repo builds `maburd` and its deploy bundle. The ground station (GS)
-adaptive-link controller is out of scope for v1; `common/` holds the
-shared wire-format code so a GS can be added to this repo later.
+The drone (`maburd`), the wire formats and the FEC live in mabur, pinned
+here as the submodule `third_party/mabur`; drone and GS are released as a
+matched pair. How the link behaves (ladder, calibration, NACK, phase lock,
+slices, pairing, deploy) is documented in mabur's `docs/`; the pages here
+cover the GS itself.
 
 ## Host build + test
 
-Requires `pkg-config` and `libusb1` (used by devourer's build even on the
-host, where the real USB device isn't touched by the unit/E2E tests). On
-NixOS, or any system without those preinstalled, wrap commands in
+Clone with the mabur submodule, and devourer as a sibling checkout:
+
+```sh
+git clone --recurse-submodules https://github.com/gilankpam/mabur-ground.git
+git clone https://github.com/gilankpam/devourer.git
+```
+
+Requires `pkg-config` and `libusb1`; on NixOS wrap commands in
 `nix-shell -p pkg-config libusb1 --run "..."`:
 
 ```sh
-nix-shell -p pkg-config libusb1 --run "
-  cmake -S . -B build && cmake --build build -j && ctest --test-dir build --output-on-failure -R 'test_|host_e2e'
-"
+cmake -S . -B build -DDEVOURER_DIR=$PWD/../devourer
+cmake --build build -j
+ctest --test-dir build -R 'test_|gs_e2e|gs_au_e2e|player_e2e|web_au_parity'
 ```
 
-This builds `maburd` plus the unit test suites and runs them all (14 suites +
-`host_e2e`). The `-R 'test_|host_e2e'` filter selects mabur's own test suites;
-devourer's bundled selftests are known-broken upstream and out of scope. To run only the host end-to-end scenario (clean pipe, 20% body
-loss, RCF profile switch, full 4-stream recovery) directly:
+A host build also builds `maburd` from the pinned mabur: the end-to-end
+tests feed maburgs from `maburd --dry-run`. To build against a local mabur
+checkout instead of the submodule (a change that spans both repos), add
+`-DMABUR_DIR=$PWD/../mabur`.
 
-```sh
-bash tests/integration/run_host_e2e.sh
-```
+## Cross build (aarch64 GS)
 
-## Regenerating test vectors
-
-Golden vectors for FEC/SBI/frag round-trip tests live under `tests/vectors/`
-and are generated from `tools/genvectors/gen_vectors.py`:
-
-```sh
-python3 tools/genvectors/gen_vectors.py
-```
-
-Re-run this after changing any wire format the vectors cover, then re-build
-and re-test to confirm the generated vectors still round-trip.
-
-## Cross build (ARM target)
-
-`tools/build-arm.sh` produces the drone-side binaries with the OpenIPC
-Buildroot toolchain: `maburd` at `out/arm/maburd`, plus the bench TX
-harness `out/arm/linkbench-tx`. `maburd` is a
-DYNAMIC glibc `armv7-a` hard-float executable (`libstdc++`, `libm`,
-`libgcc_s`, `libc`, `ld-linux-armhf` — all present on the OpenIPC rootfs,
-with `libstdc++.so.6` under `/usr/lib`). It stopped being a static musl
-binary on 2026-08-29, when the venc fold-in put the SigmaStar MI vendor
-libraries — prebuilt glibc shared objects — inside the process; the musl
-script and `cmake/arm-musl.cmake` were deleted in the same commit. `libusb`
-is still linked statically, since the drone rootfs does not ship it.
-
-```sh
-bash tools/build-arm.sh
-```
-
-Prerequisite: the OpenIPC Buildroot toolchain at
-`../openipc-builder/openipc/output/host/bin` (override with
-`OPENIPC_HOST_BIN`). The script stages `pkg-config` and a static ARM
-`libusb` itself, caching them under `toolchain/` (gitignored, pinned as a
-Nix GC root so they survive `nix-collect-garbage`); subsequent runs are
-fast incremental rebuilds. No `nix-shell` wrapper is needed.
-
-## Deploy to a camera
-
-```sh
-bash bundle/install.sh root@<camera-ip>
-```
-
-This copies `out/arm/maburd` to `/usr/bin/maburd`, seeds `/etc/mabur.toml`
-from `bundle/mabur.default.toml` if one isn't already present, installs
-`bundle/S96mabur` (a BusyBox-compatible init script with a respawn loop) as
-`/etc/init.d/S00mabur` — the name the OpenIPC image uses — removing any old
-`S96mabur`, and (re)starts it. There is no waybeam step
-any more: since 2026-08-29 `maburd` owns the encoder itself, and a camera
-that still runs waybeam must have it retired first (the header of
-`bundle/install.sh` says how).
-
-Prerequisites: `bash tools/build-arm.sh` has been run so `out/arm/maburd`
-exists, and the target is an OpenIPC-based SSC338Q with the SigmaStar MI
-libraries in its rootfs.
-
-Logs: `ssh root@<camera-ip> 'cat /tmp/mabur.log'` (or via serial console if
-networking is down).
-
-### Config notes
-
-`radio.width` is honoured (20 or 40); at 40 the drone tunes the standard 5 GHz
-pair of `radio.channel` and airs each rung at the width the GS ladder names
-(`docs/bw40.md`).
+`tools/build-arm64.sh` builds `maburgs`, `maburplay`, `linkbench-rx`,
+`nhm-reset-probe` and `encosd` into `out/arm64/`, including the glibc
+builds for the Radxa and the Orange Pi Zero 2W. It honours `MABUR_DIR`.
+Run it outside any `nix-shell` wrapper.
 
 ## MSP DisplayPort OSD (ground-side)
 
@@ -211,11 +147,3 @@ own throughout — which is exactly when on-screen link telemetry is worth
 having. The one dead window is between GS power-on and the first decoded
 frame, where the CRTC is not up and an OSD-only commit would have nothing to
 display on.
-
-## Benchmarking
-
-On-target and PC-side bench tooling (loss/recovery measurement against
-captured or live RF) lives under `tools/bench/`; see
-`tools/bench/decode_bodies.py` and the spec's Testing section for the full
-bench/on-target validation procedure (rings 3-4), which requires real
-hardware and isn't part of the automated test suite above.

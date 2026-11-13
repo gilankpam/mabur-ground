@@ -7,7 +7,7 @@ a change to maburgs itself is gated on `tools/bench/ausniff.py`, never on
 the sideport (the sideport is maburgs self-reporting).
 
 Removed sideport keys, old log-format versions and every scale break a
-recording can carry are in `docs/data-provenance.md`; this page describes
+recording can carry are in [`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md); this page describes
 only what the code emits now.
 
 ## The stats sideport
@@ -30,7 +30,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 ### `link` — op point, ladder, loss
 
 - `channel`, `state` (`session` | `beaconing` | `key_mismatch`), `key_fp`,
-  `tx_card` — pairing is `docs/link-pairing.md`.
+  `tx_card` — pairing is [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `width` — the live receiver width in MHz (20 or 40), `ChannelCore`'s own
   `width_mhz()`: what the link ladder (any 40 MHz rung) or the static pin
   (`static_bw`) derives. It is the target the cards are retuned to: a live
@@ -44,7 +44,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 - `ctl` — the ladder controller's rung, util, probation/counters and last
   transition reason; `null` in static-pin mode (`link.static_mcs >= 0`),
   which never ticks the controller. `rungs[]` is the per-rung EWMA store.
-  Semantics: `docs/link-adaptation.md`.
+  Semantics: [`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md).
 - `residual_loss`, `pre_fec_loss`, `attrib.{residual_cur, close_ms}`,
   `layer_delivery_pct`.
 - `scan = {state, rounds, pick, pinned, members[], relocate, relocate_seq}`
@@ -93,7 +93,7 @@ it, and a symbol heard after that counts `streams[*].arr_late` and is never
 un-booked. The drone's parallel USB TX pool reorders bodies on air, so a
 short guard reads reorder as loss; the shipped guard is 192
 (`gs/bundle/maburgs.default.toml`; guard sweep:
-`docs/findings/2026-09-23-cca-on.md`). To read real air loss use
+[`docs/findings/2026-09-23-cca-on.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-23-cca-on.md)). To read real air loss use
 `streams[*].recovered` + `abandoned` per second, or `fec.log`.
 
 ### `link.streams[]` — per-layer FEC, arrival accounting, salvage
@@ -121,7 +121,7 @@ been seen: the commanded `ov`, FEC `recovered`/`abandoned` (and their
   salvaged sub-block. `salvaged` is the upper bound and `salvage_only` the
   value: the other card's clean copy of the same body shadows most salvaged
   sub-blocks, and a salvaged repair symbol never counts because it carries
-  no seq of its own (flights: `docs/findings/2026-09-09-sbi-salvage-flights.md`).
+  no seq of its own (flights: [`docs/findings/2026-09-09-sbi-salvage-flights.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-09-sbi-salvage-flights.md)).
   `flightreport.py` prints these as its SALVAGE section.
 
 ### `link.video` — delivery, latency, slices
@@ -132,7 +132,7 @@ Frame rate, bitrate, jitter EMA, AU ring publish counters (`ring`), and:
   for `enc`/`dq`/`air`/`fec`. The whole key is OMITTED (not null) until the
   AU ring's latency stamps are flowing, so its presence means "real numbers
   here".
-- Slice salvage (`docs/slices.md`): `slice_salvaged` (AUs rebuilt this
+- Slice salvage ([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md)): `slice_salvaged` (AUs rebuilt this
   window), `slices_kept` / `slices_filled` (slices that arrived complete
   vs. were skip-slice fills, summed over those AUs), `slices_after_hole`
   (kept slices past the first missing one), and `slice_fallback{no_params,
@@ -161,7 +161,7 @@ offset (combined with the player's OWN anchor) folds the floor into the
 drifts ~1 ms/min of outage) — the cell has no room for a qualifier. What
 the absolute figure still excludes: sensor exposure/readout before the pts stamp and
 everything past scanout start (HDMI + display processing) — see
-`docs/findings/2026-08-31-latency-budget.md`.
+[`docs/findings/2026-08-31-latency-budget.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-08-31-latency-budget.md).
 
 ### `link.rcf_slot` — RCF slotter releases
 
@@ -173,8 +173,8 @@ counts include `T_MAV` sends, which the slotter releases like an RCF.
 `tail_ub_ms` is the slotter's learned completion→probe deadline (a lost
 probe's fallback release; ceil(decaying max) + 1). Healthy video = almost
 all `au`+`probe`; at a high duty cycle `timeout` climbs and phase-locks to
-the burst (`docs/findings/2026-09-05-probe-blanking-fix.md`). Mechanism:
-`docs/link-adaptation.md` "RCF slotting".
+the burst ([`docs/findings/2026-09-05-probe-blanking-fix.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-05-probe-blanking-fix.md)). Mechanism:
+[`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md) "RCF slotting".
 
 ### `link.probe` and `classes.probe`
 
@@ -187,7 +187,7 @@ rx}]}` — `u`/`loss` are `null` when the gate has no usable sample yet;
 `probe`, `msp`, `ctrl` (`RfClass`, `gs/src/aggregator.h`); `probe` carries
 the probe stream's own RSSI/SNR/EVM. maburtop's LADDER panel shows a live
 gate line, `probe: r3 mcs5 clean 54b u0.12 n48 | c0 0.00 c1 0.05` (`54b` =
-the clean streak in bodies). Mechanism: `docs/link-adaptation.md` "Probe
+the clean streak in bodies). Mechanism: [`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md) "Probe
 stream".
 
 ### `link.nack` — software NACK
@@ -199,7 +199,7 @@ counters cumulative, `fill_*`/`late_ms_max` per export window; present only
 while `[link.nack] enable`. `lead_skipped`: seqs whose request was withheld
 by `link.nack.min_lead_ms` because the answer could not land before the
 deadline. The drone side is `drone.nack` (below). maburtop draws a `nack:`
-line in the LADDER panel. Design: `docs/fec-nack.md`.
+line in the LADDER panel. Design: [`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md).
 
 ### `link.mav` — MAVLink tunnel
 
@@ -217,7 +217,7 @@ neither `rx` nor `reject` and are not exported. `peer` is true
 once a UDP client has sent the endpoint a datagram. maburtop draws a
 `mav <tx>/<rx>` cell (`mav off` without the key) on the top bar beside
 `key`. Calibration's cal-lane frames are not in `tx`. Design:
-`docs/mavlink.md`.
+[`docs/mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/mavlink.md).
 
 ### `link.cal` — calibration run
 
@@ -230,7 +230,7 @@ list); `kind` is `power`, `capacity` or `verify`; `bw` 20 or 40; `cell` is
 `"i/n"`, the cell of the latest frame tallied in the running sweep or
 verify pass. maburtop draws `CAL <kind><bw> <i>/<n>` (e.g. `CAL power40
 312/840`, warn colour) on the top bar after the `mav` cell and in the
-compact header. Design: `docs/calibration.md`.
+compact header. Design: [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md).
 
 ### `link.vtx` — the drone's parameters
 
@@ -259,7 +259,7 @@ client's own packet counters, cumulative since the daemon started.
 The one 8402 verb against this block is `vtx set <PARAM_ID> <value>`
 (`docs/gs-live-config.md` "Protocol"); the menu that reads and drives it
 is `docs/gs-menu.md`; the wire and the drone-side table are
-`docs/vtx-config-mavlink.md`.
+[`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md).
 
 ### `link.refresh` — demand refresh
 
@@ -276,7 +276,7 @@ arming source as it fires, including ones that land while a request is
 already outstanding. maburtop
 draws a `refresh:` line in the LADDER panel, right after `nack:`, folding
 `start`/`resync`/`decoder`/`dvr` into one `player` figure. Mechanism:
-`docs/fec-nack.md` "Demand refresh"; the per-request/heal trace is
+[`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md) "Demand refresh"; the per-request/heal trace is
 `fec.log` below.
 
 ### `cards[]` — per card
@@ -296,7 +296,7 @@ draws a `refresh:` line in the LADDER panel, right after `nack:`, folding
   `energy`, and
   its `fbusy` column is `max(0, busy_pct − own_air_pct)` — the same
   foreign-busy-airtime figure the verdict's `blocked` bit and both rankers
-  use (`docs/findings/2026-09-25-nhm-airtime-spike.md`).
+  use ([`docs/findings/2026-09-25-nhm-airtime-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-nhm-airtime-spike.md)).
 - `dwell = {visits, score, cost_us}` (`null` until that card's first
   completed scout dwell) — `visits` counts every dwell, success or failure;
   `score`/`cost_us` are the last **successful** dwell's.
@@ -359,18 +359,18 @@ fields once per `drone.tlm_seq` (`flightreport.py` does).
   `tlm_age_ms`.
 - `failsafe_shed` (rung 0 / lost link) and `congestion_shed` (Telem flags
   bit4: `RcAgent::run_congestion_guard` holds a drone-local
-  TxQueue-pressure / USB-failure shed, `docs/link-adaptation.md` "Drone
+  TxQueue-pressure / USB-failure shed, [`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md) "Drone
   congestion shed"). A shed enh layer is silence to the GS ladder, so this
   bit is the only way to attribute an enh gap to congestion rather than RF.
   maburtop renders the pair as `shed FS|CONG|off`; `flightreport.py`'s
   DRONE TX PATH section counts the periods each held.
 - `low_power` (flags bit7) — the low-power (disarmed) operating point
-  (`docs/link-adaptation.md`, "Low-power (disarmed) mode"). maburtop shows
+  ([`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md), "Low-power (disarmed) mode"). maburtop shows
   `LP` on the summary SYS row and on the DRONE panel's SoC line; the compact
   OSD tints its fps cell caution while set and the sideport is fresh.
 - `auth_reject` (flags bit1) — control-frame auth rejections this period,
-  `docs/link-pairing.md`.
-- `rec = {state, err}` — the VTX onboard SD recorder (`docs/vtx-recorder.md`).
+  [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
+- `rec = {state, err}` — the VTX onboard SD recorder ([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)).
   `state`: 0 off, 1 recording, 2 error. `err`: 0 none, 1 Disabled
   (`[record] enable = false` or ch1 failed to bind), 2 NoSlot (no
   `/sys/class/mmc_host/mmc*`), 3 NoCard (no `/dev/mmcblk0p1`), 4 NotMounted
@@ -403,7 +403,7 @@ fields once per `drone.tlm_seq` (`flightreport.py` does).
   (`crcfail`, preamble heard, payload undecodable). With carrier sense on,
   `foreign + crcfail` is what the drone's transmitter deferred to. Software
   counts, not the chip's CCA/FA registers — that read stalls the drone's TX
-  pool (`docs/findings/2026-09-23-cca-on.md`). Per period, NOT cumulative.
+  pool ([`docs/findings/2026-09-23-cca-on.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-23-cca-on.md)). Per period, NOT cumulative.
   `flightreport.py` has a DRONE RX section; maburtop shows the split on the
   drone `radio` row and derives its `DEAF` cell from own + foreign +
   crcfail = 0.
@@ -474,7 +474,7 @@ holding `flight.jsonl`, `ctl.log`, `probe.log`, `au.log`, `fec.log` and
 
 Older recordings (`ctl-NNNN_<date>.log`, `au-NNNN.log`, `lat-NNNN.log`,
 `# sync` anchors, wall-clock `t_us`) and every previous format version are
-described in `docs/data-provenance.md`; the analyzers still read them.
+described in [`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md); the analyzers still read them.
 
 ### `flight.jsonl`
 
@@ -520,7 +520,7 @@ the next `E` line is a demote within 10 s. The episode report also prints
 an "s3-settle-refire canary" (demotes landing 300–360 ms after an
 `s3_residual` demote, the debris double-step `transition_edge.h` removed;
 ~0 expected). Controller invariants behind these lines:
-`docs/link-adaptation.md`.
+[`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md).
 
 ### `probe.log` (`probelog 3`)
 
@@ -540,7 +540,7 @@ mcs instead of vanishing. A wholly-lost body is the only case with no row;
 on `enh_fid` (nearest completion in time — the id wraps every ~36 min) to
 print the completion→probe offset percentiles. `tools/bench/probesend.py`
 adds the GS send stamps from a `MABUR_GAPLOG=1` run to place every send
-against the probe (`docs/findings/2026-09-05-probe-blanking-fix.md`).
+against the probe ([`docs/findings/2026-09-05-probe-blanking-fix.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-05-probe-blanking-fix.md)).
 
 ### `au.log` (`# aulog 7`)
 
@@ -555,9 +555,9 @@ Twenty columns:
 latency stamps (first body / finish()). `enc`/`dq` are the drone's
 SBI-latched `enc_us`/`drone_q_ms` (venc encode time, true TxQueue wait —
 ~0 when healthy) carried on the AU's first fragment. `air` is the drone's
-modelled air backlog at that frame (`AirClock`, `docs/link-adaptation.md`
+modelled air backlog at that frame (`AirClock`, [`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md)
 "Drone air clock"). `slices kept filled after_hole` are slice salvage
-(`docs/slices.md`), all 0 on an AU that was neither split nor salvaged.
+([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md)), all 0 on an AU that was neither split nor salvaged.
 The next three are GS stamps (mono µs, 0 = unknown) that split the fec
 segment per frame. `t_last` is the arrival of the AU's LAST body:
 `t_last − t_first` is the arrival span (drone hand-off plus air),
@@ -585,7 +585,7 @@ drain tick (mono ms, ~10 ms coarse), video layer (0 base / 1 enh), the op
 MCS and width and that sid's commanded overhead at drain time (so a row
 scores against its own rung with no ctl.log join), wire seq of the first
 missing source, seqs spanned, missing = recovered + rtx + abandoned (`rtx`:
-filled by a software-NACK retransmit, `docs/fec-nack.md`), of those how many
+filled by a software-NACK retransmit, [`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md)), of those how many
 fell below the transition watermark (`stale`, the debris class the ladder
 excludes), distinct covering repairs received (`r`, a two-card copy counts
 once) and the repair window as flown (`w`).
@@ -600,7 +600,7 @@ covering repairs — plus how many episodes would have failed at
 file live; `fec.log` alone is also a valid `flightreport.py` argument. The
 first ~18 s after a maburgs restart log a block of rung-0 boot warm-up
 episodes — drop them by time. Bench record:
-`docs/findings/2026-09-16-fec-log-overhead-bench.md`.
+[`docs/findings/2026-09-16-fec-log-overhead-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-16-fec-log-overhead-bench.md).
 
 `feclog 4` adds two row kinds that start with a letter instead of a
 timestamp digit, so an episode row is still distinguishable by its leading
@@ -734,7 +734,7 @@ writes regardless of `debug_log.enable` — a calibration run is a bounded
 trace on a deliberate operator action, not continuous flight logging —
 into the session directory, or `<debug_log.dir>/cal` with logging off.
 Location, record format, older formats and the `maburcal report` reader:
-`docs/calibration.md` "`cal.log`". Nothing else parses it.
+[`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md) "`cal.log`". Nothing else parses it.
 
 ### Analyzers
 
@@ -748,7 +748,7 @@ newest mtime).
   reports).
 - `tools/flightjitter.py` — reproduces the player's jitter EMA from the AU
   rows (arrival basis `t_complete`), splits it into size-explained vs
-  residual (`docs/airtime-model.md` §4), and classifies each stutter event —
+  residual ([`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md) §4), and classifies each stutter event —
   `gap` / `rung-change` / `size` / `fec-wait` / `loss-recovery` /
   `transport` — using the jsonl for ladder and loss context. `fec-wait` is
   direct per-frame evidence (the stutter AU's own `t_complete − t_first >
@@ -768,7 +768,7 @@ listening.
 ### `stream:` line (streamed decode)
 
 Every 5 s, printed by the decoder-input thread (FeedLoop;
-`docs/slices.md` "Part 2 (as built)"): `on|off:<reason>`, `streamed` (of
+[`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md) "Part 2 (as built)"): `on|off:<reason>`, `streamed` (of
 them `salvaged`), `aborted` (`stream_aborted`, one rkvdec reset each),
 `whole`, `opened`/`open_aborted` (ring records seen open / ended without
 closing), `wake_us=p50/p99` and `n` (closed-record delivery − maburgs'
@@ -898,12 +898,12 @@ against it, not against the housekeeping loop that prints the line.
   on a clean link and every miss then costs a repeat plus a cut (bench:
   budget 3 = 59–73 % of seconds with a visible event and 1.6–2.5 drops/s,
   budget 0 = 14 % and 0.16 drops/s, at +12.5 ms median). Records:
-  `docs/findings/2026-09-02-regulator-chain-budget.md` (budget 3 chosen),
-  `docs/findings/2026-10-15-regulator-chain-cuts.md` (budget 0 chosen).
+  [`docs/findings/2026-09-02-regulator-chain-budget.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-02-regulator-chain-budget.md) (budget 3 chosen),
+  [`docs/findings/2026-10-15-regulator-chain-cuts.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-regulator-chain-cuts.md) (budget 0 chosen).
 - `alw=`/`lslot=` — capture-time scheduling (`display.sched_cap_ms`, 0 = off
   in code; the bundle runs 16, the phase lock's placement switch —
   docs/phase-lock.md; bench result and cost:
-  `docs/findings/2026-10-15-capture-sched.md`). In servo mode a frame's vblank follows its
+  [`docs/findings/2026-10-15-capture-sched.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-capture-sched.md)). In servo mode a frame's vblank follows its
   capture time, not its arrival: the first vblank whose release is at or
   after capture + delivery floor + `alw`. The window holds each frame's
   transit, arrival − capture pts on the raw clocks, measured before the
@@ -1017,7 +1017,7 @@ the Nerd Fonts patcher changes. A missing value reads
 `--`, never zero. `lat` reads `--/--` while the latency anchor is cold —
 each figure is ONE REAL FRAME from the last 1 s window, ranked by e2e, and
 the pair is read together because p99 alone is a tail statistic that gets
-misread as typical (`docs/findings/2026-08-31-dq-spike.md` §20); the
+misread as typical ([`docs/findings/2026-08-31-dq-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-08-31-dq-spike.md) §20); the
 per-segment breakdown is not on the glass (the `lat:` line, `lat.log` and
 `flightreport.py` carry it). No meters or bars. Colour exceptions:
 - the fps item turns caution while `drone.low_power` is set
@@ -1028,13 +1028,13 @@ All of these tints drop while the sideport is stale. Red is
 `tok::kStatusCritical`, kept apart from REC's `kStatusRec`. The fps item also turns caution, and reads
 `src/panel` (e.g. `100/60`; a decimal on the source when both round alike
 and it fits, `59.7/60`), while the drone's measured frame rate and the
-panel's refresh are too far apart for the phase lock (`docs/phase-lock.md`,
+panel's refresh are too far apart for the phase lock ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md),
 "Rate mismatch"). Both rates are player-measured, so that tint holds while
 the sideport is stale; it is never raised while the drone reports
 low-power. The fps item is also tinted caution (text unchanged) while the
 phase lock is out of range on a pair that otherwise matches. An icon takes its item's colour. The REC indicator
 is a red dot, `REC` and an mm:ss clock (`REC FAULT` in amber), with a VTX
-leg sized by `dvr.target` (`docs/vtx-recorder.md`); armed draws nothing.
+leg sized by `dvr.target` ([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)); armed draws nothing.
 It sits in the corner because in a row it would eat into the bar's width
 and shift that row whenever the recorder was merely armed.
 
@@ -1093,7 +1093,7 @@ the line has held the pressed level for 50 ms (every disagreeing sample
 restarts the window, so contact chatter and noise spikes on the button
 wire never toggle the DVR); a hold fires once. `kill -USR1 $(pidof
 maburplay)` is the same press for benches. `dvr.target` (`gs` | `vtx` | `both`) picks what a press
-records (`docs/vtx-recorder.md`); on the GS, each start produces one file
+records ([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)); on the GS, each start produces one file
 in whichever `dvr.mode` is configured:
 
 - **raw** waits for the next sync point before the file opens, so the OSD
@@ -1102,14 +1102,14 @@ in whichever `dvr.mode` is configured:
   GS's local recording): a complete IRAP (`au_is_irap()`) once VPS+SPS+PPS
   are known. A coded-size change mid-recording (a drone `VENC_MODE`
   MAVLink set rebuilding the encoder pipeline in-process,
-  `docs/vtx-config-mavlink.md`, `docs/link-adaptation.md`, is the live case) rolls
+  [`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md), [`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md), is the live case) rolls
   to a new file at the next IRAP rather than mixing two sizes in one
   header: `maburplay` names the next file through the GS DVR's namer and
   logs `maburplay: rec: ROLL (<path>)`. The web GS's local recording
   rolls the same way, naming the new file `<name>-rN.mp4` and resuming
   at the next sync point (`docs/web-gs.md`, "Local (`web`) target").
   Older raw files that open on a non-IRAP need repair — see
-  `docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md`.
+  [`docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md).
 - **burned** re-encodes what the display scans out, with the OSD burnt
   in. The recorder taps the display's flip on the release thread
   (`RecorderTap`, `gs/player/src/recorder_tap.h`) and records one flip in
@@ -1120,7 +1120,7 @@ in whichever `dvr.mode` is configured:
   default, is the decoded size when the recording starts; a later rung
   change is scaled to it, letterboxed if the aspect differs), and the
   OSD is composed at that size. At a decoded size above 1920x1080 (the
-  native sensor readout's larger sizes, `docs/camera-modes.md`) the
+  native sensor readout's larger sizes, [`docs/camera-modes.md`](https://github.com/gilankpam/mabur/blob/master/docs/camera-modes.md)) the
   colour stage cannot keep up and the recorder drops frames rather than
   costing latency; set `dvr.burned.size = "1920x1080"` to avoid it. With
   `size = ""` a start before the
@@ -1154,7 +1154,7 @@ found, line held by another consumer) are non-fatal and logged once.
 The same loopback socket the player uses to tell `maburgs` its `vtx_rec`
 wish also carries one-shot `refresh <reason>` lines — `start`, `resync`,
 `decoder`, `dvr` — each one arming a demand-refresh IDR request
-(`docs/vtx-recorder.md` "Wire"; mechanism: `docs/fec-nack.md` "Demand
+([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md) "Wire"; mechanism: [`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md) "Demand
 refresh").
 
 ### Settings menu (GPIO)
@@ -1195,7 +1195,7 @@ all.
   is best-effort — Python cannot fence.) Host-side, the same invariant is
   `ctest -R 'gs_e2e|gs_au_e2e|player_e2e'` (byte-exact fixture-to-ring/AU
   comparisons via `tests/integration/verify_aus.py`/`--out-aus`). With ring
-  v4 (`docs/slices.md` "Part 2 (as built)") maburgs publishes a slot while
+  v4 ([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md) "Part 2 (as built)") maburgs publishes a slot while
   it fills it; ausniff counts closed records only (it waits on a slot still
   open and skips one whose AU overflowed, as a resync) and reports
   `nslices` — records per slice count, `1` = whole AU.
@@ -1203,7 +1203,7 @@ all.
   GS: `python3 aucadence.py --ring /dev/shm/mabur-au --seconds 25 --json`).
   Same outside-the-daemon ring posture as ausniff; reports the base−enh
   completion offset (p50 of `arrival_mono − pts` per class, IDR-excluded —
-  metric provenance in `docs/findings/2026-08-29-airtime-balance-spike.md`).
+  metric provenance in [`docs/findings/2026-08-29-airtime-balance-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-08-29-airtime-balance-spike.md)).
   This is the **standing acceptance number for any change touching the
   AirBalancer, the venc pipeline, UEP overhead, or the bitrate policy** —
   the sideport `jitter_ms` EMA is the symptom of this offset and is noisier
@@ -1232,12 +1232,12 @@ all.
   first base IDR completing within 600 ms of it, kB p50/max by target rung
   split demotes | promotes and the ratio to the post-transition base P
   (`--profiles` lists every row). That table is the `venc.min_iqp` tuning
-  readout (`docs/airtime-model.md`): read the rung-0 demote column after a
+  readout ([`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md)): read the rung-0 demote column after a
   flight, then move the floor. The default window runs from the first E
   line to the last S line; a starve opens no episode. `--model` compares the
   drone's per-frame `air` column against the measured excess
-  (`docs/findings/2026-09-06-air-clock-flight.md`). Origin:
-  `docs/findings/2026-09-05-probe-stream-flight.md` §9;
+  ([`docs/findings/2026-09-06-air-clock-flight.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-06-air-clock-flight.md)). Origin:
+  [`docs/findings/2026-09-05-probe-stream-flight.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-05-probe-stream-flight.md) §9;
   `tests/test_airdrain.py` pins it on a synthetic cascade.
 - **Packet-level forensics → capture tools** (`tools/bench/seqdump.py`,
   `decode_bodies.py`, `live_decode.py`/`live_play.py`). The sideport is
@@ -1245,7 +1245,7 @@ all.
   for offline dissection. (`fu_probe.py`, `fu_chain_analyze.py` read
   RTP-era recordings only.)
 - **Loss injection → the loss-sim rig.** `MABUR_LOSS_SIM` builds only
-  (`gs/src/loss_sim.h`, `docs/airtime-model.md` §4): `LossSim::kStreams` is
+  (`gs/src/loss_sim.h`, [`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md) §4): `LossSim::kStreams` is
   `s0..s5`, `5` = probe — `tools/bench/losssim.py s5 eff=<pct>` injects
   loss on the probe stream for the gate's refusal test (parked clean,
   inject, expect `Lossy`/`probe_holds`, no promote). Host build: `cmake -S .
@@ -1267,7 +1267,7 @@ all.
   is stopped, before the SDK is touched, so a `VENC_*`/`REC_*` MAVLink set
   walks the ladder's restore rungs (`N=1`: "previous pipeline restored",
   `N=2`: "previous pipeline restored by a cold restart";
-  `docs/vtx-config-mavlink.md` "Applying a set"). Boot logs `venc:
+  [`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md) "Applying a set"). Boot logs `venc:
   MABUR_VENC_FAIL_RESTARTS=<N>: the next <N> pipeline restarts will fail`,
   each forced failure `venc: injected pipeline start failure
   (MABUR_VENC_FAIL_RESTARTS)`. Read once at the first encoder start and
@@ -1280,7 +1280,7 @@ all.
   characterization; they are not monitoring tools. The drone radio RX can
   wedge after a linkbench run — restart maburd.
 - **TX-power walls and air capacity → `maburcal`** (`gs/bundle/maburcal`,
-  `docs/calibration.md`). `maburcal start` measures a unit's per-rate PA
+  [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md)). `maburcal start` measures a unit's per-rate PA
   compression walls and delivered air efficiency at each width the GS
   flies and writes them to the drone; `maburcal report <cal.log>`
   re-renders a saved run offline.
@@ -1297,7 +1297,7 @@ http://127.0.0.1:8301/venc'`:
   "frames", "sensor_mhz"}`. `req_bitrate_kbps` is the REQUESTED rate — what
   RcAgent last successfully commanded — not a readback of what the encoder
   programmed. `sensor_mhz` is the sensor's measured frame rate in milli-Hz
-  from the boot-time trim (`docs/airtime-model.md` §3), 0 until its first
+  from the boot-time trim ([`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md) §3), 0 until its first
   1 s window closes; healthy is a few tens of mHz under `venc.fps`.
   `frames` advancing is the cheapest "is the camera alive" check, and the
   one that distinguishes a stalled encoder (fps flat, ring empty) from a
@@ -1309,14 +1309,14 @@ http://127.0.0.1:8301/venc'`:
 - `POST /venc/set?k=v`, whitelist `bitrate` / `qp_delta` / `roi_qp` /
   `max_ipprop` / `superframe_p_pct` / `min_iqp` / `max_iqp` / `fps` /
   `ov_base_pct` / `ov_enh_pct` (`max_ipprop`/`superframe_p_pct` are
-  volatile encoder pokes, `docs/airtime-model.md` §3; `ov_*_pct` is a
+  volatile encoder pokes, [`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md) §3; `ov_*_pct` is a
   per-layer FEC overhead override, `-1` clears, 0..300 %, and works without
   the venc core). Nothing is persisted. **A bitrate/ROI-QP override is
   bounded:** RcAgent re-asserts its computed values every
   `RcAgent::kReassertMs` (5000 ms) on top of the pushes at every rung
   transition, failsafe/LINKED entry and ROI threshold crossing, so an
   override lasts at most ~5 s on a parked link — a bench procedure must
-  re-POST inside that window (`docs/link-adaptation.md`).
+  re-POST inside that window ([`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md)).
 
 It is a debug surface, not an instrument: nothing records it. Reach for it
 when the GS cannot see the drone at all (`drone` is `null`, a half-finished
@@ -1326,7 +1326,7 @@ maburd's own stderr (`/tmp/mabur.log`): the 1 Hz `stats:` line (incl.
 `enc_pk100=`, the peak 100 ms encoder byte rate in kbit/s inside that
 second — its frame-normalised window is sized from the boot config's
 `venc.fps` and is not rebuilt by a live `VENC_MODE` MAVLink set
-(`docs/vtx-config-mavlink.md`), so the window's own 100 ms no longer matches the
+([`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)), so the window's own 100 ms no longer matches the
 running fps after one — `lp=`/`armed=` for low-power mode, `snr_mhz=`, the trimmed
 sensor rate in milli-Hz (same value as `GET /venc`'s `sensor_mhz`), and
 `snr_off=`, the phase-lock offset on the sensor in milli-fps (0 = the
@@ -1343,7 +1343,7 @@ counts only queue-full inline fallbacks (the async path building a repair
 on the hot thread because the worker queue was full) — never the
 frame-end batch. `frame_end=` is the repairs a declared video frame's
 flush() built and sank inline at the frame's end (held tail credit spent
-as its own small batch, `docs/airtime-model.md` "Repairs at the frame
+as its own small batch, [`docs/airtime-model.md`](https://github.com/gilankpam/mabur/blob/master/docs/airtime-model.md) "Repairs at the frame
 end"), and `frame_end_us/rep=` their mean build-plus-sink µs.
 
 The MAVLink parameter component (T_MAV, `drone/src/mav_component.h`) logs
@@ -1356,7 +1356,7 @@ nothing was written, `set <id> refused: <why>` for an immediate refusal
 (unknown id, a type mismatch, a loader refusal, "apply in progress",
 "calibration in progress"), and `... config does not load: <why>` when
 the file on disk itself fails to load. A set that is a real change past
-the loader check is handed to `ConfigApplier` (`docs/vtx-config-mavlink.md`
+the loader check is handed to `ConfigApplier` ([`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)
 "Applying a set") and logs two lines instead: `set <id> = <value>
 (<toml key>) in progress` at once, then — once the applier finishes —
 either `set <id> = <value> (<toml key>) applied <knob|reprogram|rebuild>
@@ -1389,9 +1389,9 @@ dropped because the 64-packet outbound queue was full), and
 also raise Telem's `auth_reject`, the key-mismatch signal), and
 `cal_late` the calibration-only frames that arrived after their run closed
 still tagged under its pair — the repeats of the GS's closing Abort, about
-two per run — dropped without `auth_reject` (`docs/mavlink.md`). Calibration logs `maburd cal: ...` lines,
+two per run — dropped without `auth_reject` ([`docs/mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/mavlink.md)). Calibration logs `maburd cal: ...` lines,
 `maburd radio: power table <bw> MHz live ...` on every width-table switch,
-and `cal_latch_drop=` on the `maburd tx_send:` line (`docs/calibration.md`
+and `cal_latch_drop=` on the `maburd tx_send:` line ([`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md)
 "Observability").
 
 ## Frame loss inside the drone ("wire clean" ≠ no frame loss)
@@ -1408,4 +1408,4 @@ the ring read) and prints the counts on the 5 s `frame_ring:` stderr line:
 `self_idr_refused` counts base vanishes inside the IDR-adjacency guard; the
 self-IDR consumer is deliberately not wired (an earlier attempt amplified
 CPU overload into an IDR storm). Findings:
-`docs/findings/2026-08-12-venc-ring-vanish.md`.
+[`docs/findings/2026-08-12-venc-ring-vanish.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-08-12-venc-ring-vanish.md).

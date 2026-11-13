@@ -5,9 +5,9 @@ and ladder-control core as `maburgs` on one USB card (RTL8812EU, RTL8812AU,
 RTL8812CU or TP-Link RTL8821AU) or on the CPE510 relay, with no native daemon
 involved. The design spec (`docs/superpowers/specs/2026-09-27-web-gs-design.md`
 and its follow-ups) is gitignored and machine-local; this page stands on its
-own. Bench records: `docs/findings/2026-09-27-web-gs-validation.md`,
-`docs/findings/2026-10-07-web-gs-nack-bench.md`,
-`docs/findings/2026-10-10-web-gs-8812cu.md`.
+own. Bench records: [`docs/findings/2026-09-27-web-gs-validation.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-27-web-gs-validation.md),
+[`docs/findings/2026-10-07-web-gs-nack-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-07-web-gs-nack-bench.md),
+[`docs/findings/2026-10-10-web-gs-8812cu.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-10-web-gs-8812cu.md).
 
 ## What it is
 
@@ -105,8 +105,8 @@ DVR paths share.
 
 ## Serve
 
-**Hosted: <https://gilankpam.github.io/mabur/>** (stable) and
-**<https://gilankpam.github.io/mabur/edge/>** (edge) — the simplest way in,
+**Hosted: <https://gilankpam.github.io/mabur-ground/>** (stable) and
+**<https://gilankpam.github.io/mabur-ground/edge/>** (edge) — the simplest way in,
 and the only one that works on a phone without extra setup. The `Pages`
 workflow (`.github/workflows/pages.yml`) builds the WASM core and the page
 whenever a change touches `web/`, `gs/src/`, `gs/bundle/` or `common/`. It
@@ -321,7 +321,7 @@ probe, DISC_ACK, telemetry, MSP) with LDPC by default (`[radio] ldpc = true`
 in `bundle/mabur.default.toml`). With this card the page therefore sees only
 CRC-failed bodies and never links. To fly BCC instead, set `[radio] ldpc =
 false` in the drone's `/etc/mabur.toml` (config before binary,
-`docs/deploy.md`). That costs every GS the LDPC coding gain (~2-3 dB), so
+[`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)). That costs every GS the LDPC coding gain (~2-3 dB), so
 set it back to `true` when flying an 8812EU/AU GS. The 8821AU's own uplink,
 LDPC included, decodes fine. devourer drops the STBC flag on the 8821AU's TX
 (one chain) and logs a one-time warning.
@@ -340,7 +340,7 @@ What the status overlay shows (`statusText()`, `web/ui/src/lib/view.js`):
 - `Drone rejects our link key (<fp>) — load the same mabur.key on both
   ends` — GS mode, the drone answers our DISCs with key_mismatch (our key
   differs from its key; `VrxState::KEY_MISMATCH`); the header tag reads
-  `Key mismatch`. See `docs/link-pairing.md`.
+  `Key mismatch`. See [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - After the first frame, no overlay text covers the video while the
   key-frame gate is unarmed. A freeze holds the last frame and GS mode
   requests an IDR instead of waiting; see "Key-frame recovery" below.
@@ -513,7 +513,7 @@ An `https://` page normally cannot open a plain `ws://` socket (mixed
 content), and the relay doesn't speak `wss://` (see `docs/cpe510-relay.md`,
 "Why not wss"). Chrome's Local Network Access (LNA, Chrome 142+) changes
 both halves (verified on Chrome 147; record in
-`docs/findings/2026-09-27-web-gs-validation.md`):
+[`docs/findings/2026-09-27-web-gs-validation.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-27-web-gs-validation.md)):
 
 - **Mixed content:** `ws://` to a **private IP literal** or a **`.local`
   name** is exempt. A public DNS name that resolves to the LAN is still
@@ -669,7 +669,7 @@ frames than requests.
 refresh (`32 33 34 1`, TRAIL_R). The drone emits a real IDR on a rung
 change, link-up, or chain break; on a GS-mode page's own request (see
 "Key-frame recovery" above); and on maburgs's request when its base
-picture is damaged (`docs/fec-nack.md` "Demand refresh") — there is no
+picture is damaged ([`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md) "Demand refresh") — there is no
 periodic refresh any more, so a spotter on a steady link waits for one of
 those. Spotter mode has no request path of its own. A spotter opened
 mid-flight on a steady link can therefore sit unarmed until one of those
@@ -748,7 +748,7 @@ can fix it; both clear on that row's next edit.
 [bin]" choices: for each of the 60, 90, 100 and 120 fps rates (`MODE_FPS`),
 every size of its binned sensor mode, then its native sensor mode's sizes
 up to 1920x1080 if that rate has one (`MODE_SIZES`, sizes from
-`docs/camera-modes.md`). `bin` is appended for a binned readout; the zoom
+[`docs/camera-modes.md`](https://github.com/gilankpam/mabur/blob/master/docs/camera-modes.md)). `bin` is appended for a binned readout; the zoom
 factor comes from the sensor mode's fps/readout select, not the size
 (`MODE_ZOOM`, kept equal to the drone's own table,
 `common/include/mabur/camera_modes.h`, by a parity test): binned 1.0 up
@@ -758,7 +758,7 @@ the same label wording the goggles menu uses. The row's help reads
 widest view; without it the sensor is read pixel for pixel, sharper but
 zoomed in. 120 fps is letterboxed 2.1:1." The native modes' larger sizes
 (2944x1656, 2560x1440, 2272x1278) are not offered: they cost encode and
-decode time and the GS recorder's frame rate (`docs/camera-modes.md`), so
+decode time and the GS recorder's frame rate ([`docs/camera-modes.md`](https://github.com/gilankpam/mabur/blob/master/docs/camera-modes.md)), so
 they are set in the drone's config by hand. There is no native mode above
 100 fps, so 120 fps lists only binned sizes.
 The wire value is `<fps>@<W>x<H>/binned` or `<fps>@<W>x<H>/native`
@@ -786,7 +786,7 @@ power measures, and filters, at the lower rate.
 readout, binned or native: that sensor mode's sizes as VENC_MODE offers
 them (native up to 1920x1080), which share the
 camera's aspect and fit the window the recorder's scaler reads
-(`docs/vtx-recorder.md`), plus the camera's own size and the drone's
+([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)), plus the camera's own size and the drone's
 current recording size when either is off that list. Nothing that would
 need the 4K mode is offered, since the link cannot run the 30 fps 4K
 sensor mode beside either readout.
@@ -803,7 +803,7 @@ value, so a refused toggle or edit never stays on screen beside its
 refusal. On success the bar fills, the status reads "✓ Saved", and both
 fade after about 1.5 s — unless the drone followed its `ACCEPTED` with a
 warning `STATUSTEXT` (a `RADIO_LDPC` set against walls measured under the
-other setting, `docs/vtx-config-mavlink.md`): then "✓ Saved" stays in amber with the
+other setting, [`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)): then "✓ Saved" stays in amber with the
 warning as a reason line under the hint until the next set of that row.
 On an error the control gives one small shake, the
 status turns red, and a reason line appears under the hint (the only time
@@ -815,7 +815,7 @@ unknown-id refusal, which carries no reason text); or "No answer" with
 "The drone did not answer; it may not have applied the change." on a
 timeout. With reduced motion there is no sweep, pulse, shake or fade: the
 bar is static while busy and the status text carries the state. The row's
-apply path (`docs/vtx-config-mavlink.md`) is not shown.
+apply path ([`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)) is not shown.
 
 The tab lives both on the windowed sidebar's **VTX** segment (see "Stats
 panel" below) and on the immersive layout's Config|VTX panel (see "Config
@@ -850,7 +850,7 @@ In GS mode only:
   "Software NACK" below).
 - The **Link key**: Load/Clear a `mabur.key` file. It is stored in
   `localStorage` `webgs.key`, and its fingerprint is shown as a tag. See
-  `docs/link-pairing.md`.
+  [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - The ladder rungs: mcs/bw/FEC overhead per rung, add/remove up to 8. To
   reorder, drag the ⋮⋮ handle, or focus it and use ↑/↓
   (`applyRungEdit(cfg, from, '__move', to)`).
@@ -924,7 +924,7 @@ config, and the target control shows VTX/Both disabled with the reason.
 The core (`WebGs::set_vtx_rec`, `web/src/web_gs.h`/`.cpp`) sets the RCF's
 recorder wish byte the same way `maburgs` does (`kRecKnown | kRecOn`), so the
 drone's onboard VTX SD recorder starts and stops exactly as it would under a
-native GS (`docs/vtx-recorder.md`). The VTX part of the indicator follows
+native GS ([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)). The VTX part of the indicator follows
 the drone's own report, not the click. It reads `Telem.rec_status` back off
 the stats stream (core `rec_state`/`rec_err` keys) and only counts as
 "recording" once the drone confirms it. A GS-mode Disconnect with the wish
@@ -942,10 +942,10 @@ pressing Record shows the button label `waiting for sync…` for about one
 request round trip. Then that IDR arrives and `RawDvr` starts muxing samples
 into the file. Files recorded before 2026-09-29 used a different sync point;
 their history and repair recipe are in
-`docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md`.
+[`docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-web-gs-raw-dvr-irap-sync.md).
 
 A coded-size change mid-recording (a drone `VENC_MODE` MAVLink set
-rebuilding the encoder pipeline, `docs/vtx-config-mavlink.md`, is the live case)
+rebuilding the encoder pipeline, [`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md), is the live case)
 rolls to a new file rather than mixing two sizes in one header: one
 file's header can describe only one size. `RawDvr`'s OPFS open awaits
 through ASYNCIFY, which must run from the core loop and never from the
@@ -1106,7 +1106,7 @@ share of it (Debug tab Counters, `trunc base`). That is the layer the NACK
 protects, and the one whose loss smears until the next GDR/IDR.
 
 `salvaged` (stats key `salvaged`, `WebGs::Stats::aus_salvaged`) counts AUs
-the core rebuilt by H.265 slice salvage (`docs/slices.md`): a truncated AU
+the core rebuilt by H.265 slice salvage ([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md)): a truncated AU
 whose lost row slices were filled with skip slices instead of being passed
 through truncated. The JS Gate decodes a salvaged AU once armed, same as any
 other AU, but never arms the decoder on one; only a complete AU is a sync
@@ -1130,7 +1130,7 @@ See "Software NACK" below.
 ## Phase lock
 
 GS mode steers the drone's sensor frame rate to this browser's own refresh,
-the same loop `maburplay` runs against its vblank (`docs/phase-lock.md`).
+the same loop `maburplay` runs against its vblank ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md)).
 Locked, capture-time placement removes the sensor/panel beat sawtooth from
 glass latency, and a frame is held to its release tick instead of drawn the
 instant the decoder hands it back.
@@ -1142,7 +1142,7 @@ the same way `maburplay`'s `LatenessWindow` does, and drives the C++
 `PhaseLock`/`RateMatch` core (`web/src/web_phase.cpp`, built from the same
 sources as `gs/player/src/phase_lock.{h,cpp}` and `rate_match.h`) through
 WASM exports. The offset it computes reaches the drone in the RCF
-`snr_off` field (`docs/phase-lock.md` "Wire"), sent by the web GS core's
+`snr_off` field ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Wire"), sent by the web GS core's
 own `VrxController` — `maburgs` is not involved. The page hands the core a
 new offset on every 50 ms tick; if none arrives for 3 s (a stalled page, or
 a hidden tab the browser throttles hard) the core sends 0 and the drone runs
@@ -1178,10 +1178,10 @@ decode.
 
 - **Not locked.** Only the `lock` state holds frames; `wait`/`acq`/`oor`
   present on arrival, same as `maburplay`'s placement modes
-  (`docs/phase-lock.md` "States").
+  ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "States").
 - **Rate mismatch.** `PhaseController` reads `mismatch()` off the C++
   `RateMatch`; a mismatched pair presents on arrival and the drone runs on
-  its trim, same as the native player (`docs/phase-lock.md` "Rate
+  its trim, same as the native player ([`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Rate
   mismatch"). A drone reporting low-power is never a mismatch — its rate is
   low on purpose — because `getLowPower()` feeds the core stats'
   `drone_lp` straight into the same check.
@@ -1224,7 +1224,7 @@ the WASM module in spotter mode by construction, so it can never make a
 real `_webgs_phase_*` call (`web/ui/src/lib/video.js`). Its Phase lock group
 collapses to a single `n/a` row, same as the NACK group.
 
-See `docs/findings/2026-10-27-web-phase-lock-spike.md` for the throwaway
+See [`docs/findings/2026-10-27-web-phase-lock-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-27-web-phase-lock-spike.md) for the throwaway
 spike this was rebuilt from (vsync grid jitter, lock bench numbers on
 desktop/phone/Mac Chrome).
 
@@ -1305,7 +1305,7 @@ is the same thing in practice, since Betaflight sends DRAW_SCREEN continuously.
 
 ## Software NACK
 
-GS mode runs `docs/fec-nack.md`'s base-layer selective repeat with the same
+GS mode runs [`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md)'s base-layer selective repeat with the same
 `mabur::NackTracker` maburgs polls. It uses the same `SwDecoder` erasure
 view, `FrameStream` tail view and ladder util (`WebGs::poll_nack_`). The
 tracker is built only in GS mode with `[link.nack] enable`; a spotter has no
@@ -1333,7 +1333,7 @@ on the Config tab (Config form, above). This is pinned by
 counter across a same-nonce rejoin vs a new nonce, the stats block, the
 overlay loader) and `web/tests/{config,view}.test.mjs`. The page requests
 no IDR on a truncated AU (`Gate.onAu` → `skip: 'truncated'`). Bench record
-(USB, CPE relay, browser): `docs/findings/2026-10-07-web-gs-nack-bench.md`.
+(USB, CPE relay, browser): [`docs/findings/2026-10-07-web-gs-nack-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-07-web-gs-nack-bench.md).
 
 ## MAVLink seam
 
@@ -1484,7 +1484,7 @@ constants are pinned by `web/tests/colortrans.test.mjs` (see
   dropped whole. In GS mode the IDR request bounds the freeze (~150 ms);
   a spotter waits for the drone's next unsolicited IDR. MPP on `maburplay`
   conceals and keeps decoding instead. The page therefore shows a salvaged
-  picture (`docs/slices.md`) only between such resets.
+  picture ([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md)) only between such resets.
 - **Spotter can never force an IDR.** No GS-relayed IDR request path exists
   (see "Spotter key frames" above and Follow-ups).
 - **Spotter cannot gate on `CAP_FRAME_WIRE`.** Spotter mode has no
@@ -1492,7 +1492,7 @@ constants are pinned by `web/tests/colortrans.test.mjs` (see
   true (`web/src/web_gs.cpp`). GS mode, by contrast, only decodes while in
   SESSION with a peer that has advertised `CAP_FRAME_WIRE`. A spotter
   therefore cannot detect a caps-mismatched drone (a half-deployed
-  `RC_VERSION` flag-day pair, `docs/deploy.md`). Instead of refusing the
+  `RC_VERSION` flag-day pair, [`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)). Instead of refusing the
   stream the way a caps-aware GS would, it feeds the decoder whatever
   bitstream arrives, parseable or not.
 - **Chrome must run via the Nix wrapper** (`bin/google-chrome-stable`), not

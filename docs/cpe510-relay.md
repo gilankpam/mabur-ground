@@ -14,8 +14,8 @@ Two consumers: the web GS (radio picker: USB card | CPE relay — see
 |---|---|
 | Firmware repo | `../mabur-openwrt`, <https://github.com/gilankpam/mabur-openwrt> (OpenWrt 25.12.4 ath79, mabur-only image) |
 | Daemon source | `feed/net/mabur-relay/src` in that repo (C, libc only, single `poll()` loop) |
-| **Wire contract** | `docs/mabur-relay-protocol.md` in that repo — protocol **v4**. Code against that file, not this summary. |
-| Bench records | relay side: `docs/verify-mabur-relay-on-device.md` in that repo (flash/boot check, full-rate runs, TX mode); mabur side: `docs/findings/2026-09-28-cpe-relay-rx-spike.md`, `docs/findings/2026-09-29-cpe-relay-tx-wss.md`, `docs/findings/2026-10-02-cpe-relay-remote-card-bench.md`, `docs/findings/2026-10-03-cpe-relay-full-chantable.md`, `docs/findings/2026-10-05-cpe-relay-hop-bench.md` |
+| **Wire contract** | [`docs/mabur-relay-protocol.md`](https://github.com/gilankpam/mabur/blob/master/docs/mabur-relay-protocol.md) in that repo — protocol **v4**. Code against that file, not this summary. |
+| Bench records | relay side: [`docs/verify-mabur-relay-on-device.md`](https://github.com/gilankpam/mabur/blob/master/docs/verify-mabur-relay-on-device.md) in that repo (flash/boot check, full-rate runs, TX mode); mabur side: [`docs/findings/2026-09-28-cpe-relay-rx-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-28-cpe-relay-rx-spike.md), [`docs/findings/2026-09-29-cpe-relay-tx-wss.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-cpe-relay-tx-wss.md), [`docs/findings/2026-10-02-cpe-relay-remote-card-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-02-cpe-relay-remote-card-bench.md), [`docs/findings/2026-10-03-cpe-relay-full-chantable.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-03-cpe-relay-full-chantable.md), [`docs/findings/2026-10-05-cpe-relay-hop-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-05-cpe-relay-hop-bench.md) |
 | Device | `root@10.83.11.1`; DHCP on the LAN (10.83.11.100-199, no router/DNS — mabur-openwrt `90-mabur-lan`); failsafe 192.168.1.1; the bench unit is hardware revision v3 |
 | Ports | UDP **8310** (`maburgs`, native `webgs`), `ws://` **8311** (web GS) |
 | Config | `/etc/mabur-relay.conf` (PHY, MON, REG, TXPOWER, BOOT_CHANNEL/SEC, ports); procd service `mabur-relay`, respawns forever |
@@ -70,7 +70,7 @@ a bad `ver` — there is no compatibility shim.
   image cannot tune 144 (TUNE fails with `-22`, the relay stays put); any
   channel in `radio.channels` or hop target the CPE cannot tune drops the
   relay for the session (gracefully: `owned=false`, USB cards carry the
-  link). Record: `docs/findings/2026-10-03-cpe-relay-full-chantable.md`.
+  link). Record: [`docs/findings/2026-10-03-cpe-relay-full-chantable.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-03-cpe-relay-full-chantable.md).
 
 ## `maburgs` `RemoteCard`
 
@@ -167,7 +167,7 @@ through the existing per-card retune loop. Bodies carry the relay's own
 `rx_channel` stamp (0 mid-retune), which is what hop confirmation and
 `is_link_video` read. TUNE→ready is ≈ 50 ms on hardware, far below
 `hop.confirm_ms`, so the hop confirm needs no relay allowance
-(`docs/findings/2026-10-02-cpe-relay-remote-card-bench.md`, legs 5 and 7).
+([`docs/findings/2026-10-02-cpe-relay-remote-card-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-02-cpe-relay-remote-card-bench.md), legs 5 and 7).
 
 **Own airtime.** `OwnAirAcc` (the NHM `own_air_pct` input) is fed from the
 relay's own frames: width from the relay's confirmed `STATUS` `sec`, never
@@ -196,7 +196,7 @@ across cards excludes it:
 
 - `TxSelector` (`gs/src/tx_selector.h`) compares best-chain **RSSI** on
   every card (3 dB margin, 2 s hold, dead-card rule), USB-only GSes
-  included (scale note in `docs/data-provenance.md`).
+  included (scale note in [`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md)).
 - RF labels / fade predictor (`gs/src/rf_labels.h`): `select_label_card`
   skips `!snr_ok` cards, so `rf_snr_db` never comes from a relay.
 - Probe rows (`gs/src/link_health.h`): NaN SNR for a `!snr_ok` card.
@@ -231,7 +231,7 @@ GS side `gs/src/channel_core.{h,cpp}`, `gs/src/remote_card.{h,cpp}`,
 Out of scope: a relay never joins the periodic in-flight scout (no
 synchronous energy read) and a relay-only boot stays search-only (no
 boot-scan measurement over the relay). Bench record and the evidence
-behind the metric: `docs/findings/2026-10-05-cpe-relay-hop-bench.md`.
+behind the metric: [`docs/findings/2026-10-05-cpe-relay-hop-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-05-cpe-relay-hop-bench.md).
 
 **`SURVEY`/`SCAN` in one line.** `6 SURVEY` is the relay pushing per-channel
 hardware cycle counters (`active_ms`/`busy_ms`/`rx_ms`/`tx_ms`,
@@ -417,7 +417,7 @@ fragmented almost every datagram) and the relay sends with `SO_NO_CHECK` in
 batches. UDP and WebSocket at the same time (93 %) is not a real use case.
 Load scales with video bitrate + FEC; the next lever, if ever needed, is a
 `PACKET_MMAP` receive ring (RX costs ~18 pts). TX traffic (~20 RCF/s) adds
-nothing measurable (`docs/findings/2026-09-29-cpe-relay-tx-wss.md`).
+nothing measurable ([`docs/findings/2026-09-29-cpe-relay-tx-wss.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-cpe-relay-tx-wss.md)).
 
 ## Ops notes
 
@@ -462,7 +462,7 @@ a spurious gap).
 
 Bench record (TX alone 98.1 % RCF-heard; relay ≥ USB in the A/B; the
 native `webgs --relay` CLI used for it):
-`docs/findings/2026-09-29-cpe-relay-tx-wss.md`.
+[`docs/findings/2026-09-29-cpe-relay-tx-wss.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-cpe-relay-tx-wss.md).
 
 ## Why not wss
 
@@ -472,7 +472,7 @@ AES-GCM is far slower on the 74Kc), and the relay's WS path is already
 web GS doesn't need it: Chrome 142+ lets an `https://` page (the hosted
 GitHub Pages build) open plain `ws://` to a private IP literal or `.local`
 name once the user allows local network access — see `docs/web-gs.md`,
-"CPE relay radio". Spike record: `docs/findings/2026-09-29-cpe-relay-tx-wss.md`.
+"CPE relay radio". Spike record: [`docs/findings/2026-09-29-cpe-relay-tx-wss.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-29-cpe-relay-tx-wss.md).
 
 ## Follow-ups
 

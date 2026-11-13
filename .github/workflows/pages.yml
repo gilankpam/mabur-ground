@@ -2,8 +2,8 @@ name: Pages
 
 # The browser ground station (web/, docs/web-gs.md) on GitHub Pages, two
 # channels off one gh-pages branch:
-#   stable  https://gilankpam.github.io/mabur/       master pushes
-#   edge    https://gilankpam.github.io/mabur/edge/  any PR push (last one wins)
+#   stable  https://gilankpam.github.io/mabur-ground/       master pushes
+#   edge    https://gilankpam.github.io/mabur-ground/edge/  any PR push (last one wins)
 # Pages serves the gh-pages branch (Settings → Pages → Deploy from a branch),
 # not an Actions artifact: an artifact deploy replaces the whole site, so a PR
 # build would wipe stable. Each channel rewrites only its own directory; the
@@ -18,14 +18,14 @@ on:
       - 'web/**'
       - 'gs/src/**'
       - 'gs/bundle/**'
-      - 'common/**'
+      - 'third_party/mabur'
       - '.github/workflows/pages.yml'
   pull_request:
     paths:
       - 'web/**'
       - 'gs/src/**'
       - 'gs/bundle/**'
-      - 'common/**'
+      - 'third_party/mabur'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -47,13 +47,14 @@ jobs:
       CHANNEL: ${{ github.ref == 'refs/heads/master' && 'stable' || 'edge' }}
     defaults:
       run:
-        working-directory: mabur
+        working-directory: mabur-ground
     steps:
       # Same two-checkout layout as ci.yml: the web build wants devourer as a
       # sibling (web/CMakeLists.txt DEVOURER_DIR), tracking devourer master.
       - uses: actions/checkout@v5
         with:
-          path: mabur
+          path: mabur-ground
+          submodules: true
       - uses: actions/checkout@v5
         with:
           repository: gilankpam/devourer

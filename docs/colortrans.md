@@ -114,7 +114,7 @@ refused for the whole file.
 - The 3×4 skips `forward()`'s clamp after the camera matrix: same mean
   error as the RK3566's 9×9×9 LUT (4.0 vs 3.7 LSB), worse on strongly
   saturated colours (max 36 vs 20 LSB). Record:
-  `docs/findings/2026-10-12-opi-colortrans-probe.md`.
+  [`docs/findings/2026-10-12-opi-colortrans-probe.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-12-opi-colortrans-probe.md).
 
 ## Build
 
@@ -225,7 +225,7 @@ A recording must not cost the live picture a vsync. What makes that hold:
   The gaps stop while the queue holds 4 MB or more (the card is slower than
   the trickle: catch up) and during the sink's destructor (record stop
   drains it on the housekeeping loop). Record of the search and the gate:
-  `docs/findings/2026-10-19-burned-dvr-live-repeat.md`.
+  [`docs/findings/2026-10-19-burned-dvr-live-repeat.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-19-burned-dvr-live-repeat.md).
 
 `BurnRecorder: stopped` reports `ct_ms=mean/max enc_ms=mean/max`; the ct
 thread logs `colortrans stage mean per frame ...: import, draw+finish, rga`
@@ -234,7 +234,7 @@ recording exactly like the GPIO button, so a mid-session record start can be
 measured without a hand on the GS.
 
 Bench record of the three fixes and their numbers:
-`docs/findings/2026-09-17-colortrans-recording-latency.md`.
+[`docs/findings/2026-09-17-colortrans-recording-latency.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-17-colortrans-recording-latency.md).
 
 ## Known limitations
 
@@ -254,7 +254,7 @@ Bench record of the three fixes and their numbers:
   the recording costs live view nothing measurable. At 60 fps the stage
   fits and the cost is ~0.5 ms of `dec`.
 
-Measurements: `docs/findings/2026-10-22-burned-dvr-100fps-throughput.md`.
+Measurements: [`docs/findings/2026-10-22-burned-dvr-100fps-throughput.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-22-burned-dvr-100fps-throughput.md).
 
 ## Not done / follow-ups
 

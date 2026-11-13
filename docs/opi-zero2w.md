@@ -17,7 +17,7 @@ NV12 either way and are handed to `DrmPresenter` unchanged.
 
 - **One thread for libav.** Decode and frame frees run on the feed
   thread; `poll()`/`release_frame()` on the decode-output thread
-  (`DecodePump`, `docs/phase-lock.md` "Threads") only touch a locked
+  (`DecodePump`, [`docs/phase-lock.md`](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Threads") only touch a locked
   handoff (`frame_handoff.h`). Released frames are freed before the next
   decode. `abort()` can also run on the housekeeping thread while the feed
   thread is parked, same as `flush()`.
@@ -32,7 +32,7 @@ NV12 either way and are handed to `DrmPresenter` unchanged.
   a mid-session join usually starts; the bundle ships `venc.gop_s = 0`
   (no periodic refresh), so a join now waits for the next real IRAP
   instead — a rung change, link-up, chain break, or maburgs's own
-  demand-refresh request (`docs/fec-nack.md` "Demand refresh"). Joining
+  demand-refresh request ([`docs/fec-nack.md`](https://github.com/gilankpam/mabur/blob/master/docs/fec-nack.md) "Demand refresh"). Joining
   on a bare P picture would make Cedrus reference never-decoded buffers.
   Not re-armed on decode errors.
 - **Synchronous.** The hwaccel waits for the capture buffer before
@@ -72,7 +72,7 @@ held capture buffer is released (`V4L2_DEC_CMD_FLUSH`).
 Against whole-AU decode on the same build, streaming takes the `lat:` `dec`
 segment from 7 to 4 ms at the median (10 to 6 ms p99) on the bench link's
 4-slice pictures; about 96 % of AUs stream, the rest being one-slice AUs
-(`docs/findings/2026-10-12-opi-zero2w-stream-ab.md`).
+([`docs/findings/2026-10-12-opi-zero2w-stream-ab.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-12-opi-zero2w-stream-ab.md)).
 
 The patch is required: `v4l2req_backend.cpp` does not compile without
 `AV_PKT_FLAG_PARTIAL`, and `init()` fails (`libavcodec lacks the mabur
@@ -127,7 +127,7 @@ the topology is:
 With `debug_log.enable` set, maburgs's session directory lands on the
 root overlay unless the image mounts `/media/dvr` (the bench image does
 not); a full overlay stops every session file silently
-(`docs/findings/2026-10-21-opi-release-thread-ab.md`, "Trap").
+([`docs/findings/2026-10-21-opi-release-thread-ab.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-21-opi-release-thread-ab.md), "Trap").
 
 `PAGE_FLIP_ASYNC` is refused (EINVAL), so flips are vsync-paced; the
 regulator's vsync servo locks and runs in paced mode. Page-flip
@@ -144,8 +144,8 @@ disturb it; lead 3 misses a latch about once every 2.5 min with the
 release on time (a kernel-side late latch, as on the Radxa). The board
 also drives a 2560x1440@99.95 sink with the drone at 100 fps: Cedrus
 decodes 1728x972 in 3.6 ms at the median (5.6 ms p99) and the lock holds.
-Bench records: `docs/findings/2026-10-12-opi-zero2w-bringup.md`,
-`docs/findings/2026-10-21-opi-release-thread-ab.md`.
+Bench records: [`docs/findings/2026-10-12-opi-zero2w-bringup.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-12-opi-zero2w-bringup.md),
+[`docs/findings/2026-10-21-opi-release-thread-ab.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-21-opi-release-thread-ab.md).
 
 ## Build and deploy
 
@@ -154,7 +154,7 @@ Bench records: `docs/findings/2026-10-12-opi-zero2w-bringup.md`,
 (override with `MABUR_BR_HOST_OPI=`). NEEDED: `libavcodec.so.61`,
 `libavutil`, `libdrm.so.2`, libstdc++. Stage 7 also needs that sysroot's
 libavcodec to carry mabur's FFmpeg patch (`gs/player/ffmpeg-patches/`) and
-builds `v4l2req_streamcheck` against it. Deploy: `docs/deploy.md`
+builds `v4l2req_streamcheck` against it. Deploy: [`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)
 ("Orange Pi Zero 2W").
 
 Display colortrans needs the image kernel's patch `0002` (the `CTM` plane

@@ -29,9 +29,9 @@ tested in `tests/test_channel_core.cpp`
 
 Design spec: `docs/superpowers/specs/2026-09-14-inflight-channel-hop-design.md`
 (gitignored, local only). How the fixes below were found:
-`docs/findings/2026-09-26-inflight-hop-fix-history.md`. Bench record:
-`docs/findings/2026-09-15-inflight-hop-bench-matrix.md` and
-`docs/findings/2026-09-15-handover-inflight-hop-bench.md`.
+[`docs/findings/2026-09-26-inflight-hop-fix-history.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-26-inflight-hop-fix-history.md). Bench record:
+[`docs/findings/2026-09-15-inflight-hop-bench-matrix.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-15-inflight-hop-bench-matrix.md) and
+[`docs/findings/2026-09-15-handover-inflight-hop-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-15-handover-inflight-hop-bench.md).
 
 ## 1. Wire and hop protocol
 
@@ -42,7 +42,7 @@ Design spec: `docs/superpowers/specs/2026-09-14-inflight-channel-hop-design.md`
 - `hop_epoch` (u8): bumped by the GS on every order **and** every
   withdrawal, so a repeated `(hop_ch, hop_epoch)` pair is a no-op.
 
-Any change here is an `RC_VERSION` flag day (`docs/deploy.md`). Telem
+Any change here is an `RC_VERSION` flag day ([`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)). Telem
 carries no hop readback: the drone's channel is whichever channel its
 video arrives on.
 
@@ -239,7 +239,7 @@ route (above) is a fallback for the zero-frames case.
 `weak`, so an interferer that fills airtime without lowering our signal —
 a long-frame 802.11 jam at low pps, or a co-channel analog VTX carrier
 that desenses the front end and reads as a fade with SNR intact
-(`docs/findings/2026-09-25-analog-vtx.md`) — is invisible to it, and
+([`docs/findings/2026-09-25-analog-vtx.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-analog-vtx.md)) — is invisible to it, and
 `weak` also moves on a plain fade. NHM busy minus our own airtime is
 foreign energy, which is why both routes read it. `nhm_busy_pct` comes from the chip's NHM histogram
 (airtime above `radio.scan.busy_dbm`, which config validation requires to
@@ -254,7 +254,7 @@ is what the drone transmitted, not what the card decoded: a card fading at
 mid range decodes a fraction of our frames while every one of them still
 fills its NHM busy, so the decoded-only figure booked the rest as foreign
 and a fade read as interference confirmed by its own loss
-(`docs/findings/2026-11-04-fade-false-hops.md`). The seq walk counts
+([`docs/findings/2026-11-04-fade-false-hops.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-11-04-fade-false-hops.md)). The seq walk counts
 every frame the drone sent whether or not this card heard it, so the
 scale restores the frames it missed. The walk numbers the drone's frames
 only: every frame the GS sends (RCF, DISC, NACK and its own T_MAV, the
@@ -263,7 +263,7 @@ frame before it. A self frame carries the GS's seq counter, and one landing
 ahead of the drone's mark made every drone frame after it read "behind" —
 expected stood for up to ~1.2 s while received climbed, the ratio fell to
 0 and the card's whole busy reading booked as foreign
-(`docs/data-provenance.md`, 2026-11-05). The floor at 1 keeps any other
+([`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md), 2026-11-05). The floor at 1 keeps any other
 stall from doing the same: own airtime never reads under what the card
 decoded. A window that decoded nothing has
 no ratio at all, and its own airtime cannot be told from what the air
@@ -285,7 +285,7 @@ never read against the card's post-retune state. The MINIMUM across cards
 is taken because a weakly receiving diversity card counts our own frames
 in its NHM busy but decodes few of them, so it reads "foreign" busy with
 no interferer present. Bench numbers:
-`docs/findings/2026-09-25-nhm-airtime-spike.md`.
+[`docs/findings/2026-09-25-nhm-airtime-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-nhm-airtime-spike.md).
 
 **A CPE510 relay card's inputs** (protocol v4, `docs/cpe510-relay.md`
 "Interference + hop on a relay"): `cca` is always 0 (ath9k has no CCA-event
@@ -594,12 +594,12 @@ built over the same primaries. Only `burst()` and in-flight dwells feed
 channel is a valid hop target. NHM busy % is not primary-only: a
 40-tuned card's busy reading is the max-of-halves energy over the whole
 pair, within 0.5 points of a 20 MHz dwell on either half
-(`docs/findings/2026-11-03-ht40-dwell-secondary.md`), so it is the first
+([`docs/findings/2026-11-03-ht40-dwell-secondary.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-11-03-ht40-dwell-secondary.md)), so it is the first
 ranking term at 40 MHz, ahead of the frame-term score. `foreign` still
 never counts secondary frames — they are never decoded at 40 MHz — so it
 stays primary-only even where it still matters (the blocked tiebreak, the
 score tiebreak within a busy tier). The boot scan dwells the same way,
-once per pair on its primary (`docs/bw40.md` "Boot scan dwells once per
+once per pair on its primary ([`docs/bw40.md`](https://github.com/gilankpam/mabur/blob/master/docs/bw40.md) "Boot scan dwells once per
 pair").
 
 ## 4. Ladder interaction: restore the pre-onset rung
@@ -783,7 +783,7 @@ has no home or fallback channel.
 The verdict and the dwells read OFDM FA + CCA through devourer's
 `GetRxEnergyScout()` (delta-on-read, like `GetRxEnergy`) and NHM busy
 through the NHM API; `RadioFrontend::read_energy_scout()` wraps it.
-Measured dwell cost: `docs/findings/2026-09-15-inflight-hop-bench-matrix.md`.
+Measured dwell cost: [`docs/findings/2026-09-15-inflight-hop-bench-matrix.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-15-inflight-hop-bench-matrix.md).
 
 ## 7. Config
 
@@ -839,8 +839,8 @@ readings or the hop's own retune debris. `blocked_pct` 30 is three times the wor
 single-window error (~10) and well under a real interferer (95–99), and it
 catches a 250 frames/s long-frame jam (32.8 % busy) that a threshold of
 50 misses
-(`docs/findings/2026-09-25-nhm-airtime-spike.md`,
-`docs/findings/2026-10-04-channel-set-bench.md`). The range-edge artefact
+([`docs/findings/2026-09-25-nhm-airtime-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-nhm-airtime-spike.md),
+[`docs/findings/2026-10-04-channel-set-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-04-channel-set-bench.md)). The range-edge artefact
 the wider margin used to absorb — our own frames heard above `busy_dbm`
 but failing CRC, so not subtracted — is the `weak` gate's job (§2).
 `occupied_windows` 5 at `window_ms` 150 puts the first `interfered` window
@@ -882,7 +882,7 @@ Validation (`gs/src/config.cpp`) — unknown keys fail boot:
 
 **`scan.log`** (`gs/src/scan_log.{h,cpp}`, marker `scanlog 9`; formats
 locked by `tests/test_scan_log.cpp`; marker history in
-`docs/data-provenance.md`). The hop adds two record kinds and extends `D`:
+[`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md)). The hop adds two record kinds and extends `D`:
 
 ```
 V <t> <verdict> <evidence_hex> <ref_rung|-> <link_loss_pct> <recovered>
@@ -896,7 +896,7 @@ H <t> <kind> <epoch> <target> <score> <elapsed_ms> <reason|->  # a hop event
   `foreign fa cca crc rssi snr nhm_busy own_air`. `nhm_busy` is `-`
   when the card's busy reading was invalid for this window (§2); `own_air`
   is always present, % of the window, delivery-scaled (§2; decoded-only in
-  files from before 2026-11-04, `docs/data-provenance.md`). The evidence
+  files from before 2026-11-04, [`docs/data-provenance.md`](https://github.com/gilankpam/mabur/blob/master/docs/data-provenance.md)). The evidence
   field is the §2 bitmask
   in hex: impaired 0x01, weak 0x02, detected 0x04, blocked 0x20, occupied
   0x80 (0x08/0x10/0x40 unassigned). `scanlog <= 8` files carry a tenth
@@ -997,12 +997,12 @@ and median `to_us+read_us+back_us` over `sess == 1` dwells).
 
 ## Measurements
 
-Bench and flight records: `docs/findings/2026-09-15-inflight-hop-bench-matrix.md`
+Bench and flight records: [`docs/findings/2026-09-15-inflight-hop-bench-matrix.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-15-inflight-hop-bench-matrix.md)
 (dwell cost, condition matrix 2026-09-15 → 2026-10-04, verdict at rest),
-`docs/findings/2026-09-15-handover-inflight-hop-bench.md` (run-by-run
-2026-09-15), `docs/findings/2026-09-25-nhm-airtime-spike.md` (analog VTX and
-DJI O4), `docs/findings/2026-09-25-analog-vtx.md` (one-card analog VTX) and
-`docs/findings/2026-10-04-channel-set-bench.md` "Bench 2026-10-04 — channel core extraction".
+[`docs/findings/2026-09-15-handover-inflight-hop-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-15-handover-inflight-hop-bench.md) (run-by-run
+2026-09-15), [`docs/findings/2026-09-25-nhm-airtime-spike.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-nhm-airtime-spike.md) (analog VTX and
+DJI O4), [`docs/findings/2026-09-25-analog-vtx.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-09-25-analog-vtx.md) (one-card analog VTX) and
+[`docs/findings/2026-10-04-channel-set-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-04-channel-set-bench.md) "Bench 2026-10-04 — channel core extraction".
 
 ## Known limitations
 
@@ -1073,10 +1073,10 @@ DJI O4), `docs/findings/2026-09-25-analog-vtx.md` (one-card analog VTX) and
   that loss under `loss_pct` while the ladder sinks, and confirmation
   waits for a window over it. `loss_pct` is shared with `impaired`:
   lowering it also widens the reference freeze and the `fade`/`unknown`
-  verdicts. See `docs/findings/2026-11-03-nhm-hop-threshold-bench.md`.
+  verdicts. See [`docs/findings/2026-11-03-nhm-hop-threshold-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-11-03-nhm-hop-threshold-bench.md).
 - **The detect route's clean-site record is bench-only.** Its evidence
   against firing on a clean site is bench soaks and replayed captures
-  (`docs/findings/2026-11-03-nhm-hop-threshold-bench.md`); a first clean
+  ([`docs/findings/2026-11-03-nhm-hop-threshold-bench.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-11-03-nhm-hop-threshold-bench.md)); a first clean
   flight on this build is flown watching `hop.hops` / `hop.holds`.
 - **One loss window makes a short detection.** At `detect_impaired` 1 the
   ring reads `detected` only while its loss window is inside it: a run
