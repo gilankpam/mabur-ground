@@ -26,7 +26,6 @@ endif()
 # mabur's own options, as normal variables: its cmake_minimum_required makes
 # CMP0077 NEW, so its option() calls take these values.
 set(MABUR_BUILD_TESTS OFF)
-set(MABUR_BUILD_GS OFF)
 if(NOT DEFINED MABUR_BUILD_LINKBENCH)
   set(MABUR_BUILD_LINKBENCH ON)
 endif()
@@ -41,10 +40,7 @@ add_subdirectory(gs)
 add_subdirectory(gs/player)
 add_subdirectory(web)
 add_subdirectory(bench/linkbench-rx)
-# mabur builds nhm-reset-probe itself until it drops bench/nhmreset.
-if(NOT TARGET nhm-reset-probe)
-  add_subdirectory(bench/nhmreset)
-endif()
+add_subdirectory(bench/nhmreset)
 # encosd needs mabur_player_core + the MPP root, so it can only exist after
 # gs/player has been added and only in the MPP-decoder MABUR_PLAYER_HW
 # (aarch64) build -- its own CMakeLists returns early otherwise.

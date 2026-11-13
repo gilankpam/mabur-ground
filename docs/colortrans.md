@@ -175,7 +175,7 @@ A recording must not cost the live picture a vsync. What makes that hold:
   implicit fence. Startup log:
   `DrmPresenter: video plane commits carry an explicit IN_FENCE_FD (...)`.
 - **An O(1) tap on the flip.** `BurnRecorder::submit()` runs on the
-  `SCHED_FIFO` release thread (docs/phase-lock.md "Threads"), from the
+  `SCHED_FIFO` release thread ([mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md) "Threads"), from the
   display's flip through `RecorderTap` (`recorder_tap.h`), on each
   recorded slot of the vblank grid: one buffer reference and a mailbox
   post under a `PiMutex`, never a copy and never a buffer release. A
