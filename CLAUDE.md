@@ -85,7 +85,8 @@ Doc rules:
 | the Orange Pi Zero 2W GS (H618): the v4l2req decoder (V4l2ReqBackend, libav v4l2request → Cedrus), MABUR_PLAYER_DECODER, build stage 7, what the board cannot do | `docs/opi-zero2w.md` |
 | the CPE510 relay card (mabur-relay protocol v4, maburgs RemoteCard + radio.relays, web GS relay mode, relay TX, interference sweep/hop on a relay) | `docs/cpe510-relay.md` |
 | ladder rungs, promote/demote, s3 probes, fade, attribution, RCF drain, the drone's encoder verbs + IDR pacing, the disarmed low-power mode | `../mabur/docs/link-adaptation.md` |
-| shipping a binary or config to a device, flag days, the GS install script, the GS image p1 swap | `../mabur/docs/deploy.md` |
+| the GS install script, where things live on the Radxa / OPi / CPE510, the GS image p1 swap | `docs/deploy.md` |
+| flag days, the config-load crash loop, the clean deploy sequence, pairing, the flag-day checklist | `../mabur/docs/deploy.md` |
 | comparing recordings, metric scales, removed sideport keys | `../mabur/docs/data-provenance.md` |
 | calibrating TX-power walls and capacity / efficiency tables, maburcal, cal.log, the MAVLink cal lane | `../mabur/docs/calibration.md`, `../mabur/docs/mavlink.md` |
 | camera modes per `venc.fps`, the GS `screen_mode` / fps mismatch warning / letterboxing, the burned recorder at 100 fps | `../mabur/docs/camera-modes.md` |

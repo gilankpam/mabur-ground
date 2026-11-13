@@ -154,8 +154,8 @@ Bench records: [`docs/findings/2026-10-12-opi-zero2w-bringup.md`](https://github
 (override with `MABUR_BR_HOST_OPI=`). NEEDED: `libavcodec.so.61`,
 `libavutil`, `libdrm.so.2`, libstdc++. Stage 7 also needs that sysroot's
 libavcodec to carry mabur's FFmpeg patch (`gs/player/ffmpeg-patches/`) and
-builds `v4l2req_streamcheck` against it. Deploy: [`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)
-("Orange Pi Zero 2W").
+builds `v4l2req_streamcheck` against it. Deploy: `docs/deploy.md`
+("Device facts", "Orange Pi Zero 2W GS").
 
 Display colortrans needs the image kernel's patch `0002` (the `CTM` plane
 property); on a kernel without it maburplay logs `DrmPresenter: video

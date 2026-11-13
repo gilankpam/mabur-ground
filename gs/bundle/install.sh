@@ -69,7 +69,7 @@ if ssh "$HOST" '[ -f /etc/maburgs.toml ]'; then
   : # tuned config already present -- never clobber it
 elif ssh "$HOST" '[ -f /etc/maburgs.json ]'; then
   echo "error: $HOST has /etc/maburgs.json but no /etc/maburgs.toml -- convert" >&2
-  echo "the tuned JSON config to TOML by hand before deploying (docs/deploy.md," >&2
+  echo "the tuned JSON config to TOML by hand before deploying (mabur's docs/deploy.md," >&2
   echo "'JSON to TOML cutover'). Refusing to seed the repo default over it." >&2
   exit 1
 else
