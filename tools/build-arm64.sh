@@ -41,6 +41,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mkdir -p toolchain out/arm64
+# mabur (common/, the wire) from the submodule unless MABUR_DIR points elsewhere.
+MABUR_DIR="${MABUR_DIR:-$PWD/third_party/mabur}"
 
 TARGET_TRIPLE=aarch64-unknown-linux-musl
 
@@ -273,13 +275,13 @@ export MABUR_MPP_ROOT="$PWD/toolchain/mpp-arm64"
 #        drm backends wired via step 3/4's roots): devourer's example
 #        binaries (rxdemo, txdemo, ...) are not needed on the ground station
 #        and some pull in extra libusb example plumbing not worth static-linking
-#        here. MABUR_BUILD_TESTS=OFF: the host test suite needs a host-runnable
+#        here. GROUND_BUILD_TESTS=OFF: the host test suite needs a host-runnable
 #        libusb + GoogleTest et al; irrelevant for a cross artifact.
 # Per-chip OFF list: see the note in tools/build-arm.sh — a new devourer
 # DEVOURER_<chip> option defaults ON and opts itself in on the next sync.
 cmake -S . -B build-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-musl.cmake \
-  -DCMAKE_BUILD_TYPE=Release -DMABUR_BUILD_TESTS=OFF -DMABUR_BUILD_DRONE=OFF \
-  -DMABUR_BUILD_GS=ON -DMABUR_LOSS_SIM=OFF -DDEVOURER_JAGUAR1=OFF -DDEVOURER_8814=OFF \
+  -DCMAKE_BUILD_TYPE=Release -DGROUND_BUILD_TESTS=OFF -DGROUND_BUILD_MABURD=OFF -DMABUR_DIR="$MABUR_DIR" \
+  -DMABUR_LOSS_SIM=OFF -DDEVOURER_JAGUAR1=OFF -DDEVOURER_8814=OFF \
   -DDEVOURER_JAGUAR2_8822B=OFF -DDEVOURER_JAGUAR2_8821C=OFF \
   -DDEVOURER_JAGUAR3_8822C=OFF -DDEVOURER_JAGUAR3_8822E=ON \
   -DDEVOURER_8733B=OFF \
@@ -290,7 +292,7 @@ cmake -S . -B build-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-musl.cmake \
 cmake --build build-arm64 -j"$(nproc)" --target maburgs linkbench-rx maburplay encosd nhm-reset-probe
 
 "${TARGET_TRIPLE}-strip" build-arm64/gs/maburgs -o out/arm64/maburgs-static
-"${TARGET_TRIPLE}-strip" build-arm64/bench/linkbench/linkbench-rx -o out/arm64/linkbench-rx
+"${TARGET_TRIPLE}-strip" build-arm64/bench/linkbench-rx/linkbench-rx -o out/arm64/linkbench-rx
 "${TARGET_TRIPLE}-strip" build-arm64/bench/nhmreset/nhm-reset-probe -o out/arm64/nhm-reset-probe
 "${TARGET_TRIPLE}-strip" build-arm64/gs/player/maburplay -o out/arm64/maburplay-static
 "${TARGET_TRIPLE}-strip" build-arm64/bench/encosd/encosd -o out/arm64/encosd
@@ -398,8 +400,8 @@ ln -sfn "$BR_SYSROOT/usr/lib/libdrm.so" toolchain/br-libs/lib/libdrm.a
   export PKG_CONFIG_LIBDIR="$BR_SYSROOT/usr/lib/pkgconfig:$BR_SYSROOT/usr/share/pkgconfig"
   export PKG_CONFIG_SYSROOT_DIR="$BR_SYSROOT"
   cmake -S . -B build-arm64-br -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-buildroot.cmake \
-    -DCMAKE_BUILD_TYPE=Release -DMABUR_BUILD_TESTS=OFF -DMABUR_BUILD_DRONE=OFF \
-    -DMABUR_BUILD_GS=ON -DMABUR_BUILD_LINKBENCH=OFF -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_BUILD_TYPE=Release -DGROUND_BUILD_TESTS=OFF -DGROUND_BUILD_MABURD=OFF -DMABUR_DIR="$MABUR_DIR" \
+    -DMABUR_BUILD_LINKBENCH=OFF -DBUILD_SHARED_LIBS=OFF \
     -DDEVOURER_JAGUAR1=OFF -DDEVOURER_8814=OFF \
     -DDEVOURER_JAGUAR2_8822B=OFF -DDEVOURER_JAGUAR2_8821C=OFF \
     -DDEVOURER_JAGUAR3_8822C=OFF -DDEVOURER_JAGUAR3_8822E=ON \
@@ -457,8 +459,8 @@ else
     export PKG_CONFIG_LIBDIR="$OPI_SYSROOT/usr/lib/pkgconfig:$OPI_SYSROOT/usr/share/pkgconfig"
     export PKG_CONFIG_SYSROOT_DIR="$OPI_SYSROOT"
     cmake -S . -B build-arm64-opi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-buildroot.cmake \
-      -DCMAKE_BUILD_TYPE=Release -DMABUR_BUILD_TESTS=OFF -DMABUR_BUILD_DRONE=OFF \
-      -DMABUR_BUILD_GS=ON -DMABUR_BUILD_LINKBENCH=OFF -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_BUILD_TYPE=Release -DGROUND_BUILD_TESTS=OFF -DGROUND_BUILD_MABURD=OFF -DMABUR_DIR="$MABUR_DIR" \
+      -DMABUR_BUILD_LINKBENCH=OFF -DBUILD_SHARED_LIBS=OFF \
       -DDEVOURER_JAGUAR1=OFF -DDEVOURER_8814=OFF \
       -DDEVOURER_JAGUAR2_8822B=OFF -DDEVOURER_JAGUAR2_8821C=OFF \
       -DDEVOURER_JAGUAR3_8822C=OFF -DDEVOURER_JAGUAR3_8822E=ON \

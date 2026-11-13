@@ -7,7 +7,9 @@
 set -euo pipefail
 : "${BUILD:?}"
 TMP=$1
-MABURD=$BUILD/drone/maburd
+# maburd and the drone bundle come from the pinned mabur (or MABUR_DIR).
+export MABUR_DIR="${MABUR_DIR:-$PWD/third_party/mabur}"
+MABURD="${MABURD:-$BUILD/mabur/drone/maburd}"
 FIX=${2:-tests/fixtures/frame_stream.bin}
 
 # frames.bin generation: the same fixture -> maburd --dry-run path as
@@ -21,14 +23,14 @@ FIX=${2:-tests/fixtures/frame_stream.bin}
 python3 - "$TMP/rc.bin" <<'EOF'
 import sys, os, struct
 # Packed by tests/integration/mabur_rc.py: RC_VERSION read from rc_proto.h, tag under the dry-run replay session (1,1).
-sys.path.insert(0, os.path.join("tests", "integration"))
+sys.path.insert(0, os.path.join(os.environ["MABUR_DIR"], "tests", "integration"))
 from mabur_rc import pack_rcf, encode_profile
 w = pack_rcf(1, encode_profile(4, 20), 25, 25)
 with open(sys.argv[1], "wb") as f:
     f.write(struct.pack("<II", 1, len(w))); f.write(w)
 EOF
 
-"$MABURD" -c bundle/mabur.default.toml --dry-run --in "$FIX" --out "$TMP/frames.bin" \
+"$MABURD" -c "$MABUR_DIR/bundle/mabur.default.toml" --dry-run --in "$FIX" --out "$TMP/frames.bin" \
   --rc-in "$TMP/rc.bin" >/dev/null 2>&1
 
 # Both sides load the SAME config. au_ring off: the dry-run would otherwise

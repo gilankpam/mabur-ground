@@ -10,11 +10,11 @@ function(add_mtest name)
   add_executable(${name} ${MT_UNPARSED_ARGUMENTS})
   target_link_libraries(${name} PRIVATE mabur_common ${MT_LIBS})
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/third_party)
+    ${PROJECT_SOURCE_DIR}/third_party)
   target_compile_definitions(${name} PRIVATE
-    MABUR_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/vectors"
+    MABUR_VECTOR_DIR="${MABUR_DIR}/tests/vectors"
     MABUR_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
-    MABUR_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/bundle"
+    MABUR_BUNDLE_DIR="${MABUR_DIR}/bundle"
     MABUR_TEST_SCRATCH_DIR="${MABUR_TEST_SCRATCH_DIR}")
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
@@ -37,9 +37,9 @@ function(add_gsfont var name sizes)
   add_custom_command(
     OUTPUT ${out}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${GSFONT_DIR}
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/msp/gen_gsfont.py
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/msp/gen_gsfont.py
             --synthetic ${out} --sizes ${sizes}
-    DEPENDS ${CMAKE_SOURCE_DIR}/tools/msp/gen_gsfont.py
+    DEPENDS ${PROJECT_SOURCE_DIR}/tools/msp/gen_gsfont.py
     COMMENT "Generating synthetic ${name}.gfont (sizes ${sizes})"
     VERBATIM)
   set(${var} ${out} PARENT_SCOPE)
@@ -69,370 +69,250 @@ add_gsfont(GSFONT_8_12_16 s8_12_16 "8,12,16")
 add_gsfont(GSFONT_12 s12 "12")
 add_gsfont(GSFONT_20 s20 "20")
 add_custom_target(gsfont_fixtures DEPENDS ${GSFONT_OUTPUTS})
-add_mtest(test_smoke test_smoke.cpp)
-add_mtest(test_crc16 test_crc16.cpp)
-add_mtest(test_channel_set test_channel_set.cpp LIBS mabur_common)
-add_mtest(test_channel_file test_channel_file.cpp LIBS mabur_common)
-add_mtest(test_siphash test_siphash.cpp)
-add_mtest(test_link_key test_link_key.cpp)
-# CRC-16 microbench (tools/bench/crc_bench.cpp): table vs bit-serial, ns/B.
-# Not a test; --target crc_bench.
-add_executable(crc_bench ${CMAKE_SOURCE_DIR}/tools/bench/crc_bench.cpp)
-target_link_libraries(crc_bench PRIVATE mabur_common)
-add_mtest(test_gf256 test_gf256.cpp)
-add_mtest(test_sw_wire test_sw_wire.cpp)
-add_mtest(test_sw_encoder test_sw_encoder.cpp)
-add_mtest(test_sw_ring test_sw_ring.cpp)
-add_mtest(test_sw_encoder_async test_sw_encoder_async.cpp)
-add_mtest(test_sw_decoder test_sw_decoder.cpp)
-add_mtest(test_nack_tracker test_nack_tracker.cpp)
-add_mtest(test_arrival_tracker test_arrival_tracker.cpp)
-add_mtest(test_sbi test_sbi.cpp)
-add_mtest(test_sbi_unpack test_sbi_unpack.cpp)
-add_mtest(test_nal test_nal.cpp)
-add_mtest(test_frag test_frag.cpp)
-add_mtest(test_frame_wire test_frame_wire.cpp)
-add_mtest(test_uep test_uep.cpp)
-add_mtest(test_uep_sw test_uep_sw.cpp)
-add_mtest(test_uep_decoder test_uep_decoder.cpp)
-add_mtest(test_uep_frame test_uep_frame.cpp)
-add_mtest(test_rc test_rc.cpp)
-add_mtest(test_mav_lib test_mav_lib.cpp)
-add_mtest(test_cal_mav test_cal_mav.cpp)
-add_mtest(test_config_params test_config_params.cpp)
-add_mtest(test_camera_mode_table test_camera_mode_table.cpp)
-add_mtest(test_param_value test_param_value.cpp)
-add_mtest(test_hevc_params test_hevc_params.cpp)
-add_mtest(test_hevc_bits test_hevc_bits.cpp)
-add_mtest(test_hevc_ps test_hevc_ps.cpp)
-add_mtest(test_hevc_slice test_hevc_slice.cpp)
-add_mtest(test_hevc_skip_slice test_hevc_skip_slice.cpp)
+
 # Dev oracle for slice-salvage fills (not a test; tools/slices/slicefill_check.py drives it).
-add_executable(slicefill ${CMAKE_SOURCE_DIR}/tools/slices/slicefill.cpp)
+add_executable(slicefill ${PROJECT_SOURCE_DIR}/tools/slices/slicefill.cpp)
 target_link_libraries(slicefill PRIVATE mabur_common)
-add_mtest(test_dvr_mux test_dvr_mux.cpp)
+# test_dvr_mux is mabur's; it is built here too because it writes the
+# fixtures test_dvrcadence reads.
+add_mtest(test_dvr_mux ${MABUR_DIR}/tests/test_dvr_mux.cpp)
 # Fixture paths for tools/bench/dvrcadence.py's own test (test_dvrcadence,
 # registered below): dvr_mux_writes_the_cadence_fixture writes them when
 # set, and is a no-op otherwise.
 set_tests_properties(test_dvr_mux PROPERTIES
   ENVIRONMENT "MABUR_DVRCADENCE_FIXTURE_CLEAN=${CMAKE_BINARY_DIR}/tests/dvrcadence_clean.mp4;MABUR_DVRCADENCE_FIXTURE_OFFGRID=${CMAKE_BINARY_DIR}/tests/dvrcadence_offgrid.mp4;MABUR_DVRCADENCE_FIXTURE_FRACTIONAL=${CMAKE_BINARY_DIR}/tests/dvrcadence_fractional.mp4")
-add_mtest(test_raw_dvr test_raw_dvr.cpp)
-add_mtest(test_dvr_name test_dvr_name.cpp)
-add_mtest(test_threaded_sink test_threaded_sink.cpp)
-add_mtest(test_probe_wire test_probe_wire.cpp)
-add_mtest(test_retx_ring test_retx_ring.cpp)
-add_mtest(test_profile test_profile.cpp)
-add_mtest(test_node test_node.cpp)
-add_mtest(test_msp_dp test_msp_dp.cpp)
-add_mtest(test_msp_source test_msp_source.cpp)
-add_mtest(test_msp_status test_msp_status.cpp)
-add_mtest(test_cal_wire test_cal_wire.cpp)
-add_mtest(test_toml test_toml.cpp)
-if(MABUR_BUILD_DRONE)
-  add_mtest(test_config test_config.cpp LIBS mabur_drone_core)
-  add_mtest(test_frame_source test_frame_source.cpp LIBS mabur_drone_core)
-  add_mtest(test_frame_pipeline test_frame_pipeline.cpp LIBS mabur_drone_core)
-  add_mtest(test_radio_tx test_radio_tx.cpp LIBS mabur_drone_core)
-  add_mtest(test_tx_queue test_tx_queue.cpp LIBS mabur_drone_core)
-  add_mtest(test_nack_bucket test_nack_bucket.cpp LIBS mabur_drone_core)
-  add_mtest(test_tx_pool test_tx_pool.cpp LIBS mabur_drone_core)
-  add_mtest(test_agent test_agent.cpp LIBS mabur_drone_core)
-  add_mtest(test_vtx_recorder test_vtx_recorder.cpp LIBS mabur_drone_core)
-  add_mtest(test_rec_frame test_rec_frame.cpp LIBS mabur_drone_core)
-  add_mtest(test_tick_gate test_tick_gate.cpp LIBS mabur_drone_core)
-  add_mtest(test_air_clock test_air_clock.cpp LIBS mabur_drone_core)
-  add_mtest(test_ampdu_policy test_ampdu_policy.cpp LIBS mabur_drone_core)
-  add_mtest(test_air_rate test_air_rate.cpp LIBS mabur_drone_core)
-  add_mtest(test_peak_rate test_peak_rate.cpp LIBS mabur_drone_core)
-  add_mtest(test_mi_ready test_mi_ready.cpp LIBS mabur_drone_core)
-  add_mtest(sim_shed_lag sim_shed_lag.cpp LIBS mabur_drone_core)
-  add_mtest(test_telemetry test_telemetry.cpp LIBS mabur_drone_core)
-  add_mtest(test_power_plan test_power_plan.cpp LIBS mabur_drone_core)
-  add_mtest(test_power_tables test_power_tables.cpp LIBS mabur_drone_core)
-  add_mtest(test_cal_apply test_cal_apply.cpp LIBS mabur_drone_core)
-  add_mtest(test_config_write test_config_write.cpp LIBS mabur_common)
-  add_mtest(test_config_apply test_config_apply.cpp LIBS mabur_drone_core)
-  add_mtest(test_mav_params test_mav_params.cpp LIBS mabur_drone_core)
-  add_mtest(test_mav_component test_mav_component.cpp LIBS mabur_drone_core)
-  add_mtest(test_cal_sweep test_cal_sweep.cpp LIBS mabur_drone_core)
-  add_mtest(test_cal_link test_cal_link.cpp LIBS mabur_drone_core)
-  add_mtest(test_live_power_table test_live_power_table.cpp LIBS mabur_drone_core)
-  add_mtest(test_debug_http test_debug_http.cpp LIBS mabur_drone_core)
-  add_mtest(test_probe_source test_probe_source.cpp LIBS mabur_drone_core)
 
-  # Host coverage for the carried waybeam venc pure modules (Task B8).
-  # These drone/venc/*.c files are ARM-only in venc_core (drone/
-  # CMakeLists.txt only globs venc/*.c under CMAKE_CROSSCOMPILING), so each
-  # test target compiles its own module source directly rather than
-  # linking mabur_drone_core/venc_core. venc_cfg.c is the one module
-  # already compiled into mabur_drone_core unconditionally (host+ARM) —
-  # test_venc_cfg links that instead of recompiling it, to avoid defining
-  # venc_cfg_defaults() twice in one link.
-  set(MABUR_VENC_DIR ${CMAKE_SOURCE_DIR}/drone/venc)
-  add_mtest(test_venc_idr_rate_limit test_venc_idr_rate_limit.cpp
-    ${MABUR_VENC_DIR}/idr_rate_limit.c ${MABUR_VENC_DIR}/timing.c)
-  target_include_directories(test_venc_idr_rate_limit PRIVATE ${MABUR_VENC_DIR})
-  add_mtest(test_venc_h26x_util test_venc_h26x_util.cpp
-    ${MABUR_VENC_DIR}/h26x_util.c)
-  target_include_directories(test_venc_h26x_util PRIVATE ${MABUR_VENC_DIR})
-  add_mtest(test_venc_h26x_param_sets test_venc_h26x_param_sets.cpp
-    ${MABUR_VENC_DIR}/h26x_param_sets.c)
-  target_include_directories(test_venc_h26x_param_sets PRIVATE ${MABUR_VENC_DIR})
-  add_mtest(test_venc_cfg test_venc_cfg.cpp LIBS mabur_drone_core)
-  add_mtest(test_camera_modes test_camera_modes.cpp ${MABUR_VENC_DIR}/camera_modes.c)
-  target_include_directories(test_camera_modes PRIVATE ${MABUR_VENC_DIR})
-  add_mtest(test_sensor_cal test_sensor_cal.cpp ${MABUR_VENC_DIR}/sensor_cal.c)
-  target_include_directories(test_sensor_cal PRIVATE ${MABUR_VENC_DIR})
-  add_mtest(test_sensor_steer test_sensor_steer.cpp ${MABUR_VENC_DIR}/sensor_steer.c)
-  target_include_directories(test_sensor_steer PRIVATE ${MABUR_VENC_DIR}
-    ${CMAKE_SOURCE_DIR}/common/include)
-  # The real venc_core.c facade over a fake star6e runtime: its lifecycle
-  # guards are what the rebuild failure ladder stands on.
-  add_mtest(test_venc_core test_venc_core.cpp venc_core_fake.c
-    ${MABUR_VENC_DIR}/venc_core.c)
-  target_include_directories(test_venc_core PRIVATE ${MABUR_VENC_DIR}
-    ${CMAKE_SOURCE_DIR}/drone/vendor)
-  target_compile_definitions(test_venc_core PRIVATE
-    PLATFORM_STAR6E HAVE_BACKEND_STAR6E=1 _GNU_SOURCE)
-  target_link_libraries(test_venc_core PRIVATE pthread)
-
-  add_test(NAME host_e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/run_host_e2e.sh)
-  set_tests_properties(host_e2e PROPERTIES
-    ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR}")
-endif()
-if(MABUR_BUILD_GS)
-  add_mtest(test_gs_config test_gs_config.cpp LIBS mabur_gs_core)
-  add_mtest(test_card_scan test_card_scan.cpp LIBS mabur_gs_core)
-  add_mtest(test_gap_timeout_policy test_gap_timeout_policy.cpp LIBS mabur_gs_core)
-  add_mtest(test_pts_anchor test_pts_anchor.cpp LIBS mabur_gs_core)
-  add_mtest(test_lat_window test_lat_window.cpp LIBS mabur_gs_core)
-  target_compile_definitions(test_gs_config PRIVATE
-    MABUR_GS_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/bundle")
-  add_mtest(test_player_config test_player_config.cpp LIBS mabur_player_core)
-  target_compile_definitions(test_player_config PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_player_config_apply test_player_config_apply.cpp LIBS mabur_player_core pthread)
-  target_compile_definitions(test_player_config_apply PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_colortrans test_colortrans.cpp LIBS mabur_player_core)
-  add_mtest(test_frame_regulator test_frame_regulator.cpp LIBS mabur_player_core)
-  add_mtest(test_phase_lock test_phase_lock.cpp LIBS mabur_player_core)
-  add_mtest(test_mode_pick test_mode_pick.cpp LIBS mabur_player_core)
-  add_mtest(test_rate_match test_rate_match.cpp LIBS mabur_player_core)
-  add_mtest(test_display_follow test_display_follow.cpp LIBS mabur_player_core)
-  add_mtest(test_display_watch test_display_watch.cpp LIBS mabur_player_core)
-  add_mtest(test_splash_menu test_splash_menu.cpp LIBS mabur_player_core)
-  add_mtest(test_fit_rect test_fit_rect.cpp LIBS mabur_player_core)
-  add_mtest(test_lat_tracker test_lat_tracker.cpp LIBS mabur_player_core)
-  add_mtest(test_vblank_estimator test_vblank_estimator.cpp LIBS mabur_player_core)
-  add_mtest(test_vop2_frame_length test_vop2_frame_length.cpp LIBS mabur_player_core)
-  add_mtest(test_line_step test_line_step.cpp LIBS mabur_player_core)
-  add_mtest(test_display_lock_core test_display_lock_core.cpp LIBS mabur_player_core)
-  add_mtest(test_lat_log test_lat_log.cpp LIBS mabur_player_core)
-  add_mtest(test_fb_cache test_fb_cache.cpp LIBS mabur_player_core)
-  add_mtest(test_rec_button test_rec_button.cpp LIBS mabur_player_core)
-  add_mtest(test_key_timer test_key_timer.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_model test_menu_model.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_apply test_menu_apply.cpp LIBS mabur_player_core pthread)
-  target_compile_definitions(test_menu_apply PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_menu_session test_menu_session.cpp LIBS mabur_player_core)
-  add_mtest(test_channel_observe test_channel_observe.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_view_feed test_menu_view_feed.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_debug test_menu_debug.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_layer test_menu_layer.cpp LIBS mabur_player_core)
-  add_dependencies(test_menu_layer gsfont_fixtures)
-  target_compile_definitions(test_menu_layer PRIVATE
-    GSFONT_SCALED="${GSFONT_SCALED}")
-  add_mtest(test_gs_live_view test_gs_live_view.cpp LIBS mabur_player_core)
-  add_mtest(test_menu_tree test_menu_tree.cpp LIBS mabur_player_core pthread)
-  target_compile_definitions(test_menu_tree PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle"
-    MABUR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-  add_mtest(test_live_udp_client test_live_udp_client.cpp LIBS mabur_player_core pthread)
-  target_compile_definitions(test_live_udp_client PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_ring_client test_ring_client.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_stream_feeder test_stream_feeder.cpp LIBS mabur_player_core)
-  add_mtest(test_au_split test_au_split.cpp)
-  target_include_directories(test_au_split PRIVATE ${CMAKE_SOURCE_DIR}/bench)
-  add_mtest(test_pts_unwrap test_pts_unwrap.cpp LIBS mabur_player_core)
-  add_mtest(test_prime_frame test_prime_frame.cpp LIBS mabur_player_core)
-  add_mtest(test_frame_handoff test_frame_handoff.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_wake_queue test_wake_queue.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_pi_mutex test_pi_mutex.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_au_router test_au_router.cpp LIBS mabur_player_core)
-  add_mtest(test_feed_loop test_feed_loop.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_decode_pump test_decode_pump.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_release_loop test_release_loop.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_osd_font test_osd_font.cpp LIBS mabur_player_core)
-  add_mtest(test_glass_cadence test_glass_cadence.cpp LIBS mabur_player_core)
-  add_mtest(test_recorder_tap test_recorder_tap.cpp LIBS mabur_player_core pthread)
-  add_mtest(test_gs_font test_gs_font.cpp LIBS mabur_player_core)
-  add_dependencies(test_gs_font gsfont_fixtures)
-  target_compile_definitions(test_gs_font PRIVATE
-    GSFONT_8_12_16="${GSFONT_8_12_16}" GSFONT_12="${GSFONT_12}"
-    GSFONT_20="${GSFONT_20}")
-  add_mtest(test_gs_draw test_gs_draw.cpp LIBS mabur_player_core)
-  add_dependencies(test_gs_draw gsfont_fixtures)
-  target_compile_definitions(test_gs_draw PRIVATE GSFONT_20="${GSFONT_20}")
-  add_mtest(test_gs_snapshot test_gs_snapshot.cpp LIBS mabur_player_core)
-  # Round-trips maburplay's CoreControlClient against maburgs' RecControl
-  # (gs/src/rec_control.h) over real loopback sockets on a test-only port.
-  add_mtest(test_core_control_client test_core_control_client.cpp LIBS mabur_player_core)
-  add_mtest(test_gs_source test_gs_source.cpp LIBS mabur_player_core)
-  add_mtest(test_gs_layer test_gs_layer.cpp LIBS mabur_player_core)
-  # The only test that loads the SHIPPED .gfont. Everything else stays on
-  # the synthetic generator on purpose, so regenerating the asset cannot
-  # read as a rendering regression -- but the layout invariants were all
-  # measured against synthetic metrics, so they need re-proving against the
-  # real ones exactly once, here.
-  add_mtest(test_gs_compact test_gs_compact.cpp LIBS mabur_player_core)
-  add_dependencies(test_gs_compact gsfont_fixtures)
-  target_compile_definitions(test_gs_compact PRIVATE
-    GSFONT_SCALED="${GSFONT_SCALED}")
-  add_mtest(test_gs_asset test_gs_asset.cpp LIBS mabur_player_core)
-  target_compile_definitions(test_gs_asset PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_gs_metrics test_gs_metrics.cpp LIBS mabur_player_core)
-  add_mtest(test_rec_text test_rec_text.cpp LIBS mabur_player_core)
-  add_mtest(test_osd_layout test_osd_layout.cpp LIBS mabur_player_core)
-  add_mtest(test_osd_raster test_osd_raster.cpp LIBS mabur_player_core)
-  add_mtest(test_zpos_plan test_zpos_plan.cpp LIBS mabur_player_core)
-  add_mtest(test_in_formats test_in_formats.cpp LIBS mabur_player_core)
-  add_mtest(test_osd_source test_osd_source.cpp LIBS mabur_player_core)
-  add_mtest(test_osd_palette test_osd_palette.cpp LIBS mabur_player_core)
-  target_compile_definitions(test_osd_palette PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_splash_image test_splash_image.cpp LIBS mabur_player_core)
-  target_compile_definitions(test_splash_image PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_osd_coexist test_osd_coexist.cpp LIBS mabur_player_core)
-  add_dependencies(test_osd_coexist gsfont_fixtures)
-  target_compile_definitions(test_osd_coexist PRIVATE GSFONT_SCALED="${GSFONT_SCALED}")
-  # Wall-clock measurement of the OSD quantizer, which runs INLINE on
-  # maburplay's 2 ms main loop. Deliberately NOT an add_test(): it is a
-  # timing bench, so neither fast nor deterministic. Build and run by hand
-  # (--target quantize_bench); see the file header.
-  add_executable(quantize_bench ${CMAKE_SOURCE_DIR}/tools/bench/quantize_bench.cpp)
-  target_link_libraries(quantize_bench PRIVATE mabur_common mabur_player_core)
-  target_include_directories(quantize_bench PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
-  target_compile_definitions(quantize_bench PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  # The same measurement for the GS link-status OSD: draw + quantize per
-  # update, against the REAL asset. Same reasoning for not being an
-  # add_test() -- wall-clock, so neither fast nor deterministic.
-  add_executable(gs_osd_bench ${CMAKE_SOURCE_DIR}/tools/bench/gs_osd_bench.cpp)
-  target_link_libraries(gs_osd_bench PRIVATE mabur_common mabur_player_core)
-  target_include_directories(gs_osd_bench PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
-  target_compile_definitions(gs_osd_bench PRIVATE
-    MABUR_PLAY_BUNDLE_DIR="${CMAKE_SOURCE_DIR}/gs/player/bundle")
-  add_mtest(test_body_queue test_body_queue.cpp LIBS mabur_gs_core)
-  add_mtest(test_aggregator test_aggregator.cpp LIBS mabur_gs_core)
-  add_mtest(test_udp_sink test_udp_sink.cpp LIBS mabur_gs_core)
-  add_mtest(test_msp_sink test_msp_sink.cpp LIBS mabur_gs_core)
-  add_mtest(test_msp_e2e test_msp_e2e.cpp LIBS mabur_gs_core)
-  add_mtest(test_frame_file_source test_frame_file_source.cpp LIBS mabur_gs_core)
-  add_mtest(test_rendezvous test_rendezvous.cpp LIBS mabur_gs_core)
-  add_mtest(test_channel_ranker test_channel_ranker.cpp LIBS mabur_gs_core)
-  add_mtest(test_channel_scout test_channel_scout.cpp LIBS mabur_gs_core)
-  add_mtest(test_pair_pick test_pair_pick.cpp LIBS mabur_gs_core)
-  add_mtest(test_width_resync test_width_resync.cpp LIBS mabur_gs_core)
-  add_mtest(test_scout_pick test_scout_pick.cpp LIBS mabur_gs_core)
-  add_mtest(test_channel_plan test_channel_plan.cpp LIBS mabur_gs_core)
-  add_mtest(test_boot_pick test_boot_pick.cpp LIBS mabur_gs_core)
-  add_mtest(test_hop_verdict test_hop_verdict.cpp LIBS mabur_gs_core)
-  add_mtest(test_hop_ranker test_hop_ranker.cpp LIBS mabur_gs_core)
-  add_mtest(test_relay_sweep_map test_relay_sweep_map.cpp LIBS mabur_gs_core)
-  add_mtest(test_hop_controller test_hop_controller.cpp LIBS mabur_gs_core)
-  add_mtest(test_hop_burst_gate test_hop_burst_gate.cpp LIBS mabur_gs_core)
-  add_mtest(test_hop_blank test_hop_blank.cpp LIBS mabur_gs_core)
-  add_mtest(test_channel_core test_channel_core.cpp LIBS mabur_gs_core)
-  target_compile_definitions(test_channel_core PRIVATE MABUR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-  add_mtest(test_gs_config_apply test_gs_config_apply.cpp LIBS mabur_gs_core pthread)
-  target_compile_definitions(test_gs_config_apply PRIVATE MABUR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-  add_mtest(test_inflight_scout test_inflight_scout.cpp LIBS mabur_gs_core)
-  add_mtest(test_own_air test_own_air.cpp LIBS mabur_gs_core)
-  add_mtest(test_nhm_busy test_nhm_busy.cpp LIBS mabur_gs_core)
-  add_mtest(test_nhm_window test_nhm_window.cpp LIBS mabur_gs_core)
-  add_mtest(test_window_sampler test_window_sampler.cpp LIBS mabur_gs_core)
-  add_mtest(test_vrx_controller test_vrx_controller.cpp LIBS mabur_gs_core)
-  add_mtest(test_ladder_controller test_ladder_controller.cpp LIBS mabur_gs_core)
-  add_mtest(test_rung_store test_rung_store.cpp LIBS mabur_gs_core)
-  add_mtest(test_ctl_log test_ctl_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_scan_log test_scan_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_probe_log test_probe_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_fec_log test_fec_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_debug_session test_debug_session.cpp LIBS mabur_gs_core)
-  add_mtest(test_drone_restart test_drone_restart.cpp LIBS mabur_gs_core)
-  add_mtest(test_log_writer test_log_writer.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_rtt_estimator test_rtt_estimator.cpp LIBS mabur_gs_core)
-  add_mtest(test_uplink_delivery test_uplink_delivery.cpp LIBS mabur_gs_core)
-  add_mtest(test_ladder_residual test_ladder_residual.cpp LIBS mabur_gs_core)
-  add_mtest(test_s1_loss test_s1_loss.cpp LIBS mabur_gs_core)
-  add_mtest(test_transition_edge test_transition_edge.cpp LIBS mabur_gs_core)
-  add_mtest(test_loss_sim test_loss_sim.cpp LIBS mabur_gs_core)
-  add_mtest(test_rf_labels test_rf_labels.cpp LIBS mabur_gs_core)
-  add_mtest(test_tx_selector test_tx_selector.cpp LIBS mabur_gs_core)
-  add_mtest(test_rcf_slot test_rcf_slot.cpp LIBS mabur_gs_core)
-  add_mtest(test_mav_tunnel test_mav_tunnel.cpp LIBS mabur_gs_core)
-  add_mtest(test_param_client test_param_client.cpp LIBS mabur_gs_core)
-  add_mtest(test_param_host test_param_host.cpp LIBS mabur_gs_core)
-  add_mtest(test_mav_endpoint test_mav_endpoint.cpp LIBS mabur_gs_core)
-  add_mtest(test_probe_track test_probe_track.cpp LIBS mabur_gs_core)
-  add_mtest(test_control_frame test_control_frame.cpp LIBS mabur_gs_dot11)
-  add_mtest(test_dot11 test_dot11.cpp LIBS mabur_gs_dot11)
-  add_mtest(test_relay_wire test_relay_wire.cpp LIBS mabur_gs_relay)
-  add_mtest(test_relay_client test_relay_client.cpp LIBS mabur_gs_relay)
-  add_mtest(test_remote_card test_remote_card.cpp LIBS mabur_gs_radio pthread)
-  add_mtest(test_usb_late test_usb_late.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_radio_frontend_match test_radio_frontend_match.cpp LIBS mabur_gs_radio pthread)
-  add_mtest(test_frame_stream test_frame_stream.cpp LIBS mabur_gs_core)
-  add_mtest(test_slice_assembler test_slice_assembler.cpp LIBS mabur_gs_core)
-  add_mtest(test_slice_salvage_e2e test_slice_salvage_e2e.cpp LIBS mabur_gs_core)
+add_mtest(test_gs_config test_gs_config.cpp LIBS mabur_gs_core)
+add_mtest(test_card_scan test_card_scan.cpp LIBS mabur_gs_core)
+add_mtest(test_gap_timeout_policy test_gap_timeout_policy.cpp LIBS mabur_gs_core)
+add_mtest(test_pts_anchor test_pts_anchor.cpp LIBS mabur_gs_core)
+add_mtest(test_lat_window test_lat_window.cpp LIBS mabur_gs_core)
+target_compile_definitions(test_gs_config PRIVATE
+  MABUR_GS_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/bundle")
+add_mtest(test_player_config test_player_config.cpp LIBS mabur_player_core)
+target_compile_definitions(test_player_config PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_player_config_apply test_player_config_apply.cpp LIBS mabur_player_core pthread)
+target_compile_definitions(test_player_config_apply PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_colortrans test_colortrans.cpp LIBS mabur_player_core)
+add_mtest(test_frame_regulator test_frame_regulator.cpp LIBS mabur_player_core)
+add_mtest(test_phase_lock test_phase_lock.cpp LIBS mabur_player_core)
+add_mtest(test_mode_pick test_mode_pick.cpp LIBS mabur_player_core)
+add_mtest(test_rate_match test_rate_match.cpp LIBS mabur_player_core)
+add_mtest(test_display_follow test_display_follow.cpp LIBS mabur_player_core)
+add_mtest(test_display_watch test_display_watch.cpp LIBS mabur_player_core)
+add_mtest(test_splash_menu test_splash_menu.cpp LIBS mabur_player_core)
+add_mtest(test_fit_rect test_fit_rect.cpp LIBS mabur_player_core)
+add_mtest(test_lat_tracker test_lat_tracker.cpp LIBS mabur_player_core)
+add_mtest(test_vblank_estimator test_vblank_estimator.cpp LIBS mabur_player_core)
+add_mtest(test_vop2_frame_length test_vop2_frame_length.cpp LIBS mabur_player_core)
+add_mtest(test_line_step test_line_step.cpp LIBS mabur_player_core)
+add_mtest(test_display_lock_core test_display_lock_core.cpp LIBS mabur_player_core)
+add_mtest(test_lat_log test_lat_log.cpp LIBS mabur_player_core)
+add_mtest(test_fb_cache test_fb_cache.cpp LIBS mabur_player_core)
+add_mtest(test_rec_button test_rec_button.cpp LIBS mabur_player_core)
+add_mtest(test_key_timer test_key_timer.cpp LIBS mabur_player_core)
+add_mtest(test_menu_model test_menu_model.cpp LIBS mabur_player_core)
+add_mtest(test_menu_apply test_menu_apply.cpp LIBS mabur_player_core pthread)
+target_compile_definitions(test_menu_apply PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_menu_session test_menu_session.cpp LIBS mabur_player_core)
+add_mtest(test_channel_observe test_channel_observe.cpp LIBS mabur_player_core)
+add_mtest(test_menu_view_feed test_menu_view_feed.cpp LIBS mabur_player_core)
+add_mtest(test_menu_debug test_menu_debug.cpp LIBS mabur_player_core)
+add_mtest(test_menu_layer test_menu_layer.cpp LIBS mabur_player_core)
+add_dependencies(test_menu_layer gsfont_fixtures)
+target_compile_definitions(test_menu_layer PRIVATE
+  GSFONT_SCALED="${GSFONT_SCALED}")
+add_mtest(test_gs_live_view test_gs_live_view.cpp LIBS mabur_player_core)
+add_mtest(test_menu_tree test_menu_tree.cpp LIBS mabur_player_core pthread)
+target_compile_definitions(test_menu_tree PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle"
+  MABUR_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_mtest(test_live_udp_client test_live_udp_client.cpp LIBS mabur_player_core pthread)
+target_compile_definitions(test_live_udp_client PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_ring_client test_ring_client.cpp LIBS mabur_player_core pthread)
+add_mtest(test_stream_feeder test_stream_feeder.cpp LIBS mabur_player_core)
+add_mtest(test_au_split test_au_split.cpp)
+target_include_directories(test_au_split PRIVATE ${PROJECT_SOURCE_DIR}/bench)
+add_mtest(test_pts_unwrap test_pts_unwrap.cpp LIBS mabur_player_core)
+add_mtest(test_prime_frame test_prime_frame.cpp LIBS mabur_player_core)
+add_mtest(test_frame_handoff test_frame_handoff.cpp LIBS mabur_player_core pthread)
+add_mtest(test_wake_queue test_wake_queue.cpp LIBS mabur_player_core pthread)
+add_mtest(test_pi_mutex test_pi_mutex.cpp LIBS mabur_player_core pthread)
+add_mtest(test_au_router test_au_router.cpp LIBS mabur_player_core)
+add_mtest(test_feed_loop test_feed_loop.cpp LIBS mabur_player_core pthread)
+add_mtest(test_decode_pump test_decode_pump.cpp LIBS mabur_player_core pthread)
+add_mtest(test_release_loop test_release_loop.cpp LIBS mabur_player_core pthread)
+add_mtest(test_osd_font test_osd_font.cpp LIBS mabur_player_core)
+add_mtest(test_glass_cadence test_glass_cadence.cpp LIBS mabur_player_core)
+add_mtest(test_recorder_tap test_recorder_tap.cpp LIBS mabur_player_core pthread)
+add_mtest(test_gs_font test_gs_font.cpp LIBS mabur_player_core)
+add_dependencies(test_gs_font gsfont_fixtures)
+target_compile_definitions(test_gs_font PRIVATE
+  GSFONT_8_12_16="${GSFONT_8_12_16}" GSFONT_12="${GSFONT_12}"
+  GSFONT_20="${GSFONT_20}")
+add_mtest(test_gs_draw test_gs_draw.cpp LIBS mabur_player_core)
+add_dependencies(test_gs_draw gsfont_fixtures)
+target_compile_definitions(test_gs_draw PRIVATE GSFONT_20="${GSFONT_20}")
+add_mtest(test_gs_snapshot test_gs_snapshot.cpp LIBS mabur_player_core)
+# Round-trips maburplay's CoreControlClient against maburgs' RecControl
+# (gs/src/rec_control.h) over real loopback sockets on a test-only port.
+add_mtest(test_core_control_client test_core_control_client.cpp LIBS mabur_player_core)
+add_mtest(test_gs_source test_gs_source.cpp LIBS mabur_player_core)
+add_mtest(test_gs_layer test_gs_layer.cpp LIBS mabur_player_core)
+# The only test that loads the SHIPPED .gfont. Everything else stays on
+# the synthetic generator on purpose, so regenerating the asset cannot
+# read as a rendering regression -- but the layout invariants were all
+# measured against synthetic metrics, so they need re-proving against the
+# real ones exactly once, here.
+add_mtest(test_gs_compact test_gs_compact.cpp LIBS mabur_player_core)
+add_dependencies(test_gs_compact gsfont_fixtures)
+target_compile_definitions(test_gs_compact PRIVATE
+  GSFONT_SCALED="${GSFONT_SCALED}")
+add_mtest(test_gs_asset test_gs_asset.cpp LIBS mabur_player_core)
+target_compile_definitions(test_gs_asset PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_gs_metrics test_gs_metrics.cpp LIBS mabur_player_core)
+add_mtest(test_rec_text test_rec_text.cpp LIBS mabur_player_core)
+add_mtest(test_osd_layout test_osd_layout.cpp LIBS mabur_player_core)
+add_mtest(test_osd_raster test_osd_raster.cpp LIBS mabur_player_core)
+add_mtest(test_zpos_plan test_zpos_plan.cpp LIBS mabur_player_core)
+add_mtest(test_in_formats test_in_formats.cpp LIBS mabur_player_core)
+add_mtest(test_osd_source test_osd_source.cpp LIBS mabur_player_core)
+add_mtest(test_osd_palette test_osd_palette.cpp LIBS mabur_player_core)
+target_compile_definitions(test_osd_palette PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_splash_image test_splash_image.cpp LIBS mabur_player_core)
+target_compile_definitions(test_splash_image PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_osd_coexist test_osd_coexist.cpp LIBS mabur_player_core)
+add_dependencies(test_osd_coexist gsfont_fixtures)
+target_compile_definitions(test_osd_coexist PRIVATE GSFONT_SCALED="${GSFONT_SCALED}")
+# Wall-clock measurement of the OSD quantizer, which runs INLINE on
+# maburplay's 2 ms main loop. Deliberately NOT an add_test(): it is a
+# timing bench, so neither fast nor deterministic. Build and run by hand
+# (--target quantize_bench); see the file header.
+add_executable(quantize_bench ${PROJECT_SOURCE_DIR}/tools/bench/quantize_bench.cpp)
+target_link_libraries(quantize_bench PRIVATE mabur_common mabur_player_core)
+target_include_directories(quantize_bench PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
+target_compile_definitions(quantize_bench PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+# The same measurement for the GS link-status OSD: draw + quantize per
+# update, against the REAL asset. Same reasoning for not being an
+# add_test() -- wall-clock, so neither fast nor deterministic.
+add_executable(gs_osd_bench ${PROJECT_SOURCE_DIR}/tools/bench/gs_osd_bench.cpp)
+target_link_libraries(gs_osd_bench PRIVATE mabur_common mabur_player_core)
+target_include_directories(gs_osd_bench PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
+target_compile_definitions(gs_osd_bench PRIVATE
+  MABUR_PLAY_BUNDLE_DIR="${PROJECT_SOURCE_DIR}/gs/player/bundle")
+add_mtest(test_body_queue test_body_queue.cpp LIBS mabur_gs_core)
+add_mtest(test_aggregator test_aggregator.cpp LIBS mabur_gs_core)
+add_mtest(test_udp_sink test_udp_sink.cpp LIBS mabur_gs_core)
+add_mtest(test_msp_sink test_msp_sink.cpp LIBS mabur_gs_core)
+add_mtest(test_msp_e2e test_msp_e2e.cpp LIBS mabur_gs_core)
+add_mtest(test_frame_file_source test_frame_file_source.cpp LIBS mabur_gs_core)
+add_mtest(test_rendezvous test_rendezvous.cpp LIBS mabur_gs_core)
+add_mtest(test_channel_ranker test_channel_ranker.cpp LIBS mabur_gs_core)
+add_mtest(test_channel_scout test_channel_scout.cpp LIBS mabur_gs_core)
+add_mtest(test_pair_pick test_pair_pick.cpp LIBS mabur_gs_core)
+add_mtest(test_width_resync test_width_resync.cpp LIBS mabur_gs_core)
+add_mtest(test_scout_pick test_scout_pick.cpp LIBS mabur_gs_core)
+add_mtest(test_channel_plan test_channel_plan.cpp LIBS mabur_gs_core)
+add_mtest(test_boot_pick test_boot_pick.cpp LIBS mabur_gs_core)
+add_mtest(test_hop_verdict test_hop_verdict.cpp LIBS mabur_gs_core)
+add_mtest(test_hop_ranker test_hop_ranker.cpp LIBS mabur_gs_core)
+add_mtest(test_relay_sweep_map test_relay_sweep_map.cpp LIBS mabur_gs_core)
+add_mtest(test_hop_controller test_hop_controller.cpp LIBS mabur_gs_core)
+add_mtest(test_hop_burst_gate test_hop_burst_gate.cpp LIBS mabur_gs_core)
+add_mtest(test_hop_blank test_hop_blank.cpp LIBS mabur_gs_core)
+add_mtest(test_channel_core test_channel_core.cpp LIBS mabur_gs_core)
+target_compile_definitions(test_channel_core PRIVATE MABUR_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_mtest(test_gs_config_apply test_gs_config_apply.cpp LIBS mabur_gs_core pthread)
+target_compile_definitions(test_gs_config_apply PRIVATE MABUR_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_mtest(test_inflight_scout test_inflight_scout.cpp LIBS mabur_gs_core)
+add_mtest(test_own_air test_own_air.cpp LIBS mabur_gs_core)
+add_mtest(test_nhm_busy test_nhm_busy.cpp LIBS mabur_gs_core)
+add_mtest(test_nhm_window test_nhm_window.cpp LIBS mabur_gs_core)
+add_mtest(test_window_sampler test_window_sampler.cpp LIBS mabur_gs_core)
+add_mtest(test_vrx_controller test_vrx_controller.cpp LIBS mabur_gs_core)
+add_mtest(test_ladder_controller test_ladder_controller.cpp LIBS mabur_gs_core)
+add_mtest(test_rung_store test_rung_store.cpp LIBS mabur_gs_core)
+add_mtest(test_ctl_log test_ctl_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_scan_log test_scan_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_probe_log test_probe_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_fec_log test_fec_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_debug_session test_debug_session.cpp LIBS mabur_gs_core)
+add_mtest(test_drone_restart test_drone_restart.cpp LIBS mabur_gs_core)
+add_mtest(test_log_writer test_log_writer.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_rtt_estimator test_rtt_estimator.cpp LIBS mabur_gs_core)
+add_mtest(test_uplink_delivery test_uplink_delivery.cpp LIBS mabur_gs_core)
+add_mtest(test_ladder_residual test_ladder_residual.cpp LIBS mabur_gs_core)
+add_mtest(test_s1_loss test_s1_loss.cpp LIBS mabur_gs_core)
+add_mtest(test_transition_edge test_transition_edge.cpp LIBS mabur_gs_core)
+add_mtest(test_loss_sim test_loss_sim.cpp LIBS mabur_gs_core)
+add_mtest(test_rf_labels test_rf_labels.cpp LIBS mabur_gs_core)
+add_mtest(test_tx_selector test_tx_selector.cpp LIBS mabur_gs_core)
+add_mtest(test_rcf_slot test_rcf_slot.cpp LIBS mabur_gs_core)
+add_mtest(test_mav_tunnel test_mav_tunnel.cpp LIBS mabur_gs_core)
+add_mtest(test_param_client test_param_client.cpp LIBS mabur_gs_core)
+add_mtest(test_param_host test_param_host.cpp LIBS mabur_gs_core)
+add_mtest(test_mav_endpoint test_mav_endpoint.cpp LIBS mabur_gs_core)
+add_mtest(test_probe_track test_probe_track.cpp LIBS mabur_gs_core)
+add_mtest(test_control_frame test_control_frame.cpp LIBS mabur_gs_dot11)
+add_mtest(test_dot11 test_dot11.cpp LIBS mabur_gs_dot11)
+add_mtest(test_relay_wire test_relay_wire.cpp LIBS mabur_gs_relay)
+add_mtest(test_relay_client test_relay_client.cpp LIBS mabur_gs_relay)
+add_mtest(test_remote_card test_remote_card.cpp LIBS mabur_gs_radio pthread)
+add_mtest(test_usb_late test_usb_late.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_radio_frontend_match test_radio_frontend_match.cpp LIBS mabur_gs_radio pthread)
+add_mtest(test_frame_stream test_frame_stream.cpp LIBS mabur_gs_core)
+add_mtest(test_slice_assembler test_slice_assembler.cpp LIBS mabur_gs_core)
+add_mtest(test_slice_salvage_e2e test_slice_salvage_e2e.cpp LIBS mabur_gs_core)
 add_mtest(test_au_ring test_au_ring.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_au_log test_au_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_au_doorbell test_au_doorbell.cpp LIBS mabur_gs_core)
-  if(MABUR_BUILD_DRONE)
-    # frame_e2e_sustained_shed_no_gaps_no_stalls drives the real drone-side
-    # FramePipeline into the GS-side decode/FrameStream path, the same way
-    # test_frame_pipeline pulls in mabur_drone_core for drone/src + frame_pipeline.cpp.
-    add_mtest(test_frame_e2e test_frame_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
-    # Lets the test source compile out FramePipeline usage when this branch
-    # isn't taken (see the matching #ifdef in test_frame_e2e.cpp).
-    target_compile_definitions(test_frame_e2e PRIVATE MABUR_TEST_HAVE_DRONE_CORE=1)
-  else()
-    add_mtest(test_frame_e2e test_frame_e2e.cpp LIBS mabur_gs_core)
-  endif()
-  # Drives a real Aggregator with drone-encoder bodies (tests/body_gen.h);
-  # UepEncoder lives in mabur_common, so no drone_core split is needed.
-  add_mtest(test_link_health test_link_health.cpp LIBS mabur_gs_core)
-  # Web GS core (web/src/web_gs.h); bodies from tests/body_gen.h.
-  add_mtest(test_web_gs test_web_gs.cpp LIBS mabur_web_core)
-  target_compile_definitions(test_web_gs PRIVATE MABUR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-  # Spotter follower (web/src/spotter_follow.h): pure, no body generator.
-  add_mtest(test_spotter_follow test_spotter_follow.cpp LIBS mabur_web_core)
-  # WebPhase (web/src/web_phase.h): PhaseLock + RateMatch wrapper for the page.
-  add_mtest(test_web_phase test_web_phase.cpp LIBS mabur_web_core)
-  add_mtest(test_relay_ring test_relay_ring.cpp LIBS mabur_web_core)
-  add_test(NAME web_relay_e2e
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/web/tests/test_relay_e2e.py $<TARGET_FILE:webgs>)
-  add_mtest(test_stats_exporter test_stats_exporter.cpp LIBS mabur_gs_core)
-  add_mtest(test_stats_sink test_stats_sink.cpp LIBS mabur_gs_core)
-  add_mtest(test_cal_analysis test_cal_analysis.cpp LIBS mabur_gs_core)
-  add_mtest(test_cal_plan test_cal_plan.cpp LIBS mabur_gs_core)
-  add_mtest(test_cal_session test_cal_session.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_cal_log test_cal_log.cpp LIBS mabur_gs_core pthread)
-  add_mtest(test_cal_control test_cal_control.cpp LIBS mabur_gs_core)
-  add_mtest(test_cal_wiring test_cal_wiring.cpp LIBS mabur_gs_core)
-  add_mtest(test_rec_control test_rec_control.cpp LIBS mabur_gs_core)
-  add_mtest(test_refresh_requester test_refresh_requester.cpp LIBS mabur_gs_core)
-  if(MABUR_BUILD_DRONE)
-    add_test(NAME gs_e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/run_gs_e2e.sh)
-    set_tests_properties(gs_e2e PROPERTIES ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR}")
-  endif()
+add_mtest(test_au_log test_au_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_au_doorbell test_au_doorbell.cpp LIBS mabur_gs_core)
+if(TARGET mabur_drone_core)
+  # frame_e2e_sustained_shed_no_gaps_no_stalls drives the real drone-side
+  # FramePipeline into the GS-side decode/FrameStream path, the same way
+  # test_frame_pipeline pulls in mabur_drone_core for drone/src + frame_pipeline.cpp.
+  add_mtest(test_frame_e2e test_frame_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
+  # Lets the test source compile out FramePipeline usage when this branch
+  # isn't taken (see the matching #ifdef in test_frame_e2e.cpp).
+  target_compile_definitions(test_frame_e2e PRIVATE MABUR_TEST_HAVE_DRONE_CORE=1)
+else()
+  add_mtest(test_frame_e2e test_frame_e2e.cpp LIBS mabur_gs_core)
 endif()
-if(MABUR_BUILD_DRONE AND MABUR_BUILD_GS)
+# Drives a real Aggregator with drone-encoder bodies (tests/body_gen.h);
+# UepEncoder lives in mabur_common, so no drone_core split is needed.
+add_mtest(test_link_health test_link_health.cpp LIBS mabur_gs_core)
+# Web GS core (web/src/web_gs.h); bodies from tests/body_gen.h.
+add_mtest(test_web_gs test_web_gs.cpp LIBS mabur_web_core)
+target_compile_definitions(test_web_gs PRIVATE MABUR_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+# Spotter follower (web/src/spotter_follow.h): pure, no body generator.
+add_mtest(test_spotter_follow test_spotter_follow.cpp LIBS mabur_web_core)
+# WebPhase (web/src/web_phase.h): PhaseLock + RateMatch wrapper for the page.
+add_mtest(test_web_phase test_web_phase.cpp LIBS mabur_web_core)
+add_mtest(test_relay_ring test_relay_ring.cpp LIBS mabur_web_core)
+add_test(NAME web_relay_e2e
+  COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/web/tests/test_relay_e2e.py $<TARGET_FILE:webgs>)
+add_mtest(test_stats_exporter test_stats_exporter.cpp LIBS mabur_gs_core)
+add_mtest(test_stats_sink test_stats_sink.cpp LIBS mabur_gs_core)
+add_mtest(test_cal_analysis test_cal_analysis.cpp LIBS mabur_gs_core)
+add_mtest(test_cal_plan test_cal_plan.cpp LIBS mabur_gs_core)
+add_mtest(test_cal_session test_cal_session.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_cal_log test_cal_log.cpp LIBS mabur_gs_core pthread)
+add_mtest(test_cal_control test_cal_control.cpp LIBS mabur_gs_core)
+add_mtest(test_cal_wiring test_cal_wiring.cpp LIBS mabur_gs_core)
+add_mtest(test_rec_control test_rec_control.cpp LIBS mabur_gs_core)
+add_mtest(test_refresh_requester test_refresh_requester.cpp LIBS mabur_gs_core)
+if(TARGET maburd)
+  add_test(NAME gs_e2e COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_gs_e2e.sh)
+  set_tests_properties(gs_e2e PROPERTIES ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")
+endif()
+if(TARGET maburd)
   # The only coverage of the two calibration state machines running
   # against each other -- everything else tests one side in isolation, and
   # every defect that escaped this build lived in the glue between them.
@@ -440,70 +320,52 @@ if(MABUR_BUILD_DRONE AND MABUR_BUILD_GS)
   # RcAgent <-> VrxController loopback: matching/mismatched keys, a same-key
   # stranger, a restart relink (spec 2026-10-01 link-pairing §11).
   add_mtest(test_link_auth_e2e test_link_auth_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
-  add_test(NAME gs_au_e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/run_gs_au_e2e.sh)
+  add_test(NAME gs_au_e2e COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_gs_au_e2e.sh)
   set_tests_properties(gs_au_e2e PROPERTIES
-    ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR}")
-  add_test(NAME player_e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/run_player_e2e.sh)
+    ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")
+  add_test(NAME player_e2e COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_player_e2e.sh)
   set_tests_properties(player_e2e PROPERTIES
-    ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR}")
+    ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")
   # Web GS AU parity vs maburgs --dry-run (spec 2026-09-27-web-gs 6.3).
-  add_test(NAME web_au_parity COMMAND bash ${CMAKE_SOURCE_DIR}/tests/integration/run_web_au_parity.sh)
-  set_tests_properties(web_au_parity PROPERTIES ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR}")
+  add_test(NAME web_au_parity COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_web_au_parity.sh)
+  set_tests_properties(web_au_parity PROPERTIES ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")
 endif()
-# Host-only burst-loss simulator (spec 2026-07-15-per-layer-symbol-size).
-# Not a benchmark of real time — fake clock — so safe as a ctest.
-add_executable(burst_sim ${CMAKE_SOURCE_DIR}/tools/bench/burst_sim.cpp)
-target_link_libraries(burst_sim PRIVATE mabur_common)
-add_test(NAME burst_sim_selfcheck COMMAND burst_sim --self-check)
 
 # Post-flight analysis test (requires Python 3; found at the top of this file)
 if(Python3_EXECUTABLE)
   add_test(NAME test_flightreport
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_flightreport.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_flightreport.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_session
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_session.py)
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_session.py)
   add_test(NAME test_maburtop
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/test_maburtop.py)
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/test_maburtop.py)
   set_tests_properties(test_maburtop PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tools)
-  add_test(NAME test_mavparam
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_mavparam.py)
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tools)
   add_test(NAME gsparam_py
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_gsparam.py)
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_gsparam.py)
   add_test(NAME test_gen_font
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_gen_font.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_gen_font.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_gen_gsfont
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_gen_gsfont.py)
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_gen_gsfont.py)
   add_test(NAME test_airdrain
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_airdrain.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_airdrain.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_fecab
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_fecab.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_fecab.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_latchgate
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_latchgate.py)
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_latchgate.py)
   add_test(NAME test_flightjitter
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_flightjitter.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  add_test(NAME test_vencburst
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_vencburst.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_flightjitter.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_maburcal
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_maburcal.py)
   add_test(NAME test_dvrcadence
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_dvrcadence.py
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_dvrcadence.py
             ${CMAKE_BINARY_DIR}/tests/dvrcadence_clean.mp4
             ${CMAKE_BINARY_DIR}/tests/dvrcadence_offgrid.mp4
             ${CMAKE_BINARY_DIR}/tests/dvrcadence_fractional.mp4)
   set_tests_properties(test_dvrcadence PROPERTIES DEPENDS test_dvr_mux)
-endif()
-
-if(MABUR_BUILD_LINKBENCH)
-  add_mtest(test_linkbench_wire test_linkbench_wire.cpp LIBS linkbench_core)
-  add_mtest(test_linkbench_pacer test_linkbench_pacer.cpp LIBS linkbench_core)
-  add_mtest(test_linkbench_txpipe test_linkbench_txpipe.cpp LIBS linkbench_core)
-  add_mtest(test_linkbench_rxpipe test_linkbench_rxpipe.cpp LIBS linkbench_core)
-  add_mtest(test_linkbench_e2e test_linkbench_e2e.cpp LIBS linkbench_core)
 endif()

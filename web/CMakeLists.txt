@@ -16,8 +16,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   endif()
   set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(MABUR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "mabur checkout")
-  set(DEVOURER_DIR "${MABUR_DIR}/../devourer" CACHE PATH "devourer checkout")
+  set(GROUND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "mabur-ground checkout")
+  set(MABUR_DIR "${GROUND_DIR}/third_party/mabur" CACHE PATH "mabur checkout")
+  set(DEVOURER_DIR "${GROUND_DIR}/../devourer" CACHE PATH "devourer checkout")
   # RTL8812EU (Jaguar3 8822E) + RTL8812CU (Jaguar3 8822C) +
   # RTL8812AU/8811AU/8821AU (Jaguar1).
   foreach(opt 8814 JAGUAR2_8822B JAGUAR2_8821C 8733B KESTREL_8852B KESTREL_8852C)
@@ -37,7 +38,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # common/src or gs/src file that defines it here.
   add_library(webgs_core STATIC
     src/web_gs.cpp src/osd_screen.cpp src/spotter_follow.cpp src/web_phase.cpp
-    ${MABUR_DIR}/gs/player/src/phase_lock.cpp
+    ${GROUND_DIR}/gs/player/src/phase_lock.cpp
     ${MABUR_DIR}/common/src/crc16.cpp ${MABUR_DIR}/common/src/gf256.cpp
     ${MABUR_DIR}/common/src/sbi.cpp ${MABUR_DIR}/common/src/frag.cpp
     ${MABUR_DIR}/common/src/nal.cpp ${MABUR_DIR}/common/src/uep_decoder.cpp
@@ -52,27 +53,27 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     ${MABUR_DIR}/common/src/probe_wire.cpp ${MABUR_DIR}/common/src/msp_dp.cpp
     ${MABUR_DIR}/common/src/siphash.cpp ${MABUR_DIR}/common/src/link_key.cpp
     ${MABUR_DIR}/common/src/nack_tracker.cpp
-    ${MABUR_DIR}/gs/src/aggregator.cpp ${MABUR_DIR}/gs/src/frame_stream.cpp
-    ${MABUR_DIR}/gs/src/slice_assembler.cpp
-    ${MABUR_DIR}/gs/src/frame_file_source.cpp ${MABUR_DIR}/gs/src/config.cpp
-    ${MABUR_DIR}/gs/src/link_health.cpp ${MABUR_DIR}/gs/src/probe_track.cpp
-    ${MABUR_DIR}/gs/src/ladder_residual.cpp ${MABUR_DIR}/gs/src/vrx_controller.cpp
-    ${MABUR_DIR}/gs/src/rendezvous.cpp ${MABUR_DIR}/gs/src/ladder_controller.cpp
-    ${MABUR_DIR}/gs/src/rung_store.cpp ${MABUR_DIR}/gs/src/rcf_slot.cpp
-    ${MABUR_DIR}/gs/src/rtt_estimator.cpp ${MABUR_DIR}/gs/src/dot11.cpp
-    ${MABUR_DIR}/gs/src/uplink_delivery.cpp
-    ${MABUR_DIR}/gs/src/mav_tunnel.cpp ${MABUR_DIR}/gs/src/param_client.cpp
-    ${MABUR_DIR}/gs/src/msp_sink.cpp
-    ${MABUR_DIR}/gs/src/relay_wire.cpp ${MABUR_DIR}/gs/src/relay_client.cpp
-    ${MABUR_DIR}/gs/src/channel_core.cpp ${MABUR_DIR}/gs/src/channel_plan.cpp
-    ${MABUR_DIR}/gs/src/channel_scout.cpp ${MABUR_DIR}/gs/src/channel_ranker.cpp
-    ${MABUR_DIR}/gs/src/boot_pick.cpp ${MABUR_DIR}/gs/src/hop_controller.cpp
-    ${MABUR_DIR}/gs/src/hop_ranker.cpp ${MABUR_DIR}/gs/src/hop_verdict.cpp
-    ${MABUR_DIR}/gs/src/inflight_scout.cpp ${MABUR_DIR}/gs/src/pair_pick.cpp
-    ${MABUR_DIR}/gs/src/radio_frontend.cpp ${MABUR_DIR}/gs/src/card_scan_usb.cpp
-    ${MABUR_DIR}/gs/src/remote_card.cpp ${MABUR_DIR}/gs/src/window_sampler.cpp)
+    ${GROUND_DIR}/gs/src/aggregator.cpp ${GROUND_DIR}/gs/src/frame_stream.cpp
+    ${GROUND_DIR}/gs/src/slice_assembler.cpp
+    ${GROUND_DIR}/gs/src/frame_file_source.cpp ${GROUND_DIR}/gs/src/config.cpp
+    ${GROUND_DIR}/gs/src/link_health.cpp ${GROUND_DIR}/gs/src/probe_track.cpp
+    ${GROUND_DIR}/gs/src/ladder_residual.cpp ${GROUND_DIR}/gs/src/vrx_controller.cpp
+    ${GROUND_DIR}/gs/src/rendezvous.cpp ${GROUND_DIR}/gs/src/ladder_controller.cpp
+    ${GROUND_DIR}/gs/src/rung_store.cpp ${GROUND_DIR}/gs/src/rcf_slot.cpp
+    ${GROUND_DIR}/gs/src/rtt_estimator.cpp ${GROUND_DIR}/gs/src/dot11.cpp
+    ${GROUND_DIR}/gs/src/uplink_delivery.cpp
+    ${GROUND_DIR}/gs/src/mav_tunnel.cpp ${GROUND_DIR}/gs/src/param_client.cpp
+    ${GROUND_DIR}/gs/src/msp_sink.cpp
+    ${GROUND_DIR}/gs/src/relay_wire.cpp ${GROUND_DIR}/gs/src/relay_client.cpp
+    ${GROUND_DIR}/gs/src/channel_core.cpp ${GROUND_DIR}/gs/src/channel_plan.cpp
+    ${GROUND_DIR}/gs/src/channel_scout.cpp ${GROUND_DIR}/gs/src/channel_ranker.cpp
+    ${GROUND_DIR}/gs/src/boot_pick.cpp ${GROUND_DIR}/gs/src/hop_controller.cpp
+    ${GROUND_DIR}/gs/src/hop_ranker.cpp ${GROUND_DIR}/gs/src/hop_verdict.cpp
+    ${GROUND_DIR}/gs/src/inflight_scout.cpp ${GROUND_DIR}/gs/src/pair_pick.cpp
+    ${GROUND_DIR}/gs/src/radio_frontend.cpp ${GROUND_DIR}/gs/src/card_scan_usb.cpp
+    ${GROUND_DIR}/gs/src/remote_card.cpp ${GROUND_DIR}/gs/src/window_sampler.cpp)
   target_include_directories(webgs_core PUBLIC src ${MABUR_DIR}/common/include
-    ${MABUR_DIR}/gs/src ${MABUR_DIR}/gs/player/src ${MABUR_DIR}/third_party ${DEVOURER_DIR}/src)
+    ${GROUND_DIR}/gs/src ${GROUND_DIR}/gs/player/src ${GROUND_DIR}/third_party ${MABUR_DIR}/third_party ${DEVOURER_DIR}/src)
   target_compile_options(webgs_core PRIVATE -O3)
   target_link_libraries(webgs_core PUBLIC devourer)
 
@@ -86,13 +87,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     -sENVIRONMENT=web,worker --bind
     -sEXPORTED_FUNCTIONS=_main,_free,_malloc,_webgs_stop,_webgs_set_rec,_webgs_set_local_rec,_webgs_request_idr,_webgs_phase_reset,_webgs_phase_frame,_webgs_phase_discontinuity,_webgs_phase_tick,_webgs_phase_state,_webgs_phase_err_ms,_webgs_phase_centre,_webgs_phase_mismatch,_webgs_phase_src_hz,_webgs_mav_push,_webgs_mav_take,_webgs_param_refresh,_webgs_param_set
     -sEXPORTED_RUNTIME_METHODS=FS,stringToNewUTF8
-    "--embed-file=${MABUR_DIR}/gs/bundle/maburgs.default.toml@/maburgs.toml")
+    "--embed-file=${GROUND_DIR}/gs/bundle/maburgs.default.toml@/maburgs.toml")
   set_target_properties(webgs PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/dist)
 
   # Replay CLI only, for Node (host FS via NODERAWFS): the native/WASM parity
   # gate (web/tests/test_wasm_parity.sh).
   add_executable(webgs_node src/web_main.cpp)
-  target_compile_definitions(webgs_node PRIVATE WEBGS_CONFIG_PATH="${MABUR_DIR}/gs/bundle/maburgs.default.toml")
+  target_compile_definitions(webgs_node PRIVATE WEBGS_CONFIG_PATH="${GROUND_DIR}/gs/bundle/maburgs.default.toml")
   target_link_libraries(webgs_node PRIVATE webgs_core)
   target_link_options(webgs_node PRIVATE -pthread -sENVIRONMENT=node -sNODERAWFS=1
     -sALLOW_MEMORY_GROWTH -sEXIT_RUNTIME --bind -sASYNCIFY)
@@ -128,10 +129,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 else()
   # Included from the root build: native core + tests.
   add_library(mabur_web_core STATIC src/web_gs.cpp src/osd_screen.cpp src/spotter_follow.cpp
-    src/web_phase.cpp ${CMAKE_SOURCE_DIR}/gs/player/src/phase_lock.cpp)
+    src/web_phase.cpp ${PROJECT_SOURCE_DIR}/gs/player/src/phase_lock.cpp)
   target_include_directories(mabur_web_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/gs/player/src
-    PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+    ${PROJECT_SOURCE_DIR}/gs/player/src
+    PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
   target_link_libraries(mabur_web_core PUBLIC mabur_gs_core mabur_common)
 
   # webgs CLI: replay (the web_au_parity gate) + live (maburgs's
@@ -139,7 +140,7 @@ else()
   # or --relay: RemoteCard over UDP to a CPE510 mabur-relay).
   add_executable(webgs src/web_main.cpp)
   target_link_libraries(webgs PRIVATE mabur_web_core mabur_gs_radio mabur_gs_dot11 mabur_gs_relay devourer pthread)
-  target_include_directories(webgs PRIVATE ${DEVOURER_DIR}/src ${CMAKE_SOURCE_DIR}/gs/src)
+  target_include_directories(webgs PRIVATE ${DEVOURER_DIR}/src ${PROJECT_SOURCE_DIR}/gs/src)
   target_compile_definitions(webgs PRIVATE WEBGS_LIVE=1
-    MABUR_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    MABUR_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 endif()

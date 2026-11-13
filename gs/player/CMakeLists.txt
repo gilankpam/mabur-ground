@@ -44,7 +44,7 @@ add_library(mabur_player_core STATIC
   src/prime_frame.cpp)
 target_include_directories(mabur_player_core
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
-  PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
+  PRIVATE ${PROJECT_SOURCE_DIR}/third_party)
 target_link_libraries(mabur_player_core PUBLIC mabur_gs_core pthread)
 
 # Hardware backends (rockchip mpp decode + libdrm KMS presenter): aarch64
