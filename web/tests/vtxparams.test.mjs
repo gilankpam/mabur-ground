@@ -7,6 +7,12 @@ import {
   MODE_FPS, modeChoices, recSizeChoices, rowWidget, toggleValues, toggleState, SLICES_ON, SLICES_OFF, REC_SETTINGS, rowShown, DISPLAY_MATCH_HZ, modeDisplayNote, rowStatus,
 } from '../ui/src/lib/vtxparams.js';
 
+// mabur's headers (the drone side of these drift guards) come from the
+// third_party/mabur submodule, or from MABUR_DIR when it points elsewhere.
+const maburFile = (rel) => process.env.MABUR_DIR
+  ? `${process.env.MABUR_DIR}/${rel}`
+  : new URL(`../../third_party/mabur/${rel}`, import.meta.url);
+
 test('modeSizes per sensor mode and at the boundaries', () => {
   assert.deepEqual(modeSizes(90), ['1920x1080', '1280x720']);
   assert.deepEqual(modeSizes(91), ['1728x972', '1280x720']);
@@ -415,7 +421,7 @@ test('rowView result/resultKind for the remaining states', () => {
 // reach this page's labels, hints and section kickers, and a new row needs
 // a label (or a place in HIDDEN), or this test fails.
 test('HINTS, LABELS, HIDDEN and SECTION_KICKER name real rows in config_params.h', () => {
-  const h = fs.readFileSync(new URL('../../common/include/mabur/config_params.h', import.meta.url), 'utf8');
+  const h = fs.readFileSync(maburFile('common/include/mabur/config_params.h'), 'utf8');
   const ids = new Set();
   const sections = new Set();
   const re = /\{"([A-Z0-9_]+)",\s*"([a-z_]+)",/g;
@@ -437,7 +443,7 @@ test('HINTS, LABELS, HIDDEN and SECTION_KICKER name real rows in config_params.h
 // Drift guard: the drone's own sensor-mode table (shared with the goggles
 // menu) must parse into the same modes this tab offers, or this test fails.
 test('MODE_SIZES and MODE_ZOOM match the C++ camera-mode table', () => {
-  const h = fs.readFileSync(new URL('../../common/include/mabur/camera_modes.h', import.meta.url), 'utf8');
+  const h = fs.readFileSync(maburFile('common/include/mabur/camera_modes.h'), 'utf8');
   const rowRe = /\{(true|false),\s*(\d+),\s*"([^"]+)",\s*\{((?:\{\s*\d+,\s*\d+\s*\},?\s*)+)\}\},/g;
   const sizeRe = /\{\s*(\d+),\s*(\d+)\s*\}/g;
   const rows = [];
