@@ -18,6 +18,14 @@ die() {
 
 do_update_uboot() {
 	local x=$1
+	# This writes at sector 64 (32 KiB), the Rockchip offset. On the Orange Pi
+	# that write runs over the H618's SPL at 256 KiB and the board no longer
+	# boots, so it never happens there, whatever the package carries.
+	if [ "$(get_system_build)" = orangepi_zero2w ]; then
+		echo_c 33 "\nU-boot"
+		echo "Not written on this board: bootloader left alone"
+		return 0
+	fi
 	local root_dev=${BOOT_DISK:-"/dev/$(basename $(readlink -f /dev/disk/by-partlabel/rootfs) p1)"}
 	[ -z "$x" ] && die "$x not found"
 	[ -b "$root_dev" ] || die "$root_dev not found"

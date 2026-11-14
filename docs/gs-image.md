@@ -33,10 +33,15 @@ The whole disk, from a system booted off SD (erases everything on eMMC):
 
     dd if=/tmp/<board>_sdcard.img of=/dev/mmcblk0 status=progress
 
-The bootloader only, keeping the rest of the eMMC (RK3566 boards only; the
-Orange Pi's SPL sits elsewhere):
+The bootloader only, keeping the rest of the disk. RK3566 boards, at
+32 KiB:
 
     dd if=/tmp/<board>_u-boot.bin of=/dev/mmcblk0 seek=64 status=progress
+
+The Orange Pi boots from SD; its SPL + U-Boot sit at 256 KiB (the 8 KiB
+slot is inside the GPT), so on the card in a reader:
+
+    dd if=orangepi_zero2w_u-boot.bin of=/dev/<sd-card> bs=1k seek=256 conv=fsync
 
 ### Bootloader via Maskrom (RK3566)
 
@@ -58,10 +63,12 @@ points elsewhere: upgrade it once with
 `sysupgrade --url=https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`,
 or reflash.
 
-The Orange Pi's package carries no `u-boot.bin`, and `sysupgrade` leaves the
-bootloader alone when the package has none: the H618's SPL lives at
-256 KiB, and the generic bootloader write (at 32 KiB, the Rockchip offset)
-would make it unbootable.
+`sysupgrade` never writes a bootloader on the Orange Pi, whatever the
+package carries (an old image repo package still has `u-boot.bin` in it):
+its bootloader write is at 32 KiB, the Rockchip offset, which on the H618
+runs over the SPL at 256 KiB and leaves the board unbootable. The Orange
+Pi's own package carries no `u-boot.bin`; its bootloader is updated only by
+hand, as above.
 
 ## Configuration: the CONFIG partition
 

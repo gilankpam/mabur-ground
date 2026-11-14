@@ -77,7 +77,7 @@ jobs:
 
   # The image's shell pieces that run on the host: partition carving (real
   # parted on disk-image files), the WiFi config generator under POSIX awk,
-  # the sysupgrade tarball contents, and the MPP pin shared with
+  # the sysupgrade tarball contents and U-Boot step, and the MPP pin shared with
   # tools/build-arm64.sh.
   firmware-tests:
     runs-on: ubuntu-latest
@@ -87,4 +87,5 @@ jobs:
       - run: sh firmware/tests/carve-part.test.sh
       - run: sh firmware/tests/wifi-config.test.sh
       - run: sh firmware/tests/pack-images.test.sh
+      - run: sh firmware/tests/sysupgrade-uboot.test.sh
       - run: sh firmware/tests/mpp-ref.test.sh

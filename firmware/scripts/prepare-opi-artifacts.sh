@@ -4,6 +4,7 @@
 #   configs/orangepi_zero2w_defconfig  (BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION ->
 #   .../releases/download/opi-zero2w-kernel-6.18.35/linux-6.18.35-opi-sunxi.tar.gz)
 # You only need this to (re)generate the tarball; then publish it:
+#   gh release create opi-zero2w-kernel-6.18.35 --prerelease --latest=false --repo gilankpam/mabur-ground   # once; then:
 #   gh release upload opi-zero2w-kernel-6.18.35 \
 #       .opi-artifacts/linux-6.18.35-opi-sunxi.tar.gz --clobber --repo gilankpam/mabur-ground
 #
