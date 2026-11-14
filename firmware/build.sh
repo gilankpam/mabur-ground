@@ -95,19 +95,8 @@ mk -j"$(nproc)" "$TARGET"
 [ "$TARGET" = all ] || exit 0
 
 IMAGES="$O/images"
+sh "$FW/scripts/pack-images.sh" "$IMAGES" "$BOARD"
 cd "$IMAGES"
-if [ -f u-boot-rockchip.bin ]; then
-    cp u-boot-rockchip.bin u-boot.bin
-elif [ -f u-boot-sunxi-with-spl.bin ]; then
-    cp u-boot-sunxi-with-spl.bin u-boot.bin
-fi
-for f in sdcard.img u-boot.bin emmc_bootloader.img rootfs.squashfs; do
-    [ -f "$f" ] && cp "$f" "${BOARD}_$f"
-done
-cp boot.scr "${BOARD}_boot.scr"
-md5sum rootfs.squashfs > rootfs.squashfs.md5sum
-md5sum u-boot.bin > u-boot.bin.md5sum
-tar zcf "$BOARD.tar.gz" rootfs.squashfs u-boot.bin ./*.md5sum
 
 kernel_loc=$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="\(.*\)"$/\1/p' "$O/.config")
 kernel_file="${BR2_DL_DIR:-$FW/buildroot/dl}/linux/$(basename "$kernel_loc")"

@@ -13,7 +13,7 @@ let
   '';
 in
 (pkgs.buildFHSEnv {
-  name = "sbc-groundstations-buildenv";
+  name = "mabur-ground-firmware-buildenv";
 
   targetPkgs = pkgs: with pkgs; [
     gcc

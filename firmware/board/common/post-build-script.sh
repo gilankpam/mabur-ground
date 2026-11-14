@@ -3,31 +3,21 @@
 eval $(grep BR2_DEFCONFIG ${O}/.config)
 echo "BUILD_CONFIG=$(basename $(basename $BR2_DEFCONFIG) _defconfig)" >> $TARGET_DIR/etc/os-release
 
-DOWNLOAD_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-OpenIPC/sbc-groundstations}/releases/download/buildroot-snapshot/$(basename $(basename $BR2_DEFCONFIG) _defconfig).tar.gz"
-# Get version: tag or short SHA, add -dirty if repo is dirty
-if git describe --tags --exact-match >/dev/null 2>&1; then
-    # Building from a tag
-    VERSION=$(git describe --tags)
-else
-    # Not a tag, use short SHA
-    VERSION=$(git rev-parse --short HEAD)
-fi
-
-# Check if repo is dirty (has uncommitted changes)
-if ! git diff --quiet || ! git diff --cached --quiet; then
-    VERSION="${VERSION}-dirty"
-fi
+# The version comes from firmware/build.sh (the release tag, snapshot-<sha8>,
+# pr<N>-<sha8>, or the local sha); the online upgrade always takes the latest
+# release's package for this board.
+: "${MABUR_GS_VERSION:?post-build: MABUR_GS_VERSION is not set (build through firmware/build.sh)}"
+DOWNLOAD_URL="https://github.com/gilankpam/mabur-ground/releases/latest/download/$(basename $(basename $BR2_DEFCONFIG) _defconfig).tar.gz"
 
 cat <<EOF >$TARGET_DIR/etc/os-release
-PRETTY_NAME="OpenIPC SBC GS"
-NAME="OpenIPC SBC GS"
-HOME_URL="https://github.com/OpenIPC/sbc-groundstations"
-SUPPORT_URL="https://t.me/+BMyMoolVOpkzNWUy"
-BUG_REPORT_URL="https://github.com/OpenIPC/sbc-groundstations/issues"
+PRETTY_NAME="mabur GS"
+NAME="mabur GS"
+HOME_URL="https://github.com/gilankpam/mabur-ground"
+BUG_REPORT_URL="https://github.com/gilankpam/mabur-ground/issues"
 BUILD_CONFIG=$(basename $(basename $BR2_DEFCONFIG) _defconfig)
 UPGRADE=$DOWNLOAD_URL
 BUILD_DATE="$(date)"
-VERSION="$VERSION"
+VERSION="$MABUR_GS_VERSION"
 EOF
 
 cp ${O}/.config $TARGET_DIR/etc/default/br-config

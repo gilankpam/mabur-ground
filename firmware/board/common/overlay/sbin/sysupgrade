@@ -36,7 +36,7 @@ download_firmware() {
 		gzip -d "$archive" -c | tar xf - -C /tmp && echo_c 32 "Local archive unpacked" || die "Cannot extract $archive"
 		rm $archive
 	else
-		[ -z "$url" ] && url=$(get_system_upgrade || echo "https://github.com/OpenIPC/sbc-groundstations/releases/download/buildroot-snapshot/${defconfig}.tar.gz")
+		[ -z "$url" ] && url=$(get_system_upgrade || echo "https://github.com/gilankpam/mabur-ground/releases/latest/download/${defconfig}.tar.gz")
 		echo "Download from $url"
 		command -v curl >/dev/null || die "No curl on this image -- online upgrade is unavailable. Copy the .tar.gz to the DVR partition and use -f instead."
 		[ "$(curl -o /dev/null -s -k -w '%{http_code}\n' "$url")" = "000" ] && die "Check your network!"
@@ -45,7 +45,15 @@ download_firmware() {
 	if [ "1" != "$skip_md5" ]; then
 		(cd /tmp && md5sum --quiet -c *.md5sum) || die "Wrong checksum!"
 	fi
-	uboot_file=/tmp/u-boot.bin
+	# A package without u-boot.bin (the Orange Pi's) leaves the bootloader
+	# alone: do_update_uboot writes at the Rockchip offset, which on the
+	# H618 runs over its SPL.
+	if [ -f /tmp/u-boot.bin ]; then
+		uboot_file=/tmp/u-boot.bin
+	else
+		update_uboot=0
+		echo_c 33 "No u-boot.bin in the package: bootloader left alone"
+	fi
 	rootfs_file=/tmp/rootfs.squashfs
 }
 

@@ -5,7 +5,7 @@
 #   .../releases/download/opi-zero2w-kernel-6.18.35/linux-6.18.35-opi-sunxi.tar.gz)
 # You only need this to (re)generate the tarball; then publish it:
 #   gh release upload opi-zero2w-kernel-6.18.35 \
-#       .opi-artifacts/linux-6.18.35-opi-sunxi.tar.gz --clobber --repo gilankpam/sbc-groundstations
+#       .opi-artifacts/linux-6.18.35-opi-sunxi.tar.gz --clobber --repo gilankpam/mabur-ground
 #
 #   1. linux-6.18.35-opi-sunxi.tar.gz  - clean source snapshot of the Armbian-
 #      patched 6.18.35 sunxi kernel (mainline + DE33 + the 0099/0100 video
