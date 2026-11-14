@@ -4,23 +4,28 @@
 #
 ################################################################################
 
-# gilankpam/mabur master, resolved to a hash on every make invocation. Feeding
-# the downloader the hash rather than `master` keeps one dl/ tarball per commit,
-# so new commits actually refetch. package/devourer tracks its own master the
-# same way; nothing pins the two in step any more. The fallback hash is only
-# reached offline; GIT_TERMINAL_PROMPT/timeout stop a dead remote from hanging
-# every make run. Override with `make MABUR_VERSION=<sha-or-tag> mabur-rebuild`.
-# A MABUR_VERSION already in the environment wins: the release workflow
-# resolves the commit once and passes it in, so the release it names is the
-# commit that was built even if master moves mid-build.
-ifeq ($(MABUR_VERSION),)
-MABUR_MASTER_SHA := $(shell GIT_TERMINAL_PROMPT=0 timeout 15 \
-	git ls-remote https://github.com/gilankpam/mabur.git \
-	refs/heads/master 2>/dev/null | cut -f1)
-MABUR_VERSION = $(or $(MABUR_MASTER_SHA),5790043765a30dc060822c0f8685b804e60fa402)
+# Built from the mabur-ground tree this package sits in (firmware/build.sh
+# passes MABUR_GS_SRC_DIR), so an image is always the maburgs/maburplay of the
+# commit it was built from. Buildroot rsyncs that tree into its build dir; the
+# exclusions keep out this build's own Buildroot tree and outputs, local build
+# outputs, the docs, the pinned mabur's own devourer submodule and firmware
+# build (devourer is its own package), machine-local agent state and link keys.
+# mabur itself comes from MABUR_GS_MABUR_DIR: the third_party/mabur pin, or a
+# sibling checkout when a change spans both repos.
+ifeq ($(MABUR_GS_SRC_DIR),)
+$(error mabur: MABUR_GS_SRC_DIR is not set (build through firmware/build.sh))
 endif
-MABUR_SITE = https://github.com/gilankpam/mabur.git
-MABUR_SITE_METHOD = git
+MABUR_SITE = $(MABUR_GS_SRC_DIR)
+MABUR_SITE_METHOD = local
+MABUR_VERSION = local
+MABUR_OVERRIDE_SRCDIR_RSYNC_EXCLUSIONS = \
+	--exclude /firmware/buildroot --exclude /firmware/output \
+	--exclude '/build*' --exclude /out --exclude /toolchain --exclude /logs \
+	--exclude /docs --exclude /web/build-wasm \
+	--exclude /third_party/mabur/third_party/devourer \
+	--exclude /third_party/mabur/firmware/openipc \
+	--exclude /.claude --exclude /.superpowers --exclude '/*.key'
+MABUR_SUPPORTS_IN_SOURCE_BUILD = NO
 MABUR_INSTALL_STAGING = NO
 MABUR_INSTALL_TARGET = YES
 
@@ -56,13 +61,13 @@ endif
 #   ${MABUR_MPP_ROOT}/lib/librockchip_mpp.a
 #   ${MABUR_DRM_ROOT}/lib/libdrm.a
 #
-# That shape is inherited from mabur's own musl-static cross build
+# That shape is inherited from this repo's musl-static cross build
 # (tools/build-arm64.sh), where both really are static archives staged under
 # toolchain/. Buildroot stages them differently: rockchip-mpp's CMake does
 # install a genuine librockchip_mpp.a next to the shared object, but libdrm is
 # a Meson package built shared-only, so libdrm.a does not exist in staging.
 #
-# Rather than patch mabur or turn on BR2_SHARED_STATIC_LIBS for the whole
+# Rather than patch gs/player or turn on BR2_SHARED_STATIC_LIBS for the whole
 # build, stage one small prefix that satisfies both cache variables. Both .a
 # entries are symlinks to the *shared* objects: ld identifies an input file by
 # its contents, not its extension, so it links dynamically and records
@@ -82,7 +87,7 @@ endif
 # already adds both ${ROOT}/include and ${ROOT}/include/libdrm, which staging
 # provides at exactly those two levels.
 #
-# Delete this hook if mabur ever learns to link -lrockchip_mpp -ldrm from the
+# Delete this hook if gs/player ever learns to link -lrockchip_mpp -ldrm from the
 # sysroot directly.
 define MABUR_STAGE_LIBS
 	mkdir -p $(@D)/br-libs/lib
@@ -94,7 +99,8 @@ endef
 
 # Mirrors tools/build-arm64.sh, the reference cross build for this target.
 # maburd is SigmaStar/armv7 and never built here; the host test suite needs
-# GoogleTest; the linkbench/txagcbench tools are not shipped.
+# GoogleTest; the bench tools are not shipped, so only the two daemons are
+# built (MABUR_MAKE_OPTS).
 #
 # The per-chip devourer gates are listed exhaustively on purpose: every
 # DEVOURER_<chip> option defaults to ON, so a chip added upstream would opt
@@ -116,23 +122,25 @@ MABUR_GPIO_COMPAT_FLAG = -include $(MABUR_PKGDIR)/gpio_v2_compat.h
 # package/devourer installs nothing to the target by design -- it exists only
 # to put the source on disk -- so maburgs then died at startup with
 #   error while loading shared libraries: libdevourer.so
-# Every library mabur declares itself is explicitly STATIC, so forcing this off
-# only affects devourer, and it links it into maburgs exactly as mabur's own
-# cross build does. Our -D comes after Buildroot's on the command line, so it
+# Every library mabur and mabur-ground declare is explicitly STATIC, so forcing
+# this off only affects devourer, and it links it into maburgs exactly as
+# tools/build-arm64.sh does. Our -D comes after Buildroot's on the command line, so it
 # wins. Re-verify with `readelf -d` after any devourer bump.
 #
 # MABUR_DECODER_OPTS (above): on the MPP decoder, -DMABUR_PLAYER_GPU=ON is the
 # burned-DVR colortrans stage (gs/player/src/frame_colortrans.cpp), which links
 # EGL/GLESv2/gbm/rga from staging (docs/colortrans.md). The V4L2-request
 # decoder has no encoder, so no burned DVR and no GPU stage.
+MABUR_MAKE_OPTS = maburgs maburplay
+
 MABUR_CONF_OPTS = \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DCMAKE_C_FLAGS="$(TARGET_CFLAGS) $(MABUR_GPIO_COMPAT_FLAG)" \
 	-DCMAKE_CXX_FLAGS="$(TARGET_CXXFLAGS) $(MABUR_GPIO_COMPAT_FLAG)" \
-	-DMABUR_BUILD_DRONE=OFF \
-	-DMABUR_BUILD_TESTS=OFF \
+	-DMABUR_DIR=$(MABUR_GS_MABUR_DIR) \
+	-DGROUND_BUILD_TESTS=OFF \
+	-DGROUND_BUILD_MABURD=OFF \
 	-DMABUR_BUILD_LINKBENCH=OFF \
-	-DMABUR_BUILD_GS=ON \
 	-DMABUR_PLAYER_HW=ON \
 	$(MABUR_DECODER_OPTS) \
 	-DDEVOURER_DIR=$(DEVOURER_SRCDIR) \
@@ -147,8 +155,8 @@ MABUR_CONF_OPTS = \
 	-DDEVOURER_KESTREL_8852B=OFF \
 	-DDEVOURER_KESTREL_8852C=OFF
 
-# mabur declares no install() rules -- its own deploy scripts copy artifacts by
-# hand -- so the layout is spelled out here.
+# mabur-ground declares no install() rules -- its deploy scripts copy
+# artifacts by hand -- so the layout is spelled out here.
 #
 # The two .default.toml files do NOT go to /etc any more. /etc is on the
 # read-only squashfs (writable only through the ext4 overlay, which Windows
@@ -209,17 +217,16 @@ define MABUR_INSTALL_TARGET_CMDS
 	ln -sfn /config/maburplay.toml $(TARGET_DIR)/etc/maburplay.toml
 endef
 
-# Both wrappers are mabur's own bundled files, installed unmodified.
+# Both wrappers are this repo's bundled files, installed unmodified.
 # S96maburgs' start does `rmmod 8812eu` so devourer can claim the cards over
 # libusb; that is a no-op here because the mabur boards drop the Realtek kernel
-# drivers entirely, and it is kept because it is upstream's file.
+# drivers entirely, and it is kept for hosts that do load the driver.
 #
 # Per-board maburplay defaults are sed'd onto the installed file by
 # board/common/post-build-script.sh, which runs after both this install and the
 # rootfs overlays. The boards used to ship a whole forked copy of
-# maburplay.default.toml under board/*/overlay/usr/share/config-defaults/, and
-# because MABUR_VERSION tracks upstream master that copy went stale the moment
-# mabur added a key: [colortrans] = true shipped disabled on every image after
+# maburplay.default.toml under board/*/overlay/usr/share/config-defaults/,
+# and that copy went stale the moment gs/player added a key: [colortrans] = true shipped disabled on every image after
 # the GPU colortrans stage landed. Patch the differing lines, never the file.
 define MABUR_INSTALL_INIT_SYSV
 	$(INSTALL) -D -m 0755 $(@D)/gs/bundle/S96maburgs \

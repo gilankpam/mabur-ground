@@ -16,7 +16,7 @@ config BR2_PACKAGE_MABUR
 	  Replaces wifibroadcast-ng, fpvd, pixelpilot, msposd and
 	  adaptive-link -- do not enable those alongside it.
 
-	  https://github.com/gilankpam/mabur
+	  https://github.com/gilankpam/mabur-ground
 
 if BR2_PACKAGE_MABUR
 

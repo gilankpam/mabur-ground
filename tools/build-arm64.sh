@@ -176,10 +176,10 @@ export MABUR_DRM_ROOT="$PWD/toolchain/drm-arm64"
 MPP_REF=14729dd578e570e5f00fd1dd2113f5429012d64b
 
 # fpvOS rkvdec2 stream-mode patches (docs/slices.md "Part 2"), ported to
-# MPP_REF. CANONICAL here: sbc-groundstations-gilankpam's
-# package/rockchip-mpp/ carries byte-identical copies, so the GS image's
-# shared librockchip_mpp is the same decoder as this static one -- change
-# them here first, then copy them there.
+# MPP_REF. The GS image's rockchip-mpp package (firmware/package/rockchip-mpp)
+# applies these same files at the same ref, so its shared librockchip_mpp is
+# the same decoder as this static one; firmware/tests/mpp-ref.test.sh fails
+# when the two refs drift.
 # What MPP_REF (14729dd5) is, checked when porting (2026-10):
 #  - no libmpp_ext.so split: every codec lives in librockchip_mpp;
 #  - the h265d hal's fast_mode = base:fast_parse && support_fast_mode, read
