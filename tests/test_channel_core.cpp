@@ -378,6 +378,30 @@ TEST(set_width_on_a_down_card_lands_on_revive) {
   CHECK(g.cards[1]->width_mhz == 20);                        // the per-tick resync, not the flip
 }
 
+// One card calling set_width from a failed resync once a second: a transient
+// USB error must not leave it at the wrong width, and a lasting one must not
+// cost a full channel set every tick.
+TEST(failed_width_resync_retries_once_a_second) {
+  Rig g(2, 0, /*pinned=*/true, 40);
+  for (int i = 0; i < 10; ++i) g.tick(true, false, 0);
+  g.cards[1]->is_alive = false;
+  g.core->on_card_died(1);
+  g.cards[1]->is_alive = true; g.cards[1]->ch = 40; g.cards[1]->width_mhz = 20;
+  g.cards[1]->fail_set_width = true;
+  g.cards[1]->calls.clear();
+  g.core->on_card_reopened(1);
+  const auto end = g.clk.ms + 2500;
+  while (g.clk.ms < end) g.tick(true, false, 0);
+  int tries = 0;
+  for (auto& c : g.cards[1]->calls) if (c.rfind("set_width", 0) == 0) ++tries;
+  CHECK(tries == 3);
+  CHECK(g.cards[1]->width_mhz == 20);
+  g.cards[1]->fail_set_width = false;
+  const auto healed = g.clk.ms + 1100;
+  while (g.clk.ms < healed) g.tick(true, false, 0);
+  CHECK(g.cards[1]->width_mhz == 40);
+}
+
 TEST(mechanical_retune_skips_scout_card_and_follows_desired) {
   Rig g(2, 0);                                   // auto: the scout owns card 1 from the start
   g.tick(); g.tick();
@@ -3797,7 +3821,7 @@ TEST(lease_one_card_masks_the_verdict_around_the_burst) {
     VideoAir air;
     for (int i = 0; i < 100; ++i) video_tick(g, air);
     const auto s0 = g.core->snapshot(0);
-    REQUIRE(s0.hop.verdict == "healthy");
+    REQUIRE(std::string(s0.hop.verdict) == "healthy");
     REQUIRE(s0.hop.evidence == 0);
     const int v0 = g.sink.verdicts;
     const size_t d0 = g.sink.dwells.size();
@@ -3812,7 +3836,7 @@ TEST(lease_one_card_masks_the_verdict_around_the_burst) {
     for (int i = 0; i < 100; ++i) {
       video_tick(g, air);
       const auto s = g.core->snapshot(0);
-      CHECK(s.hop.verdict == s0.hop.verdict);
+      CHECK(std::string(s.hop.verdict) == s0.hop.verdict);
       CHECK(s.hop.evidence == s0.hop.evidence);
       CHECK(!s.hop.ref_rung.has_value());
     }

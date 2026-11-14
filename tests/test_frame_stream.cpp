@@ -828,3 +828,83 @@ TEST(whole_slices_never_use_frame_tail) {
 }
 
 MTEST_MAIN
+
+TEST(frame_id_walk_below_zero_rebases) {
+  // Ids 0, 32768, 0, 65535: deltas of -32768 and -1 walk the unwrapped id
+  // from the first base (0x10000) below zero. That re-bases like a producer
+  // restart; it must not wrap the gap count (dropped) around 2^64.
+  Capture cap;
+  FrameStream fs({50, 8}, cap.cbs());
+  mabur::Fragmenter frag;
+  std::vector<uint8_t> pay(100, 0xAB);
+  uint64_t t = 10;
+  for (uint16_t id : {uint16_t{0}, uint16_t{32768}, uint16_t{0}, uint16_t{65535}})
+    for (auto& p : frag_frame(frag, id, pay)) fs.push_fragment(0, p.data(), p.size(), t++);
+  CHECK(fs.frames_dropped() < 8);
+}
+
+TEST(two_slots_with_one_frame_id_do_not_nest) {
+  // A repeated frame id on another layer: the second slot must not begin
+  // while the first is open (the AU sink would drop the open AU's bytes).
+  Capture cap;
+  FrameStream fs({50, 8}, cap.cbs());
+  mabur::Fragmenter fa, fb;
+  std::vector<uint8_t> pay(400, 0x11);   // three fragments: frame stays open
+  const auto a = frag_frame(fa, 5, pay), b = frag_frame(fb, 5, pay);
+  REQUIRE(a.size() > 1);
+  fs.push_fragment(1, a[0].data(), a[0].size(), 10);
+  fs.push_fragment(0, b[0].data(), b[0].size(), 10);
+  fs.poll(1000);
+  for (size_t i = 1; i < cap.evs.size(); ++i) CHECK(!(cap.evs[i - 1].kind == 'B' && cap.evs[i].kind == 'B'));
+  REQUIRE(cap.evs.size() == 2);   // the first slot's B, E; the twin is late
+  CHECK(cap.evs[0].sid == 1);
+  CHECK(fs.frames_dropped() >= 1);
+}
+
+TEST(forged_frame_ahead_does_not_freeze_the_stream) {
+  // A 120 fps stream; one frame with an id 200 ahead arrives on the other
+  // layer every 240 ms. Skipping to it would make every real frame late, and
+  // each emitted forged frame would disarm the stall watchdog: no real frame
+  // again. The lone frame is dropped instead.
+  Capture cap;
+  FrameStream fs({50, 8, 500}, cap.cbs());
+  mabur::Fragmenter real, forged;
+  std::vector<uint8_t> pay(100, 0xAB);
+  uint64_t t = 10;
+  int forged_n = 0;
+  for (uint16_t id = 0; id < 600; ++id, t += 8) {
+    for (auto& p : frag_frame(real, id, pay)) fs.push_fragment(0, p.data(), p.size(), t);
+    if (id % 30 == 5) {
+      for (auto& p : frag_frame(forged, static_cast<uint16_t>(id + 200), pay))
+        fs.push_fragment(1, p.data(), p.size(), t + 1);
+      ++forged_n;
+    }
+    fs.poll(t + 4);
+  }
+  CHECK(fs.frames_clean() == 600);
+  CHECK(fs.stall_resets() == 0);
+  CHECK(fs.frames_dropped() == static_cast<uint64_t>(forged_n));
+  for (const auto& e : cap.evs) CHECK(e.kind != 'B' || e.sid == 0);
+}
+
+TEST(outage_jump_waits_for_a_second_frame_or_the_gap_timeout) {
+  Capture cap;
+  FrameStream fs({50, 8, 500}, cap.cbs());
+  mabur::Fragmenter frag;
+  std::vector<uint8_t> pay(100, 0xAB);
+  for (uint16_t id = 0; id < 10; ++id)
+    for (auto& p : frag_frame(frag, id, pay)) fs.push_fragment(0, p.data(), p.size(), 10 + id);
+  // 190 frames lost; the stream resumes at 200: emitted once 201 confirms.
+  for (auto& p : frag_frame(frag, 200, pay)) fs.push_fragment(0, p.data(), p.size(), 400);
+  CHECK(fs.frames_clean() == 10);
+  for (auto& p : frag_frame(frag, 201, pay)) fs.push_fragment(0, p.data(), p.size(), 408);
+  CHECK(fs.frames_clean() == 12);
+  CHECK(fs.frames_dropped() == 190);
+  // Another outage, and only one frame survives it: nothing was emitted
+  // after it arrived, so the gap timeout lets it through.
+  for (auto& p : frag_frame(frag, 400, pay)) fs.push_fragment(0, p.data(), p.size(), 800);
+  fs.poll(840);
+  CHECK(fs.frames_clean() == 12);
+  fs.poll(851);
+  CHECK(fs.frames_clean() == 13);
+}
