@@ -165,9 +165,9 @@ GS image: `firmware/build.sh <board>` (Buildroot into
 `echo 'firmware/build.sh <board>; echo "exit=$?" >> LOG' | nix-shell firmware/shell.nix`,
 and read the log: `nix-shell --run` silently does nothing there and the
 wrapper always exits 0. `MABUR_DIR=$PWD/../mabur` builds against a sibling
-mabur. Images are hours, so PRs do not build them; start a test build with
-`gh workflow run firmware.yml --ref <branch>` (ask first: it is CI time and
-posts on the PR). The shell pieces have host tests:
+mabur. Images are hours, so PRs do not build them; start a test build by
+labelling the PR `build-images` (`gh pr edit <N> --add-label build-images`;
+each labelling is one build; ask first: it is CI time and posts on the PR). The shell pieces have host tests:
 `sh firmware/tests/<name>.test.sh` (`carve-part` needs `parted`).
 
 **The standing regression gate for any maburgs change is

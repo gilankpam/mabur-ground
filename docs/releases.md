@@ -14,10 +14,13 @@ mabur commit it pins at `third_party/mabur`. Flashing and upgrading a board:
 |---|---|---|---|---|
 | **Snapshot** | a push to master touching `gs/`, `firmware/`, the mabur pin, `tools/release.py`, `tools/maburtop.py` or the workflow | the `snapshot` pre-release, replaced each time | anyone | until the next build |
 | **Release** | a pushed `v*` tag | a permanent GitHub release, marked Latest | anyone | forever |
-| **Test build** | a manual run: `gh workflow run firmware.yml --ref <branch>` | the run's artifacts, listed by one comment on the branch's open PR (edited per run) | anyone logged in to GitHub | 14 days |
+| **Test build** | the `build-images` label put on a PR (or a manual run, `gh workflow run firmware.yml --ref <branch>`) | the run's artifacts, listed by one comment on the PR (edited per run) | anyone logged in to GitHub | 14 days |
 
 PRs do not build images by themselves: four boards are hours of Buildroot.
-Start a test build when a PR needs images on the bench. A newer run cancels
+Label a PR `build-images` when it needs images on the bench; each time the
+label is put on is one build of the PR's head (remove it and put it back to
+build again). The label works on a PR that adds or changes the workflow
+itself; a manual run only works once the workflow is on master. A newer run cancels
 the older one of the same branch; a tag build is never cancelled.
 
 Files, where `<version>` is the tag, `snapshot-<sha8>` or `pr<N>-<sha8>`:

@@ -5,10 +5,13 @@ name: Firmware
 # (docs/releases.md):
 #   master push        -> replaces the `snapshot` pre-release (after pin-check)
 #   v* tag             -> tools/release.py check, then a permanent release
-#   manual run         -> on master like a push; on another branch the run's
-#                         artifacts (14 days) plus one comment on its open PR
+#   `build-images` label on a PR, or a manual run on a branch
+#                      -> the run's artifacts (14 days) plus one comment on
+#                         the PR; a manual run on master is a master push
 # PRs do not build images on their own: a full Buildroot run per board is
-# hours. Run `gh workflow run firmware.yml --ref <branch>` when a PR needs one.
+# hours. Label the PR `build-images` (each labelling is one build) when it
+# needs images; the label works before this workflow is on master, which a
+# manual run (`gh workflow run firmware.yml --ref <branch>`) does not.
 on:
   # GitHub does not evaluate path filters for tag pushes, so every v* tag
   # builds; on master a push that touches nothing in an image leaves the
@@ -23,6 +26,8 @@ on:
       - 'tools/release.py'
       - 'tools/maburtop.py'
       - '.github/workflows/firmware.yml'
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
 
 # A newer push to a branch or master makes the older build worthless; a tag
@@ -34,17 +39,20 @@ concurrency:
 
 jobs:
   version:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'build-images'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
       kind: ${{ steps.v.outputs.kind }}
       pr: ${{ steps.v.outputs.pr }}
+      sha: ${{ steps.v.outputs.sha }}
       devourer: ${{ steps.v.outputs.devourer }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           submodules: true
       # The pin and version rules read mabur's master and tags.
@@ -53,9 +61,15 @@ jobs:
           git -C third_party/mabur fetch --unshallow --tags origin '+refs/heads/master:refs/remotes/origin/master' ||
             git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'
       - id: v
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          sha=${GITHUB_SHA:0:8} pr=
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
+          full=${PR_SHA:-$GITHUB_SHA} pr=
+          sha=${full:0:8}
+          if [ -n "$PR" ]; then
+            kind="pr" pr=$PR version=pr$PR-$sha
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
             # The rules: a pin off mabur master, or a minor whose contract
             # matches no mabur release of that minor, fails here before
             # anything is built or published.
@@ -72,7 +86,7 @@ jobs:
           devourer=$(git ls-remote https://github.com/gilankpam/devourer refs/heads/master | cut -f1)
           [ -n "$devourer" ] || { echo "cannot resolve devourer master"; exit 1; }
           {
-            echo "kind=$kind"; echo "version=$version"; echo "pr=$pr"
+            echo "kind=$kind"; echo "version=$version"; echo "pr=$pr"; echo "sha=$full"
             echo "devourer=$devourer"
           } | tee -a "$GITHUB_OUTPUT"
 
@@ -97,6 +111,7 @@ jobs:
         run: df -hT
       - uses: actions/checkout@v5
         with:
+          ref: ${{ needs.version.outputs.sha }}
           # Top level only: devourer is its own Buildroot package, never
           # mabur's third_party/devourer.
           submodules: true
@@ -169,9 +184,11 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       KIND: ${{ needs.version.outputs.kind }}
       PR: ${{ needs.version.outputs.pr }}
+      SHA: ${{ needs.version.outputs.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 0
           submodules: true
       - name: Fetch mabur history
@@ -186,7 +203,7 @@ jobs:
       - name: Notes
         if: needs.version.outputs.kind != 'pr'
         run: |
-          python3 tools/release.py notes --version "$VERSION" --sha "$GITHUB_SHA" \
+          python3 tools/release.py notes --version "$VERSION" --sha "$SHA" \
             $(for f in dist/build-info-*.txt; do echo --build-info "$f"; done) \
             --files dist > notes.md
           cat notes.md
@@ -194,7 +211,7 @@ jobs:
         if: needs.version.outputs.kind == 'pr'
         run: |
           {
-            echo "**GS image test build** for \`${GITHUB_SHA:0:8}\` (\`$VERSION\`)"
+            echo "**GS image test build** for \`${SHA:0:8}\` (\`$VERSION\`)"
             echo
             for f in dist/*.img dist/*.scr dist/*.bin dist/*.tar.gz; do
               [ -f "$f" ] && echo "- \`$(basename "$f")\`"
@@ -216,7 +233,7 @@ jobs:
         run: |
           gh release delete snapshot --cleanup-tag -y || true
           gh release create snapshot dist/mabur-ground-* --prerelease --latest=false \
-            --target "$GITHUB_SHA" --title "snapshot (${GITHUB_SHA:0:8})" --notes-file notes.md
+            --target "$SHA" --title "snapshot (${SHA:0:8})" --notes-file notes.md
       # Each file also goes up under its unversioned name: the images'
       # sysupgrade URL is releases/latest/download/<board>.tar.gz.
       - name: Release
