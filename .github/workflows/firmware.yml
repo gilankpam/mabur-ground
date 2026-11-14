@@ -1,0 +1,231 @@
+name: Firmware
+
+# Builds the GS images for all four boards (firmware/build.sh) from the commit
+# that triggered it. What happens to the images depends on the trigger
+# (docs/releases.md):
+#   master push        -> replaces the `snapshot` pre-release (after pin-check)
+#   v* tag             -> tools/release.py check, then a permanent release
+#   manual run         -> on master like a push; on another branch the run's
+#                         artifacts (14 days) plus one comment on its open PR
+# PRs do not build images on their own: a full Buildroot run per board is
+# hours. Run `gh workflow run firmware.yml --ref <branch>` when a PR needs one.
+on:
+  # GitHub does not evaluate path filters for tag pushes, so every v* tag
+  # builds; on master a push that touches nothing in an image leaves the
+  # snapshot as it is.
+  push:
+    branches: [master]
+    tags: ['v*']
+    paths:
+      - 'gs/**'
+      - 'firmware/**'
+      - 'third_party/mabur'
+      - 'tools/release.py'
+      - 'tools/maburtop.py'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+# A newer push to a branch or master makes the older build worthless; a tag
+# run is never cancelled, because a half-published release is worse than a
+# duplicate build.
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      kind: ${{ steps.v.outputs.kind }}
+      pr: ${{ steps.v.outputs.pr }}
+      devourer: ${{ steps.v.outputs.devourer }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: true
+      # The pin and version rules read mabur's master and tags.
+      - name: Fetch mabur history
+        run: |
+          git -C third_party/mabur fetch --unshallow --tags origin '+refs/heads/master:refs/remotes/origin/master' ||
+            git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'
+      - id: v
+        run: |
+          sha=${GITHUB_SHA:0:8} pr=
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            # The rules: a pin off mabur master, or a minor whose contract
+            # matches no mabur release of that minor, fails here before
+            # anything is built or published.
+            python3 tools/release.py check "$GITHUB_REF_NAME"
+            kind=release version=$GITHUB_REF_NAME
+          elif [ "$GITHUB_REF_NAME" = master ]; then
+            python3 tools/release.py pin-check
+            kind=snapshot version=snapshot-$sha
+          else
+            kind="pr"
+            pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --json number -q '.[0].number')
+            if [ -n "$pr" ]; then version=pr$pr-$sha; else version=$(echo "$GITHUB_REF_NAME" | tr '/' '-')-$sha; fi
+          fi
+          devourer=$(git ls-remote https://github.com/gilankpam/devourer refs/heads/master | cut -f1)
+          [ -n "$devourer" ] || { echo "cannot resolve devourer master"; exit 1; }
+          {
+            echo "kind=$kind"; echo "version=$version"; echo "pr=$pr"
+            echo "devourer=$devourer"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    # Pinned: the ubuntu-26.04 image behind ubuntu-latest has no
+    # qemu-user-static package.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - radxa_zero3
+          - runcam_wifilink
+          - emax_wyvern-link
+          - orangepi_zero2w
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DEVOURER_VERSION: ${{ needs.version.outputs.devourer }}
+    steps:
+      - name: Display free disk space
+        run: df -hT
+      - uses: actions/checkout@v5
+        with:
+          # Top level only: devourer is its own Buildroot package, never
+          # mabur's third_party/devourer.
+          submodules: true
+      # The runner's root disk is too small for a Buildroot output; /mnt has
+      # room.
+      - name: Prepare
+        run: |
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          sudo apt update
+          sudo apt install -y cpio rsync bc qemu-user-static binfmt-support
+          sudo mkdir -p /mnt/workspace
+          sudo chown "$USER:$USER" /mnt/workspace
+          rsync -a "$GITHUB_WORKSPACE/" /mnt/workspace/
+      # Unique key per run: actions/cache never re-saves on an exact key hit,
+      # so a fixed key freezes the cache at its first save. Restore the newest
+      # one by prefix and save a fresh one after every build.
+      - name: Restore ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/ccache
+          key: ${{ matrix.board }}-ccache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ matrix.board }}-ccache-
+      - name: Build
+        working-directory: /mnt/workspace
+        run: |
+          mkdir -p /tmp/ccache
+          export BR2_CCACHE_DIR=/tmp/ccache
+          # Four boards share the 10 GB repo cache quota.
+          export CCACHE_MAXSIZE=2G
+          bash firmware/build.sh "${{ matrix.board }}"
+      - name: ccache stats
+        if: always()
+        working-directory: /mnt/workspace
+        run: BR_CACHE_DIR=/tmp/ccache firmware/output/${{ matrix.board }}/host/bin/ccache -s || true
+      # Saved even when the build fails or is cancelled: a half-finished LLVM
+      # compile is still worth keeping for the next run.
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/ccache
+          key: ${{ matrix.board }}-ccache-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Collect
+        run: |
+          b=${{ matrix.board }}
+          img=/mnt/workspace/firmware/output/$b/images
+          mkdir -p dist
+          for f in ${b}_sdcard.img ${b}_boot.scr ${b}_u-boot.bin ${b}_emmc_bootloader.img ${b}.tar.gz; do
+            [ -f "$img/$f" ] && cp "$img/$f" "dist/mabur-ground-$VERSION-$f"
+          done
+          [ -f "dist/mabur-ground-$VERSION-$b.tar.gz" ] || { echo "no sysupgrade tarball"; exit 1; }
+          cp "$img/build-info.txt" "dist/build-info-$b.txt"
+          ls -l dist
+      - uses: actions/upload-artifact@v5
+        with:
+          name: fw-${{ matrix.board }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+      KIND: ${{ needs.version.outputs.kind }}
+      PR: ${{ needs.version.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: Fetch mabur history
+        run: |
+          git -C third_party/mabur fetch --unshallow --tags origin '+refs/heads/master:refs/remotes/origin/master' ||
+            git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: fw-*
+          path: dist
+          merge-multiple: true
+      - name: Notes
+        if: needs.version.outputs.kind != 'pr'
+        run: |
+          python3 tools/release.py notes --version "$VERSION" --sha "$GITHUB_SHA" \
+            $(for f in dist/build-info-*.txt; do echo --build-info "$f"; done) \
+            --files dist > notes.md
+          cat notes.md
+      - name: PR comment text
+        if: needs.version.outputs.kind == 'pr'
+        run: |
+          {
+            echo "**GS image test build** for \`${GITHUB_SHA:0:8}\` (\`$VERSION\`)"
+            echo
+            for f in dist/*.img dist/*.scr dist/*.bin dist/*.tar.gz; do
+              [ -f "$f" ] && echo "- \`$(basename "$f")\`"
+            done
+            echo
+            echo "Download from the run page (GitHub login needed), kept 14 days:"
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > comment.md
+      - uses: marocchino/sticky-pull-request-comment@v2
+        if: needs.version.outputs.kind == 'pr' && needs.version.outputs.pr != ''
+        with:
+          header: firmware
+          number: ${{ needs.version.outputs.pr }}
+          path: comment.md
+      # One rolling pre-release, never Latest, so an online upgrade only ever
+      # takes a release.
+      - name: Snapshot
+        if: needs.version.outputs.kind == 'snapshot'
+        run: |
+          gh release delete snapshot --cleanup-tag -y || true
+          gh release create snapshot dist/mabur-ground-* --prerelease --latest=false \
+            --target "$GITHUB_SHA" --title "snapshot (${GITHUB_SHA:0:8})" --notes-file notes.md
+      # Each file also goes up under its unversioned name: the images'
+      # sysupgrade URL is releases/latest/download/<board>.tar.gz.
+      - name: Release
+        if: needs.version.outputs.kind == 'release'
+        run: |
+          mkdir -p latest
+          for f in dist/mabur-ground-"$VERSION"-*; do
+            cp "$f" "latest/${f#dist/mabur-ground-"$VERSION"-}"
+          done
+          ls -l latest
+          gh release create "$VERSION" dist/mabur-ground-* latest/* --verify-tag \
+            --title "$VERSION" --notes-file notes.md --latest
