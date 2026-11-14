@@ -1,3 +1,7 @@
+# Shared by the three RK3566 boards (radxa_zero3, runcam_wifilink,
+# emax_wyvern-link). firmware/build.sh appends <board>.fragment, which sets
+# the overlay list and the factory-reset / gadget-mode pins, and writes the
+# result as output/<board>/<board>_defconfig.
 BR2_aarch64=y
 BR2_cortex_a55=y
 BR2_CCACHE=y
@@ -11,7 +15,6 @@ BR2_TARGET_GENERIC_PASSWD_SHA512=y
 # BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW is not set
 BR2_ENABLE_LOCALE_WHITELIST="C en_US en_US.UTF-8"
 BR2_GENERATE_LOCALE="C.UTF-8 en_US.UTF-8"
-BR2_ROOTFS_OVERLAY="${BR2_EXTERNAL_MABUR_GS_PATH}/board/common/overlay ${BR2_EXTERNAL_MABUR_GS_PATH}/board/emax/wyvern-link/overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="${BR2_EXTERNAL_MABUR_GS_PATH}/board/common/post-build-script.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh ${BR2_EXTERNAL_MABUR_GS_PATH}/board/common/gen-boot-scr.sh"
 BR2_ROOTFS_POST_SCRIPT_ARGS="-c ${BR2_EXTERNAL}/board/common/genimage.cfg"
@@ -102,7 +105,5 @@ BR2_PACKAGE_AIC8800=y
 BR2_PACKAGE_WIRELESS_REGDB=y
 BR2_PACKAGE_MABUR=y
 BR2_BOARD_GPIO_CONFIG_PIN_NAME=y
-BR2_FACTORY_RESET_GPIO_PIN_NAME="PIN_32"
-BR2_GADGET_MODE_GPIO_PIN_NAME="PIN_38"
 BR2_PACKAGE_LRZSZ=y
 BR2_PACKAGE_DNSMASQ=y
