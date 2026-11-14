@@ -110,7 +110,7 @@ the topology is:
 
 - video on the overlay NV12 (VI) plane at zpos 1, scaled to the mode
   (the image's DE33 scaler kernel patch,
-  `board/orangepi/zero2w/linux-patches/` in the image repo). NV12 goes
+  `firmware/board/orangepi/zero2w/linux-patches/`). NV12 goes
   through the scaler even at 1:1, for chroma upsampling, and its
   coefficient tables sit in SRAM that drops CPU writes unless the DE
   top's LUT access bit (`0xe0` bit 0, clock register space) is set; the
@@ -150,7 +150,7 @@ Bench records: [`docs/findings/2026-10-12-opi-zero2w-bringup.md`](https://github
 ## Build and deploy
 
 `tools/build-arm64.sh` stage 7 builds `out/arm64/maburplay-opi` against
-`../sbc-groundstations-gilankpam/output/orangepi_zero2w_defconfig`
+`firmware/output/orangepi_zero2w`
 (override with `MABUR_BR_HOST_OPI=`). NEEDED: `libavcodec.so.61`,
 `libavutil`, `libdrm.so.2`, libstdc++. Stage 7 also needs that sysroot's
 libavcodec to carry mabur's FFmpeg patch (`gs/player/ffmpeg-patches/`) and
