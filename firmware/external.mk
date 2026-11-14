@@ -1,0 +1,38 @@
+include $(sort $(wildcard $(BR2_EXTERNAL_MABUR_GS_PATH)/package/*/*.mk))
+
+# we don't need cland on target
+define CLANG_DELETE_TARGET
+	rm -rf $(TARGET_DIR)/usr/include/clang-c \
+		$(TARGET_DIR)/usr/include/clang \
+		$(TARGET_DIR)/usr/include/clang \
+		$(TARGET_DIR)/usr/lib/libclang* \
+		$(TARGET_DIR)/usr/lib/cmake/clang* \
+		$(TARGET_DIR)/usr/lib/libclang* \
+		$(TARGET_DIR)/usr/lib/clang \
+		$(TARGET_DIR)/usr/share/man/man1/scan-build.1 \
+		$(TARGET_DIR)/usr/bin/diagtool \
+		$(TARGET_DIR)/usr/bin/hmaptool \
+		$(TARGET_DIR)/usr/bin/analyze-build \
+		$(TARGET_DIR)/usr/bin/scan-build-py \
+		$(TARGET_DIR)/usr/bin/intercept-build \
+		$(TARGET_DIR)/usr/bin/amdgpu-arch \
+		$(TARGET_DIR)/usr/bin/nvptx-arch \
+		$(TARGET_DIR)/usr/libexec/intercept-cc \
+		$(TARGET_DIR)/usr/libexec/analyze-cc \
+		$(TARGET_DIR)/usr/libexec/analyze-c++ \
+		$(TARGET_DIR)/usr/libexec/intercept-c++ \
+		$(TARGET_DIR)/usr/lib/libear \
+		$(TARGET_DIR)/usr/lib/libscanbuild \
+		$(TARGET_DIR)/usr/lib/cmake
+endef
+CLANG_POST_INSTALL_TARGET_HOOKS += CLANG_DELETE_TARGET
+
+# we do not need libclc on target
+define LIBCLC_DELETE_TARGET
+	rm -rf $(TARGET_DIR)/usr/share/clc
+endef
+LIBCLC_POST_INSTALL_TARGET_HOOKS += LIBCLC_DELETE_TARGET
+
+# ffmpeg with the V4L2 Request hwaccel (Cedrus) is now the standalone
+# package/ffmpeg-v4l2request (jernejsk 7.1 fork, downloaded + patched by
+# Buildroot's normal package machinery), replacing the OVERRIDE_SRCDIR setup.

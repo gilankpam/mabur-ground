@@ -1,0 +1,6 @@
+
+ mabur GS -- the ground station of mabur, an RTP-free FPV video link.
+
+ Config: /config (maburgs.toml, maburplay.toml, wifi.toml)
+ Logs:   maburtop   Docs: https://github.com/gilankpam/mabur-ground
+

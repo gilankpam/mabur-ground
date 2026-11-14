@@ -47,6 +47,15 @@ checkout instead of the submodule (a change that spans both repos), add
 builds for the Radxa and the Orange Pi Zero 2W. It honours `MABUR_DIR`.
 Run it outside any `nix-shell` wrapper.
 
+## GS images
+
+`firmware/` builds the ground station's SD/eMMC images (Buildroot) for the
+RunCam WiFiLink, the Emax Wyvern-Link, the Radxa ZERO 3 and the Orange Pi
+Zero 2W, from this tree. Download them from this repo's
+[releases](https://github.com/gilankpam/mabur-ground/releases): GS `v0.M.x`
+pairs with drone `v0.M.x`. Flashing and upgrading: `docs/gs-image.md`;
+releases, versions and building locally: `docs/releases.md`.
+
 ## MSP DisplayPort OSD (ground-side)
 
 Set `msp.enable=true` on the drone (`mabur.toml`) and GS (`maburgs.toml`);

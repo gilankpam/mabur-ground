@@ -120,15 +120,14 @@ refused for the whole file.
 
 maburplay is glibc-dynamic (Mesa EGL/GBM cannot be linked
 statically). `tools/build-arm64.sh` stage 6 builds it with the Buildroot SDK
-in `../sbc-groundstations-gilankpam/output/radxa_zero3_defconfig/host`
-(`MABUR_BR_HOST` overrides). That sysroot must contain mesa3d + librga:
+of the image build, `firmware/output/radxa_zero3/host` (`MABUR_BR_HOST`
+overrides). That sysroot must contain mesa3d + librga; a full
+`firmware/build.sh radxa_zero3` has them, or build just those two:
 
-    cd ../sbc-groundstations-gilankpam
-    make -C buildroot O=$PWD/output/radxa_zero3_defconfig BR2_EXTERNAL=$PWD radxa_zero3_defconfig
-    make -j$(nproc) -C buildroot O=$PWD/output/radxa_zero3_defconfig BR2_EXTERNAL=$PWD mesa3d librga
+    echo 'firmware/build.sh radxa_zero3 mesa3d && firmware/build.sh radxa_zero3 librga' | nix-shell firmware/shell.nix
 
-The defconfig must also set `BR2_PACKAGE_MESA3D_LLVM=y` (already committed in
-the sbc-groundstations repo). Without it, Buildroot's Kconfig **silently
+The defconfig must also set `BR2_PACKAGE_MESA3D_LLVM=y` (it is, in
+`firmware/configs/rk3566_common.fragment`). Without it, Buildroot's Kconfig **silently
 drops** `BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST` — panfrost hard-`depends
 on` LLVM in Buildroot 2025.08.1 — which in turn drops EGL, GBM and GLES from
 the built sysroot. The `make mesa3d librga` step above still reports success;
@@ -154,7 +153,7 @@ build. maburgs stays static.
 
 Confirm the dynamic build's actual link list with:
 
-    ../sbc-groundstations-gilankpam/output/radxa_zero3_defconfig/host/bin/aarch64-none-linux-gnu-readelf -d out/arm64/maburplay | grep NEEDED
+    firmware/output/radxa_zero3/host/bin/aarch64-none-linux-gnu-readelf -d out/arm64/maburplay | grep NEEDED
 
 which on the current build reads: `libEGL.so.1`, `libGLESv2.so.2`,
 `libgbm.so.1`, `librga.so.2`, `libdrm.so.2`, `librockchip_mpp.so.1`, plus the

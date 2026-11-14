@@ -31,6 +31,15 @@ spans both repos point it at the sibling checkout:
 mabur-ground PR that follows it bumps the submodule, and each links the
 other. mabur's CI builds this repo's master against every mabur PR.
 
+**The pin rule — enforced, not advice.** A PR may pin `third_party/mabur`
+to a mabur branch commit (that is how a cross-repo PR gets CI and a test
+image). Master and `v*` tags must pin a commit on mabur master: mabur merges
+first, then the pin moves to its merge commit. `tools/release.py pin-check`
+fails a master image build otherwise, and `check` fails such a tag.
+
+`firmware/` builds the GS images (Buildroot; `docs/releases.md`). They are
+released here, not in a separate image repo.
+
 ## Where to look — read the doc, don't guess
 
 This file is deliberately short. The detail lives in `docs/` here and in
@@ -85,6 +94,8 @@ Doc rules:
 | the Orange Pi Zero 2W GS (H618): the v4l2req decoder (V4l2ReqBackend, libav v4l2request → Cedrus), MABUR_PLAYER_DECODER, build stage 7, what the board cannot do | `docs/opi-zero2w.md` |
 | the CPE510 relay card (mabur-relay protocol v4, maburgs RemoteCard + radio.relays, web GS relay mode, relay TX, interference sweep/hop on a relay) | `docs/cpe510-relay.md` |
 | ladder rungs, promote/demote, s3 probes, fade, attribution, RCF drain, the drone's encoder verbs + IDR pacing, the disarmed low-power mode | `../mabur/docs/link-adaptation.md` |
+| the GS image build (`firmware/`: boards, packages, `build.sh`), snapshots / test builds / releases, the version and pin rules, `tools/release.py` | `docs/releases.md` |
+| flashing and upgrading a GS image, `sysupgrade`, the CONFIG partition, factory reset, gadget mode | `docs/gs-image.md` |
 | the GS install script, where things live on the Radxa / OPi / CPE510, the GS image p1 swap | `docs/deploy.md` |
 | flag days, the config-load crash loop, the clean deploy sequence, pairing, the flag-day checklist | `../mabur/docs/deploy.md` |
 | comparing recordings, metric scales, removed sideport keys | `../mabur/docs/data-provenance.md` |
@@ -118,6 +129,22 @@ and their in-repo consumers — `tools/maburtop.py`, `tools/flightreport.py`
 (which reads both the sideport jsonl and the session directory's log
 files), `gs/player`'s OSD — are fixed **in the same commit** as the change.
 
+**Release versions — a rule, not advice.** GS releases are
+`v0.MINOR.PATCH`, and MINOR is the drone release minor they pair with: GS
+`v0.M.x` works with drone `v0.M.x` (`docs/releases.md`).
+
+- A drone↔GS contract change (`RC_VERSION`, a `CAP_*` bit, the drone
+  parameter table, a removed drone config key) is tagged in mabur first
+  (`v0.(M+1).0`), then here with the same minor. A mabur patch release needs
+  no GS release; a GS-only change is the next GS patch.
+- Before proposing or pushing any `v*` tag, tag locally, run
+  `python3 tools/release.py check <tag>` (it needs mabur's tags and master
+  fetched in the submodule), and state the result. It refuses a pin off
+  mabur master, a minor with no mabur release, a pin whose contract differs
+  from that release, and a tag not above the last one.
+- Never re-tag or delete a published release; a mistake is fixed by the
+  next number.
+
 ## Build & test
 
 The dev box keeps the repos as siblings: `../mabur`, `../mabur-ground`,
@@ -132,6 +159,16 @@ nhm-reset-probe, encosd; honours `MABUR_DIR`). It must run bare, never
 inside that `nix-shell` wrapper — Nix's pkg-config wrapper overrides
 `PKG_CONFIG_LIBDIR` and breaks its stage 6 glibc build.
 Never load the 8812eu kernel module on the GS cards.
+
+GS image: `firmware/build.sh <board>` (Buildroot into
+`firmware/output/<board>/`). On NixOS pipe it into the FHS shell,
+`echo 'firmware/build.sh <board>; echo "exit=$?" >> LOG' | nix-shell firmware/shell.nix`,
+and read the log: `nix-shell --run` silently does nothing there and the
+wrapper always exits 0. `MABUR_DIR=$PWD/../mabur` builds against a sibling
+mabur. Images are hours, so PRs do not build them; start a test build by
+labelling the PR `build-images` (`gh pr edit <N> --add-label build-images`;
+each labelling is one build; ask first: it is CI time and posts on the PR). The shell pieces have host tests:
+`sh firmware/tests/<name>.test.sh` (`carve-part` needs `parted`).
 
 **The standing regression gate for any maburgs change is
 `tools/bench/ausniff.py`**, which reads the AU ring from outside the

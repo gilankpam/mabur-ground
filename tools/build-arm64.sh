@@ -176,10 +176,10 @@ export MABUR_DRM_ROOT="$PWD/toolchain/drm-arm64"
 MPP_REF=14729dd578e570e5f00fd1dd2113f5429012d64b
 
 # fpvOS rkvdec2 stream-mode patches (docs/slices.md "Part 2"), ported to
-# MPP_REF. CANONICAL here: sbc-groundstations-gilankpam's
-# package/rockchip-mpp/ carries byte-identical copies, so the GS image's
-# shared librockchip_mpp is the same decoder as this static one -- change
-# them here first, then copy them there.
+# MPP_REF. The GS image's rockchip-mpp package (firmware/package/rockchip-mpp)
+# applies these same files at the same ref, so its shared librockchip_mpp is
+# the same decoder as this static one; firmware/tests/mpp-ref.test.sh fails
+# when the two refs drift.
 # What MPP_REF (14729dd5) is, checked when porting (2026-10):
 #  - no libmpp_ext.so split: every codec lives in librockchip_mpp;
 #  - the h265d hal's fast_mode = base:fast_parse && support_fast_mode, read
@@ -344,7 +344,7 @@ cp gs/player/bundle/maburplay.default.toml out/arm64/maburplay.default.toml
 # no EGL/rga headers, a colortrans compile error) must not leave a stale
 # binary from a previous run sitting where the deploy step will find it.
 rm -f out/arm64/maburplay out/arm64/maburgs
-MABUR_BR_HOST="${MABUR_BR_HOST:-$PWD/../sbc-groundstations-gilankpam/output/radxa_zero3_defconfig/host}"
+MABUR_BR_HOST="${MABUR_BR_HOST:-$PWD/firmware/output/radxa_zero3/host}"
 BR_SYSROOT="$MABUR_BR_HOST/aarch64-buildroot-linux-gnu/sysroot"
 [ -x "$MABUR_BR_HOST/bin/aarch64-none-linux-gnu-gcc" ] || {
   echo "error: Buildroot toolchain not found at $MABUR_BR_HOST (set MABUR_BR_HOST)" >&2; exit 1; }
@@ -424,12 +424,12 @@ echo "$_needed" | grep -q "\[libusb-1.0.so.0\]" || {
 # --- 7. maburplay for the Orange Pi Zero 2W (Allwinner H618) --------------
 #        Same glibc toolchain file as stage 6, pointed at the OPi Buildroot
 #        output. The decoder is Cedrus through libav's v4l2request hwaccel
-#        (the image repo's ffmpeg-v4l2request package), so the binary links
+#        (the image build's ffmpeg-v4l2request package), so the binary links
 #        libavcodec/libavutil from that sysroot; no MPP, no GPU stage, no
 #        burned DVR. Skipped (with a note) when that output does not exist,
 #        so a Radxa-only checkout still builds stages 1-6.
 rm -f out/arm64/maburplay-opi out/arm64/maburgs-opi out/arm64/v4l2req_streamcheck
-MABUR_BR_HOST_OPI="${MABUR_BR_HOST_OPI:-$PWD/../sbc-groundstations-gilankpam/output/orangepi_zero2w_defconfig/host}"
+MABUR_BR_HOST_OPI="${MABUR_BR_HOST_OPI:-$PWD/firmware/output/orangepi_zero2w/host}"
 OPI_SYSROOT="$MABUR_BR_HOST_OPI/aarch64-buildroot-linux-gnu/sysroot"
 if [ ! -x "$MABUR_BR_HOST_OPI/bin/aarch64-none-linux-gnu-gcc" ]; then
   echo "note: no Orange Pi Buildroot output at $MABUR_BR_HOST_OPI -- skipping maburplay-opi" >&2
@@ -451,8 +451,8 @@ else
     echo "       Buildroot output first" >&2; exit 1; }
   grep -q "AV_PKT_FLAG_PARTIAL" "$OPI_SYSROOT/usr/include/libavcodec/packet.h" || {
     echo "error: the OPi sysroot's libavcodec lacks mabur's stream patch -- rebuild" >&2
-    echo "       ffmpeg-v4l2request with gs/player/ffmpeg-patches (image repo" >&2
-    echo "       package/ffmpeg-v4l2request/0002-*)" >&2; exit 1; }
+    echo "       ffmpeg-v4l2request (firmware/build.sh orangepi_zero2w), which applies" >&2
+    echo "       gs/player/ffmpeg-patches" >&2; exit 1; }
   (
     unset CPATH
     export MABUR_BR_HOST="$MABUR_BR_HOST_OPI"

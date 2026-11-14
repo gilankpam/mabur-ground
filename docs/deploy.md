@@ -38,7 +38,7 @@ before the daemon is gone, and copying over a running binary fails with
   Buildroot sysroot (`tools/build-arm64.sh` stage 6 → `out/arm64/maburgs`,
   stage 7 → `out/arm64/maburgs-opi`). NEEDED: `libusb-1.0.so.0` plus
   libstdc++/libm/libgcc_s/libc and the loader, all on both images. The
-  image repo's own package builds it the same way. `out/arm64/maburgs-static`
+  image build (`firmware/package/mabur`) builds it the same way. `out/arm64/maburgs-static`
   is the musl-static build of the same daemon, a rollback that runs on any
   board but costs ~2 ms of GS latency per frame
   ([`docs/findings/2026-10-15-gs-musl-latency.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-gs-musl-latency.md)).
@@ -100,11 +100,11 @@ libstdc++. Its config must say `backend = "v4l2req"`, `dvr.mode = "raw"`
 maburplay needs mabur's FFmpeg patch in the board's libavcodec, so put the
 patched libavcodec on before (or together with) a new maburplay: a new
 maburplay against an unpatched libavcodec fails `init()` and the wrapper
-respawns it forever at 2 s. An image built from the image repo carries the
+respawns it forever at 2 s. An image built by `firmware/build.sh` carries the
 patch already; to put a rebuilt libavcodec on a board by hand, copy it
 onto the overlay, where it shadows the image's:
 
-    scp -O ../sbc-groundstations-gilankpam/output/orangepi_zero2w_defconfig/target/usr/lib/libavcodec.so.61.19.100 $GS:/usr/lib/
+    scp -O firmware/output/orangepi_zero2w/target/usr/lib/libavcodec.so.61.19.100 $GS:/usr/lib/
 
 and check `find /overlay/root/usr/lib -name 'libavcodec*'` after a later
 image flash (a stale copy there shadows the new image's).
@@ -121,8 +121,8 @@ serves DHCP on its LAN, 10.83.11.100-199, with **no router and no DNS**
 The GS boots U-Boot → `/boot/Image` + `/boot/extlinux/extlinux.conf`, read
 out of the squashfs on p1 (`/dev/mmcblk1p1`, 264160 KiB = 270,499,840
 bytes; U-Boot `CONFIG_CMD_SQUASHFS`). The kernel command line is the
-`append` line of that extlinux.conf (image repo:
-`board/common/overlay/boot/extlinux/extlinux.conf`), so a kernel parameter
+`append` line of that extlinux.conf
+(`firmware/board/common/overlay/boot/extlinux/extlinux.conf`), so a kernel parameter
 (`rk_vcodec.rkvdec2_stream=0`: the rkvdec2 driver is built in) means a new
 squashfs. Everything else the GS keeps — `/etc` configs,
 `/usr/local/bin/maburgs`/`maburplay` — lives on the overlayfs partition
@@ -137,7 +137,8 @@ Back up p1 first:
 (270,499,840 bytes); rollback is the same sequence with that file. The
 SD-card image stays the last resort if p1 does not boot.
 
-Flash any image `IMG` (from the image repo's `output/`):
+Flash any image `IMG` (`firmware/output/<board>/images/rootfs.squashfs`, or
+the `rootfs.squashfs` inside a release's `<board>.tar.gz`):
 
     IMG=<squashfs>; SZ=$(stat -c %s $IMG); MD5=$(md5sum < $IMG | cut -d' ' -f1)
     scp -O $IMG $GS:/tmp/p1.new.img
