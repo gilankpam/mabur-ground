@@ -333,6 +333,9 @@ endif()
 
 # Post-flight analysis test (requires Python 3; found at the top of this file)
 if(Python3_EXECUTABLE)
+  add_test(NAME test_release
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_release.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   add_test(NAME test_flightreport
     COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/test_flightreport.py
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
