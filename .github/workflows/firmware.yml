@@ -58,8 +58,8 @@ jobs:
       # The pin and version rules read mabur's master and tags.
       - name: Fetch mabur history
         run: |
-          git -C third_party/mabur fetch --unshallow --tags origin '+refs/heads/master:refs/remotes/origin/master' ||
-            git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'
+          git -C third_party/mabur fetch --unshallow --tags --force origin '+refs/heads/master:refs/remotes/origin/master' ||
+            git -C third_party/mabur fetch --tags --force origin '+refs/heads/master:refs/remotes/origin/master'
       - id: v
         env:
           PR: ${{ github.event.pull_request.number }}
@@ -193,8 +193,8 @@ jobs:
           submodules: true
       - name: Fetch mabur history
         run: |
-          git -C third_party/mabur fetch --unshallow --tags origin '+refs/heads/master:refs/remotes/origin/master' ||
-            git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'
+          git -C third_party/mabur fetch --unshallow --tags --force origin '+refs/heads/master:refs/remotes/origin/master' ||
+            git -C third_party/mabur fetch --tags --force origin '+refs/heads/master:refs/remotes/origin/master'
       - uses: actions/download-artifact@v5
         with:
           pattern: fw-*

@@ -87,7 +87,7 @@ git push origin v0.4.0
 ```
 
 `check` needs mabur's history in the submodule:
-`git -C third_party/mabur fetch --tags origin '+refs/heads/master:refs/remotes/origin/master'`.
+`git -C third_party/mabur fetch --tags --force origin '+refs/heads/master:refs/remotes/origin/master'`.
 If the check fails on GitHub: `git push origin :refs/tags/v0.4.0`, delete
 the local tag, and fix what it names (usually: tag mabur first).
 
