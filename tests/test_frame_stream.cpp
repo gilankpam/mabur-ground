@@ -827,8 +827,6 @@ TEST(whole_slices_never_use_frame_tail) {
   CHECK(cap.tail.empty());
 }
 
-MTEST_MAIN
-
 TEST(frame_id_walk_below_zero_rebases) {
   // Ids 0, 32768, 0, 65535: deltas of -32768 and -1 walk the unwrapped id
   // from the first base (0x10000) below zero. That re-bases like a producer
@@ -908,3 +906,5 @@ TEST(outage_jump_waits_for_a_second_frame_or_the_gap_timeout) {
   fs.poll(851);
   CHECK(fs.frames_clean() == 13);
 }
+
+MTEST_MAIN
