@@ -2,7 +2,7 @@
 """tools/release.py: the pin rule and the GS version rule.
 
 check_tag is pure. The git-backed helpers run against a throwaway mabur
-repo built here, carrying the pinned mabur's own tools/release.py so the
+repo built here, carrying the build's mabur's own tools/release.py so the
 contract is read by mabur's code, exactly as on a real check.
 """
 import os
@@ -13,6 +13,9 @@ import tempfile
 import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+# The mabur checkout the build uses (ctest passes CMake's MABUR_DIR): mabur's
+# CI builds this repo against its own tree with the submodule left empty.
+MABUR = os.environ.get("MABUR_DIR") or os.path.join(ROOT, "third_party", "mabur")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import release  # noqa: E402
 
@@ -90,7 +93,7 @@ class MaburRepo(unittest.TestCase):
         git(cls.repo, "config", "user.email", "t@example.com")
         git(cls.repo, "config", "user.name", "t")
         os.makedirs(os.path.join(cls.repo, "tools"))
-        shutil.copy(os.path.join(ROOT, "third_party", "mabur", "tools", "release.py"),
+        shutil.copy(os.path.join(MABUR, "tools", "release.py"),
                     os.path.join(cls.repo, "tools", "release.py"))
         cls.c1 = commit_contract(cls.repo, 18, "c1")
         git(cls.repo, "tag", "v0.1.0")
