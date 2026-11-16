@@ -374,6 +374,13 @@ Each takes `pin` (the header pin number, required), `active_low` (default
 `"pull-up"`). No table for a given button means that button is not
 wired; the five menu buttons are per-unit wiring and have no sensible
 shared default, so the shipped bundle leaves all five commented out.
+A GS image whose board has its own buttons wires them in its default
+(`firmware/board/common/maburplay-defaults.sh`): the RunCam WiFiLink's
+up/down/left/right are header pins 16/18/13/38, active-high
+(`active_low = false`, `bias = "pull-down"`), with no `sel`. The defaults
+reach `/config/maburplay.toml` only on a first boot or after the file is
+deleted, so a WiFiLink set up before this keeps its menu off until its
+file gets the four tables.
 
 `[menu]` has two keys, both persisted across a boot and both reaching the
 running menu on its next tick when set live on 8403 — no presenter

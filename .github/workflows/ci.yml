@@ -87,5 +87,6 @@ jobs:
       - run: sh firmware/tests/carve-part.test.sh
       - run: sh firmware/tests/wifi-config.test.sh
       - run: sh firmware/tests/pack-images.test.sh
+      - run: sh firmware/tests/maburplay-defaults.test.sh
       - run: sh firmware/tests/sysupgrade-uboot.test.sh
       - run: sh firmware/tests/mpp-ref.test.sh
