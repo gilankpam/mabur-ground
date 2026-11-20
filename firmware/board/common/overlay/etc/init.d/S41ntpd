@@ -1,0 +1,12 @@
+#!/bin/sh
+# Keep the clock synced: the GS has no RTC, and the online upgrade checks
+# HTTPS certificates, which need a sane date. ntpd daemonizes itself and
+# steps the clock on the first sync; it is restarted on every DHCP lease
+# (usr/share/udhcpc/default.script.d/ntpd) so it picks the network up.
+
+case "$1" in
+	start) ntpd -p pool.ntp.org ;;
+	stop) killall ntpd 2>/dev/null; true ;;
+	restart) "$0" stop; "$0" start ;;
+	*) echo "usage: $0 {start|stop|restart}" >&2; exit 1 ;;
+esac
