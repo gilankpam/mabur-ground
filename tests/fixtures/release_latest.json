@@ -1,0 +1,10 @@
+{
+  "tag_name": "v0.2.0",
+  "body": "Ground station v0.2.0\n\n**Pairs with drone v0.2.0** (wire contract abc123).\n\n**Changes**\n- Add upgrade menu\n- Fix hop confirm\n\n| file | md5 |\n|---|---|\n",
+  "assets": [
+    {"name": "mabur-ground-v0.2.0-orangepi_zero2w.tar.gz",
+     "browser_download_url": "https://example.invalid/dl/mabur-ground-v0.2.0-orangepi_zero2w.tar.gz"},
+    {"name": "mabur-ground-v0.2.0-radxa_zero3.tar.gz",
+     "browser_download_url": "https://example.invalid/dl/mabur-ground-v0.2.0-radxa_zero3.tar.gz"}
+  ]
+}
