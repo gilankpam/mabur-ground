@@ -201,6 +201,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Stamp packages
+        if: needs.version.outputs.kind != 'pr'
         run: |
           for f in dist/mabur-ground-"$VERSION"-*.tar.gz; do
             b=${f#dist/mabur-ground-"$VERSION"-}; b=${b%.tar.gz}
