@@ -38,10 +38,12 @@ Files, where `<version>` is the tag, `snapshot-<sha8>` or `pr<N>-<sha8>`:
   so an older image's `sysupgrade` still installs it.
 
 A release also carries every file under its unversioned name
-(`<board>.tar.gz`, `<board>_sdcard.img`, …): an image's `sysupgrade` URL is
-`https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`.
-Snapshots are pre-releases and never Latest, so an online upgrade only ever
-takes a release.
+(`<board>.tar.gz`, `<board>_sdcard.img`, …): older images' `sysupgrade` URL
+is `https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`.
+Snapshots are pre-releases and never Latest, so `gs-upgrade`'s Stable channel
+(`releases/latest`) only ever takes a release; its Snapshot channel reads the
+`snapshot` release by tag and takes the versioned package
+([`gs-image.md`](gs-image.md)).
 
 ## Version rule
 

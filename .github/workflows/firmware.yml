@@ -163,7 +163,7 @@ jobs:
           for f in ${b}_sdcard.img ${b}_boot.scr ${b}_u-boot.bin ${b}_emmc_bootloader.img ${b}.tar.gz; do
             [ -f "$img/$f" ] && cp "$img/$f" "dist/mabur-ground-$VERSION-$f"
           done
-          [ -f "dist/mabur-ground-$VERSION-$b.tar.gz" ] || { echo "no sysupgrade tarball"; exit 1; }
+          [ -f "dist/mabur-ground-$VERSION-$b.tar.gz" ] || { echo "no upgrade package"; exit 1; }
           cp "$img/build-info.txt" "dist/build-info-$b.txt"
           ls -l dist
       - uses: actions/upload-artifact@v5
@@ -243,7 +243,7 @@ jobs:
           gh release delete snapshot --cleanup-tag -y || true
           gh release create snapshot dist/mabur-ground-* --prerelease --latest=false \
             --target "$SHA" --title "snapshot (${SHA:0:8})" --notes-file notes.md
-      # Each file also goes up under its unversioned name: the images'
+      # Each file also goes up under its unversioned name: older images'
       # sysupgrade URL is releases/latest/download/<board>.tar.gz.
       - name: Release
         if: needs.version.outputs.kind == 'release'

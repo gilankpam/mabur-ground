@@ -1,0 +1,422 @@
+#!/bin/sh
+# gs-upgrade: the GS image's upgrader, for the goggles menu and for ssh.
+#
+#   gs-upgrade find                          this board's packages on the media
+#   gs-upgrade check stable|snapshot         fetch the GitHub release record
+#   gs-upgrade start file <path>             upgrade, detached (the menu)
+#   gs-upgrade start online <url> <version>
+#   gs-upgrade cancel                        honoured in download/unpack/verify
+#   gs-upgrade install <file> [-y]           upgrade in the foreground (ssh)
+#   gs-upgrade install --online stable|snapshot [-y]
+#
+# Phases: download (online only), unpack, verify, stop, write, reboot.
+# Progress goes to $DIR/status (state=, phase=, done=, total=, msg=),
+# replaced whole by a rename. Up to stop, a failure leaves the GS running as
+# it was; a failure in stop starts again what it stopped; a failure in write
+# leaves the board for a reflash and says so. The package is never deleted.
+#
+# The write overwrites the partition this system runs from, so from stop on
+# the script runs from a RAM copy of itself, busybox, its libraries and the
+# loader, and calls every command as "$BB <applet>": a bare applet name
+# would exec the rootfs symlink and load the rootfs loader.
+
+DIR=${GS_UPGRADE_DIR:-/tmp/gs-upgrade}
+MEDIA=${GS_UPGRADE_MEDIA:-/media/dvr}
+OSR=${GS_UPGRADE_OS_RELEASE:-/etc/os-release}
+API=${GS_UPGRADE_API:-https://api.github.com/repos/gilankpam/mabur-ground}
+INITD=${GS_UPGRADE_INITD:-/etc/init.d}
+# Buildroot's libcurl on mbedTLS has no default CA store, so every call names it.
+CACERT=${GS_UPGRADE_CACERT:-/etc/ssl/certs/ca-certificates.crt}
+U=$DIR/unpack
+DL=$DIR/download.tar.gz
+# Stopped for the write; maburplay is held or stopped by mode.
+SERVICES="S96maburgs S50crond S02klogd S01syslogd"
+CHUNK=4194304
+
+usage() {
+	sed -n '3,9s/^# *//p' "$0" >&2
+	exit 2
+}
+
+osr() { sed -n "s/^$1=//p" "$OSR" | head -n 1 | tr -d '"'; }
+
+fsize() {
+	# shellcheck disable=SC2046
+	set -- $(ls -ln "$1" 2>/dev/null)
+	echo "${5:-0}"
+}
+
+# st <state> <phase> <done> <total> [msg]
+st() {
+	printf 'state=%s\nphase=%s\ndone=%s\ntotal=%s\nmsg=%s\n' "$1" "$2" "$3" "$4" "$5" >"$DIR/status.tmp"
+	$BB mv -f "$DIR/status.tmp" "$DIR/status"
+	[ "$MODE" = tty ] || return 0
+	case $1 in
+	running) echo "$2 $3/$4" ;;
+	*) echo "$1${5:+ $5}" ;;
+	esac
+}
+
+take_lock() { mkdir -p "$DIR" && mkdir "$DIR/lock" 2>/dev/null; }
+drop_lock() { $BB rm -rf "$DIR/lock"; }
+
+# abort <state> <msg>: a stop before the stop phase; nothing on the board
+# has changed, so clean up the RAM copies and hand the lock back.
+abort() {
+	trap - INT TERM HUP
+	[ -n "$pid" ] && kill "$pid" 2>/dev/null
+	[ -n "$gz" ] && kill "$gz" 2>/dev/null
+	rm -rf "$U" "$DL" "$DIR/fifo" "$DIR/headers" "$DIR/http" "$DIR/cancel" "$DIR/ram"
+	drop_lock
+	st "$1" "$PHASE" 0 0 "$2"
+	exit 1
+}
+
+cancelled() {
+	[ -e "$DIR/cancel" ] && abort cancelled "Cancelled"
+	return 0
+}
+
+# curl_err <curl exit>: "<code> <text>"
+curl_err() {
+	case $1 in
+	6 | 7 | 28) echo "network No network" ;;
+	35 | 60) echo "tls Certificate check failed" ;;
+	*) echo "http Request failed (curl $1)" ;;
+	esac
+}
+
+do_find() {
+	mkdir -p "$DIR" && rm -rf "$DIR/pkg"
+	n=0
+	for f in "$MEDIA/$BOARD.tar.gz" "$MEDIA"/mabur-ground-*-"$BOARD".tar.gz; do
+		[ -f "$f" ] || continue
+		n=$((n + 1))
+		mkdir -p "$DIR/pkg/$n"
+		# VERSION and CHANGELOG are the first two members, so the first MiB
+		# of the stream holds them and the rootfs is never read. A package
+		# built before them leaves the directory empty.
+		gunzip -c "$f" 2>/dev/null | head -c 1048576 | tar xf - -C "$DIR/pkg/$n" VERSION CHANGELOG 2>/dev/null
+		echo "pkg $n $f"
+	done
+	return 0
+}
+
+# do_check <stable|snapshot>: $DIR/release.json, or one "error <code> <text>" line.
+do_check() {
+	case $1 in
+	stable) path=releases/latest ;;
+	snapshot) path=releases/tags/snapshot ;;
+	*) usage ;;
+	esac
+	# No battery-backed clock: one earlier than the image's own build is
+	# certainly unsynced, and TLS would fail on it for a confusing reason.
+	epoch=$(osr BUILD_EPOCH)
+	if [ "$(date +%s)" -lt "${epoch:-0}" ]; then
+		echo "error clock Clock not synced yet — try again in a minute"
+		return 1
+	fi
+	mkdir -p "$DIR"
+	code=$(curl -s -L --cacert "$CACERT" --connect-timeout 15 -m 60 \
+		-H 'Accept: application/vnd.github+json' \
+		-o "$DIR/release.tmp" -w '%{http_code}' "$API/$path" 2>/dev/null)
+	rc=$?
+	[ $rc = 0 ] || { echo "error $(curl_err $rc)"; return 1; }
+	case $code in
+	200) mv -f "$DIR/release.tmp" "$DIR/release.json" && return 0 ;;
+	404) echo "error notfound No release found" ;;
+	*) echo "error http HTTP $code" ;;
+	esac
+	rm -f "$DIR/release.tmp"
+	return 1
+}
+
+# do_run <menu|tty> file <path> | <menu|tty> online <url> <version>
+# Called with the lock held.
+do_run() {
+	MODE=$1 KIND=$2 SRC=$3 WANT=$4 pid='' gz=''
+	if [ "$KIND" = online ]; then PHASE=download; else PHASE=unpack; fi
+	trap 'abort cancelled Interrupted' INT TERM HUP
+
+	if [ "$KIND" = online ]; then
+		# shortcut: the download's size is unknown until it starts, so 128 MiB
+		# stands in for it; read the asset's size from release.json once
+		# packages near that.
+		need=131072
+	else
+		[ -f "$SRC" ] || abort error "Package not found"
+		need=$(($(fsize "$SRC") / 1024))
+	fi
+	need=$((need * 5 / 2))
+	free=${GS_UPGRADE_FREE_KB:-$(df -Pk "$DIR" | awk 'NR == 2 { print $4 }')}
+	[ "${free:-0}" -ge "$need" ] ||
+		abort error "Not enough free space: needs $((need / 1024)) MiB, $((${free:-0} / 1024)) MiB free"
+
+	if [ "$KIND" = online ]; then
+		st running download 0 0
+		rm -f "$DIR/headers" "$DIR/http"
+		curl -s -L --cacert "$CACERT" --connect-timeout 15 --speed-limit 1024 --speed-time 30 \
+			-D "$DIR/headers" -o "$DL" -w '%{http_code}' "$SRC" >"$DIR/http" 2>/dev/null &
+		pid=$!
+		while kill -0 "$pid" 2>/dev/null; do
+			cancelled
+			total=$(tr -d '\r' 2>/dev/null <"$DIR/headers" | sed -n 's/^[Cc]ontent-[Ll]ength: *//p' | tail -n 1)
+			st running download "$(fsize "$DL")" "${total:-0}"
+			sleep 0.5
+		done
+		wait "$pid"
+		rc=$? pid=''
+		cancelled
+		[ $rc = 0 ] || abort error "$(curl_err $rc | cut -d' ' -f2-)"
+		case $(cat "$DIR/http" 2>/dev/null) in
+		200) ;;
+		# The snapshot is deleted and re-created by CI: its asset went away.
+		404) abort error "Snapshot changed — check again" ;;
+		*) abort error "Download failed: HTTP $(cat "$DIR/http" 2>/dev/null)" ;;
+		esac
+		pkg=$DL
+	else
+		pkg=$SRC
+	fi
+
+	PHASE=unpack
+	total=$(fsize "$pkg")
+	rm -rf "$U" "$DIR/fifo" && mkdir -p "$U" && mkfifo "$DIR/fifo" || abort error "Could not unpack in $DIR"
+	st running unpack 0 "$total"
+	# Two jobs on a FIFO, not a pipeline, so that a cancel can kill both and
+	# each exit status comes from wait. tar can stop at the end-of-archive
+	# marker with gunzip still writing the padding, so the reader drains the
+	# rest: gunzip's status stays meaningful, and it matters, because busybox
+	# tar takes an EOF on a member boundary for the end of the archive.
+	gunzip -c "$pkg" >"$DIR/fifo" &
+	gz=$!
+	{
+		tar xf - -C "$U"
+		r=$?
+		cat >/dev/null
+		exit $r
+	} <"$DIR/fifo" &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		cancelled
+		d=$(ls -ln "$U" | awk '{ s += $5 } END { print s + 0 }')
+		[ "$d" -gt "$total" ] && d=$total
+		st running unpack "$d" "$total"
+		sleep 0.5
+	done
+	wait "$pid"
+	t=$?
+	wait "$gz"
+	g=$? pid='' gz=''
+	rm -f "$DIR/fifo"
+	cancelled
+	[ $t = 0 ] && [ $g = 0 ] || abort error "Package damaged"
+	rm -f "$DL"
+	st running unpack "$total" "$total"
+
+	PHASE=verify
+	st running verify 0 0
+	[ -f "$U/rootfs.squashfs" ] && [ -f "$U/rootfs.squashfs.md5sum" ] || abort error "Package damaged"
+	[ ! -f "$U/u-boot.bin" ] || [ -f "$U/u-boot.bin.md5sum" ] || abort error "Package damaged"
+	for m in "$U"/*.md5sum; do
+		(cd "$U" && md5sum -c "${m##*/}") >/dev/null 2>&1 || abort error "Checksum mismatch: ${m##*/}"
+	done
+	ver=
+	if [ -f "$U/VERSION" ]; then
+		b=$(sed -n 's/^board=//p' "$U/VERSION" | head -n 1)
+		[ "$b" = "$BOARD" ] || abort error "Built for $b"
+		ver=$(sed -n 's/^version=//p' "$U/VERSION" | head -n 1)
+		# Only a stamped package can be compared: an older release has no VERSION.
+		[ "$KIND" != online ] || [ "$ver" = "$WANT" ] || abort error "Snapshot changed — check again"
+	fi
+	# The partition size is checked here rather than in write, so that a
+	# rootfs too big for p1 is refused with everything still running.
+	BOOT_DISK=${BOOT_DISK:-/dev/$(basename "$(readlink -f /dev/disk/by-partlabel/rootfs)" p1)}
+	p1=${BOOT_DISK}p1
+	if [ -b "$p1" ]; then
+		psize=$(($(cat "/sys/class/block/${p1##*/}/size") * 512))
+	elif [ -f "$p1" ]; then
+		psize=$(fsize "$p1")
+	else
+		abort error "No rootfs partition $p1"
+	fi
+	[ -e "$BOOT_DISK" ] || abort error "No boot disk $BOOT_DISK"
+	RSIZE=$(fsize "$U/rootfs.squashfs")
+	[ "$RSIZE" -lt "$psize" ] || abort error "Rootfs too big for the partition: $RSIZE bytes, partition $psize"
+	cancelled
+
+	if [ "$MODE" = tty ] && [ "$YES" != 1 ]; then
+		printf 'Install %s? The GS reboots. Keep the power on. [y/N] ' "${ver:-${WANT:-${SRC##*/}}}"
+		read -r a
+		[ "$a" = y ] || abort cancelled "Cancelled"
+	fi
+
+	PHASE=stop
+	st running stop 0 0
+	# From here on an interrupted run (an ssh session dropping) must not
+	# stop a half-done write.
+	trap '' INT TERM HUP PIPE
+	export MODE BOARD BOOT_DISK RSIZE GS_UPGRADE_DIR="$DIR"
+	[ "$GS_UPGRADE_TEST" = 1 ] && do_write
+	stage || abort error "Could not copy the upgrader to RAM"
+	export GSU_BB="$BBX"
+	# shellcheck disable=SC2086
+	exec $BBX sh "$DIR/ram/gs-upgrade" __write
+}
+
+# stage: copy this script, busybox, its libraries and the loader to
+# $DIR/ram and set BBX to the command line that runs that busybox.
+stage() {
+	R=$DIR/ram
+	rm -rf "$R" && mkdir -p "$R" || return 1
+	cp "$0" "$R/gs-upgrade" && cp /bin/busybox "$R/busybox" || return 1
+	# The loader prints what it maps; a static busybox prints no paths.
+	libs=$(LD_TRACE_LOADED_OBJECTS=1 /bin/busybox 2>/dev/null |
+		awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^\/.*\.so/) print $i }')
+	ld=
+	for l in $libs; do
+		cp "$l" "$R/" || return 1
+		case ${l##*/} in ld-*) ld=$R/${l##*/} ;; esac
+	done
+	if [ -z "$libs" ]; then
+		BBX=$R/busybox
+	elif [ -n "$ld" ]; then
+		BBX="$ld --library-path $R $R/busybox"
+	else
+		return 1
+	fi
+}
+
+# stop_svc <name> <verb>: on failure, start again what was stopped.
+stop_svc() {
+	[ -x "$INITD/$1" ] || return 0
+	if "$INITD/$1" "$2"; then
+		[ "$2" = stop ] && stopped="$1 $stopped"
+		return 0
+	fi
+	for s in $stopped; do "$INITD/$s" start; done
+	$BB rm -rf "$DIR/ram"
+	drop_lock
+	st error stop 0 0 "Could not stop $1"
+	exit 1
+}
+
+write_failed() {
+	drop_lock
+	st error write "$1" "$RSIZE" "Write failed — reflash from SD card"
+	exit 1
+}
+
+# do_write: stop, write and reboot. Runs from the RAM copy outside test mode.
+do_write() {
+	PHASE=stop stopped=
+	if [ "$MODE" = menu ]; then
+		# maburplay keeps drawing the progress; only its respawn loop goes,
+		# so a crash cannot exec a binary from the half-written rootfs.
+		stop_svc S97maburplay hold
+	else
+		stop_svc S97maburplay stop
+	fi
+	for s in $SERVICES; do stop_svc "$s" stop; done
+	# The player marks ui-ready once it has finished any recording and locked
+	# itself in memory; the flash goes ahead without it after 5 s.
+	if [ "$MODE" = menu ]; then
+		i=0
+		while [ ! -e "$DIR/ui-ready" ] && [ $i -lt 10 ]; do
+			$BB sleep 0.5
+			i=$((i + 1))
+		done
+	fi
+
+	PHASE=write
+	st running write 0 "$RSIZE"
+	if [ -f "$U/u-boot.bin" ]; then
+		# The write is at sector 64 (32 KiB), the Rockchip offset. On the
+		# Orange Pi it would run over the H618's SPL at 256 KiB and the board
+		# would no longer boot, so it never happens there.
+		if [ "$BOARD" = orangepi_zero2w ]; then
+			echo "u-boot.bin not written on $BOARD: bootloader left alone"
+		else
+			$BB dd if="$U/u-boot.bin" of="$BOOT_DISK" seek=64 conv=notrunc,fsync 2>/dev/null || write_failed 0
+		fi
+	fi
+	n=0 wrote=0
+	while [ "$wrote" -lt "$RSIZE" ]; do
+		$BB dd if="$U/rootfs.squashfs" of="${BOOT_DISK}p1" bs=$CHUNK skip=$n seek=$n count=1 \
+			conv=notrunc,fsync 2>/dev/null || write_failed "$wrote"
+		n=$((n + 1))
+		wrote=$((n * CHUNK))
+		[ "$wrote" -gt "$RSIZE" ] && wrote=$RSIZE
+		st running write "$wrote" "$RSIZE"
+	done
+	$BB sync || write_failed "$wrote"
+
+	PHASE=reboot
+	st rebooting reboot 0 0
+	[ "$GS_UPGRADE_TEST" = 1 ] && exit 0
+	echo s >/proc/sysrq-trigger
+	echo u >/proc/sysrq-trigger
+	$BB sleep 1
+	echo b >/proc/sysrq-trigger
+	exit 0
+}
+
+do_start() {
+	case $1 in
+	file) [ $# = 2 ] ;;
+	online) [ $# = 3 ] ;;
+	*) false ;;
+	esac || usage
+	take_lock || { echo "error busy An update is already running"; exit 1; }
+	rm -f "$DIR/cancel" "$DIR/ui-ready"
+	if [ "$1" = online ]; then first=download; else first=unpack; fi
+	st running "$first" 0 0
+	# setsid: the run outlives maburplay, which started it.
+	if [ "$GS_UPGRADE_TEST" = 1 ]; then s=; else s=setsid; fi
+	$s sh "$0" __run menu "$@" </dev/null >"$DIR/log" 2>&1 &
+	echo started
+}
+
+do_install() {
+	YES=0 online='' src=''
+	for a; do
+		case $a in
+		-y) YES=1 ;;
+		--online) online=1 ;;
+		*) src=$a ;;
+		esac
+	done
+	[ -n "$src" ] || usage
+	[ -z "$online" ] || [ "$src" = stable ] || [ "$src" = snapshot ] || usage
+	take_lock || { echo "error busy An update is already running"; exit 1; }
+	if [ -z "$online" ]; then
+		do_run tty file "$src"
+		return
+	fi
+	do_check "$src" || { drop_lock; exit 1; }
+	url=$(grep -o "\"browser_download_url\": *\"[^\"]*-$BOARD\.tar\.gz\"" "$DIR/release.json" |
+		head -n 1 | sed 's/.*: *"//; s/"$//')
+	[ -n "$url" ] || { drop_lock; echo "error No $BOARD package in this release"; exit 1; }
+	ver=${url##*/mabur-ground-}
+	ver=${ver%-"$BOARD".tar.gz}
+	echo "Package ${url##*/}"
+	do_run tty online "$url" "$ver"
+}
+
+BB=
+case $1 in
+__write) BB=$GSU_BB ;;
+cancel) mkdir -p "$DIR" && touch "$DIR/cancel"; exit ;;
+esac
+[ -n "$BOARD" ] && [ "$1" = __write ] || BOARD=$(osr BUILD_CONFIG)
+[ -n "$BOARD" ] || { echo "error board No BUILD_CONFIG in $OSR"; exit 1; }
+
+case $1 in
+find) do_find ;;
+check) [ $# = 2 ] || usage; do_check "$2" ;;
+start) shift; do_start "$@" ;;
+install) shift; do_install "$@" ;;
+__run) shift; do_run "$@" ;;
+__write) do_write ;;
+*) usage ;;
+esac

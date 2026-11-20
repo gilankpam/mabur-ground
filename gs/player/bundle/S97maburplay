@@ -8,15 +8,18 @@
 # decode watchdog's exit-for-respawn path (exit 1) also lands here.
 
 case "$1" in
-  stop)
+  stop|hold)
     # Kill the wrapper loop first so it cannot respawn, then the player.
     # Exclude $$ AND $PPID: `restart` runs stop as a child, and pidof
     # matches the restarting parent too -- killing it aborted the restart
     # before the new loop ever spawned (found by the acceptance test).
+    # `hold` stops at the loop: gs-upgrade keeps the player drawing its
+    # progress through the flash, and a player that dies then must not be
+    # respawned from the half-written rootfs.
     for pid in $(pidof S97maburplay); do
       [ "$pid" != "$$" ] && [ "$pid" != "$PPID" ] && kill "$pid" 2>/dev/null
     done
-    killall maburplay 2>/dev/null
+    [ "$1" = stop ] && killall maburplay 2>/dev/null
     exit 0
     ;;
   restart)
@@ -24,7 +27,7 @@ case "$1" in
     sleep 1
     ;;
   start|"") ;;
-  *) echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+  *) echo "usage: $0 {start|stop|restart|hold}"; exit 1 ;;
 esac
 
 # The GS image keeps its configs on the CONFIG partition; other hosts in /etc.

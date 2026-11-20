@@ -51,24 +51,73 @@ rkdeveloptool; this erases the eMMC. See
 
 ## Upgrading
 
-A flashed board updates itself from `<board>.tar.gz`:
+An upgrade installs a `<board>.tar.gz` package over the running system: the
+rootfs on its partition and, on the RK3566 boards, U-Boot. The partition
+table, the overlay, `CONFIG` and the recordings stay. It runs only when asked:
+a package left on the SD card or the `DVR` partition does nothing by itself.
 
-- copy it to a FAT-formatted SD card, or to the `DVR` partition (SD or eMMC,
-  by `scp` or gadget mode), and reboot; or
-- `sysupgrade -u -r` online: it fetches the latest release's
-  `<board>.tar.gz`. `sysupgrade --help` lists the rest.
+### From the menu
 
-A board flashed before this repo built the images has an upgrade URL that
-points elsewhere: upgrade it once with
-`sysupgrade --url=https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`,
-or reflash.
+- **System > Update from file** lists this board's packages on the media
+  (`/media/dvr`: the SD card if one is inserted, else the `DVR` partition),
+  named `<board>.tar.gz` or `mabur-ground-<version>-<board>.tar.gz`. Copy one
+  there by `scp`, gadget mode or a card reader.
+- **System > Check online** asks GitHub for the latest release (Stable) or
+  the `snapshot` pre-release built from master (Snapshot).
 
-`sysupgrade` never writes a bootloader on the Orange Pi, whatever the
+Either way the menu shows the package's version and changelog, asks before
+installing, then shows the progress until the reboot. The rows and keys are
+in [`gs-menu.md`](gs-menu.md).
+
+Online needs the GS on a network (`wifi.toml` in client mode) and a synced
+clock: GitHub's certificate is verified, and the boards have no
+battery-backed clock. The image syncs it by NTP once it has a network;
+until then, while the clock is still before the image's own build time,
+the check refuses with "Clock not synced yet — try again in a minute".
+
+### Over ssh
+
+    gs-upgrade install /media/dvr/<board>.tar.gz
+    gs-upgrade install --online stable        # or snapshot
+
+The same phases in the foreground, with progress on the terminal and a
+question before services stop (`-y` skips it). This is the upgrade path on
+a board whose default config wires no menu buttons.
+
+### What happens
+
+`gs-upgrade` downloads (online only), unpacks into `/tmp/gs-upgrade` (it
+needs 2.5 times the package in free RAM), checks the md5 sums and that the
+package's `VERSION`, when it has one, names this board, then stops maburgs,
+cron and the syslogs (and maburplay from ssh; from the menu only its
+respawn loop, so it keeps drawing), writes, and reboots. The package file is
+kept.
+
+- A failure before the write leaves the GS running as it was. From the
+  menu, ◀ cancels until then.
+- A failure while stopping services starts again what was stopped.
+- A failure during the write reports "Write failed — reflash from SD card"
+  and does not reboot: flash the image again (above).
+
+Files installed by hand on the overlay (`/overlay/root`, such as a branch
+`maburplay` in `/usr/local/bin`) keep shadowing the new image afterwards.
+
+`gs-upgrade` never writes a bootloader on the Orange Pi, whatever the
 package carries (an old image repo package still has `u-boot.bin` in it):
-its bootloader write is at 32 KiB, the Rockchip offset, which on the H618
+the bootloader write is at 32 KiB, the Rockchip offset, which on the H618
 runs over the SPL at 256 KiB and leaves the board unbootable. The Orange
 Pi's own package carries no `u-boot.bin`; its bootloader is updated only by
 hand, as above.
+
+### From an older image
+
+An image from before `gs-upgrade` has `sysupgrade` instead, which installs
+the same package: leave `<board>.tar.gz` on a FAT SD card or the `DVR`
+partition and reboot (those images flash it at boot), or run
+`sysupgrade --archive=<file>`. A board flashed before this repo built the
+images has an upgrade URL that points elsewhere: upgrade it once with
+`sysupgrade --url=https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`,
+or reflash.
 
 ## Configuration: the CONFIG partition
 
@@ -102,7 +151,7 @@ replaced by their defaults and logged to the console.
 Deleting a file restores the board's default on the next boot; the defaults
 are kept in `/usr/share/config-defaults/`.
 
-A board that reached this image by `sysupgrade` from one without `CONFIG`
+A board upgraded in place to this image from one without `CONFIG`
 keeps its old partition table, where `DVR` fills the disk. There is no room
 for `CONFIG`, so the files live in `/config` on the overlay (edit them over
 ssh), and the boot log says `config: no room for a CONFIG partition`. Flash

@@ -95,7 +95,7 @@ Doc rules:
 | the CPE510 relay card (mabur-relay protocol v4, maburgs RemoteCard + radio.relays, web GS relay mode, relay TX, interference sweep/hop on a relay) | `docs/cpe510-relay.md` |
 | ladder rungs, promote/demote, s3 probes, fade, attribution, RCF drain, the drone's encoder verbs + IDR pacing, the disarmed low-power mode | `../mabur/docs/link-adaptation.md` |
 | the GS image build (`firmware/`: boards, packages, `build.sh`), snapshots / test builds / releases, the version and pin rules, `tools/release.py` | `docs/releases.md` |
-| flashing and upgrading a GS image, `sysupgrade`, the CONFIG partition, factory reset, gadget mode | `docs/gs-image.md` |
+| flashing and upgrading a GS image, `gs-upgrade`, the CONFIG partition, factory reset, gadget mode | `docs/gs-image.md` |
 | the GS install script, where things live on the Radxa / OPi / CPE510, the GS image p1 swap | `docs/deploy.md` |
 | flag days, the config-load crash loop, the clean deploy sequence, pairing, the flag-day checklist | `../mabur/docs/deploy.md` |
 | comparing recordings, metric scales, removed sideport keys | `../mabur/docs/data-provenance.md` |
