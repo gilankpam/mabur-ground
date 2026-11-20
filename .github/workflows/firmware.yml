@@ -200,6 +200,14 @@ jobs:
           pattern: fw-*
           path: dist
           merge-multiple: true
+      - name: Stamp packages
+        run: |
+          for f in dist/mabur-ground-"$VERSION"-*.tar.gz; do
+            b=${f#dist/mabur-ground-"$VERSION"-}; b=${b%.tar.gz}
+            python3 tools/release.py package-meta --version "$VERSION" --sha "$SHA" \
+              --board "$b" --out "meta-$b"
+            sh firmware/scripts/stamp-package.sh "$f" "meta-$b"
+          done
       - name: Notes
         if: needs.version.outputs.kind != 'pr'
         run: |

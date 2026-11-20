@@ -239,9 +239,10 @@ def main(argv):
     contract = contract_in(a.mabur, sha_pin)
     if a.cmd == "package-meta":
         drone = paired_drone_tag(a.mabur, contract)
-        with open(os.path.join(a.out, "VERSION"), "w") as f:
+        os.makedirs(a.out, exist_ok=True)
+        with open(os.path.join(a.out, "VERSION"), "w", encoding="utf-8") as f:
             f.write(version_file(a.version, a.board, drone))
-        with open(os.path.join(a.out, "CHANGELOG"), "w") as f:
+        with open(os.path.join(a.out, "CHANGELOG"), "w", encoding="utf-8") as f:
             f.write("\n".join(changelog(".", a.sha)) + "\n")
         return 0
     sys.stdout.write(notes(a.version, a.sha, sha_pin, paired_drone_tag(a.mabur, contract),
