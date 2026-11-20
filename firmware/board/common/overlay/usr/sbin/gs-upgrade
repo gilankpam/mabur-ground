@@ -29,8 +29,8 @@ INITD=${GS_UPGRADE_INITD:-/etc/init.d}
 CACERT=${GS_UPGRADE_CACERT:-/etc/ssl/certs/ca-certificates.crt}
 U=$DIR/unpack
 DL=$DIR/download.tar.gz
-# Stopped for the write; maburplay is held or stopped by mode.
-SERVICES="S96maburgs S50crond S02klogd S01syslogd"
+# The busybox the write phase copies to RAM (a test points it elsewhere).
+BUSYBOX=${GS_UPGRADE_BUSYBOX:-/bin/busybox}
 CHUNK=4194304
 
 usage() {
@@ -269,9 +269,9 @@ do_run() {
 stage() {
 	R=$DIR/ram
 	rm -rf "$R" && mkdir -p "$R" || return 1
-	cp "$0" "$R/gs-upgrade" && cp /bin/busybox "$R/busybox" || return 1
+	cp "$0" "$R/gs-upgrade" && cp "$BUSYBOX" "$R/busybox" || return 1
 	# The loader prints what it maps; a static busybox prints no paths.
-	libs=$(LD_TRACE_LOADED_OBJECTS=1 /bin/busybox 2>/dev/null |
+	libs=$(LD_TRACE_LOADED_OBJECTS=1 "$BUSYBOX" 2>/dev/null |
 		awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^\/.*\.so/) print $i }')
 	ld=
 	for l in $libs; do
@@ -285,9 +285,14 @@ stage() {
 	else
 		return 1
 	fi
+	# A copy that cannot run must fail here, while abort can still hand the
+	# lock back: after the exec there is nothing left to report it.
+	# shellcheck disable=SC2086
+	$BBX true
 }
 
-# stop_svc <name> <verb>: on failure, start again what was stopped.
+# stop_svc <name> <verb>: on failure, start again what was stopped and give
+# up. From the menu, maburplay's respawn loop (taken down by hold) is re-armed.
 stop_svc() {
 	[ -x "$INITD/$1" ] || return 0
 	if "$INITD/$1" "$2"; then
@@ -295,6 +300,7 @@ stop_svc() {
 		return 0
 	fi
 	for s in $stopped; do "$INITD/$s" start; done
+	[ "$MODE" = menu ] && [ -x "$INITD/S97maburplay" ] && "$INITD/S97maburplay" watch
 	$BB rm -rf "$DIR/ram"
 	drop_lock
 	st error stop 0 0 "Could not stop $1"
@@ -317,7 +323,11 @@ do_write() {
 	else
 		stop_svc S97maburplay stop
 	fi
-	for s in $SERVICES; do stop_svc "$s" stop; done
+	stop_svc S96maburgs stop
+	for s in S50crond S02klogd S01syslogd; do
+		# Their stop fails when the daemon is already gone: nothing to stop.
+		[ ! -x "$INITD/$s" ] || "$INITD/$s" stop || echo "$s: stop failed, going on"
+	done
 	# The player marks ui-ready once it has finished any recording and locked
 	# itself in memory; the flash goes ahead without it after 5 s.
 	if [ "$MODE" = menu ]; then

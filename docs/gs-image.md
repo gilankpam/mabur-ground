@@ -95,7 +95,9 @@ kept.
 
 - A failure before the write leaves the GS running as it was. From the
   menu, ◀ cancels until then.
-- A failure while stopping services starts again what was stopped.
+- If maburgs fails to stop, the upgrade gives up and starts again what it
+  stopped; from the menu, maburplay gets its respawn loop back. crond or a
+  syslog daemon failing to stop (it was already gone) does not block it.
 - A failure during the write reports "Write failed — reflash from SD card"
   and does not reboot: flash the image again (above).
 

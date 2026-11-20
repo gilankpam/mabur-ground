@@ -314,17 +314,52 @@ wait_end && ok || ko "never ended"
 nothing_stopped && ok || ko "stopped: $(cat "$T/initd.log")"
 lock_gone && ok || ko "lock left"
 
-# 12. A service that fails to stop: the ones already stopped start again.
-name="stop fails"
+# 12. maburgs failing to stop gives up and starts again what was stopped; a
+#     logging service or crond failing to stop (its daemon already gone) does
+#     not block the upgrade.
+name="crond stop fails"
 reset radxa_zero3
 mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
 FAIL_STOP=S50crond sh "$GSU" install "$T/media/radxa_zero3.tar.gz" -y >"$T/out" 2>&1
+[ "$(st state)" = rebooting ] && ok || ko "state $(st state) $(st msg)"
+grep -q "S02klogd stop" "$T/initd.log" && ok || ko "stopped after crond: $(cat "$T/initd.log")"
+grep -q " start" "$T/initd.log" && ko "restarted: $(cat "$T/initd.log")" || ok
+rootfs_written && ok || ko "p1 does not hold the rootfs"
+
+name="maburgs stop fails"
+reset radxa_zero3
+mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
+FAIL_STOP=S96maburgs sh "$GSU" install "$T/media/radxa_zero3.tar.gz" -y >"$T/out" 2>&1
 [ "$(st state)" = error ] && ok || ko "state $(st state)"
-grep -q "S96maburgs start" "$T/initd.log" && grep -q "S97maburplay start" "$T/initd.log" && ok ||
-	ko "not restarted: $(cat "$T/initd.log")"
-grep -q "S02klogd" "$T/initd.log" && ko "kept stopping after the failure" || ok
+grep -q "S97maburplay start" "$T/initd.log" && ok || ko "not restarted: $(cat "$T/initd.log")"
+grep -q "S50crond" "$T/initd.log" && ko "kept stopping after the failure" || ok
+grep -q "S97maburplay watch" "$T/initd.log" && ko "watch from ssh" || ok
 cmp -s "$T/zeros" "$T/diskp1" && ok || ko "p1 written"
 lock_gone && ok || ko "lock left"
+
+name="menu maburgs stop fails"
+reset radxa_zero3
+mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
+FAIL_STOP=S96maburgs sh "$GSU" start file "$T/media/radxa_zero3.tar.gz" >/dev/null
+wait_end && ok || ko "never ended"
+[ "$(st state)" = error ] && ok || ko "state $(st state)"
+[ "$(tail -1 "$T/initd.log")" = "S97maburplay watch" ] && ok || ko "respawn loop not re-armed: $(cat "$T/initd.log")"
+grep -q "S97maburplay start" "$T/initd.log" && ko "second player started" || ok
+lock_gone && ok || ko "lock left"
+
+# A RAM copy of busybox that cannot run is caught before the exec, with
+# nothing stopped and the lock back. Outside test mode, so the staging runs;
+# the probe failing is what stops it short of the write and the sysrq.
+name="staged busybox broken"
+reset radxa_zero3
+mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
+printf '#!/bin/sh\nexit 1\n' >"$T/badbb" && chmod +x "$T/badbb"
+GS_UPGRADE_TEST='' GS_UPGRADE_BUSYBOX="$T/badbb" sh "$GSU" install "$T/media/radxa_zero3.tar.gz" -y >"$T/out" 2>&1
+[ "$(st state)" = error ] && ok || ko "state $(st state): $(tail -3 "$T/out")"
+nothing_stopped && ok || ko "stopped: $(cat "$T/initd.log")"
+lock_gone && ok || ko "lock left"
+[ ! -e "$T/dir/ram" ] && ok || ko "RAM copy left"
+cmp -s "$T/zeros" "$T/diskp1" && ok || ko "p1 written"
 
 # 13. Online: a package whose VERSION is not the one checked, or a 404 on
 #     the download, means the snapshot moved on.

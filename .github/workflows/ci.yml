@@ -77,19 +77,21 @@ jobs:
 
   # The image's shell pieces that run on the host: partition carving (real
   # parted on disk-image files), the WiFi config generator under POSIX awk,
-  # the upgrade package contents and gs-upgrade, and the MPP pin shared with
-  # tools/build-arm64.sh.
+  # the upgrade package contents, gs-upgrade, maburplay's respawn wrapper
+  # (under busybox, whose pidof matches scripts as on the GS), and the MPP
+  # pin shared with tools/build-arm64.sh.
   firmware-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: sudo apt-get update && sudo apt-get install -y parted gawk
+      - run: sudo apt-get update && sudo apt-get install -y parted gawk busybox
       - run: sh firmware/tests/carve-part.test.sh
       - run: sh firmware/tests/wifi-config.test.sh
       - run: sh firmware/tests/pack-images.test.sh
       - run: sh firmware/tests/stamp-package.test.sh
       - run: sh firmware/tests/maburplay-defaults.test.sh
       - run: sh firmware/tests/gs-upgrade.test.sh
+      - run: sh firmware/tests/maburplay-watch.test.sh
       - run: sh firmware/tests/mpp-ref.test.sh
       - run: sh firmware/tests/gadget-inittab.test.sh
       - run: sh firmware/tests/image-config.test.sh

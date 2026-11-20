@@ -26,15 +26,29 @@ case "$1" in
     "$0" stop
     sleep 1
     ;;
+  watch)
+    # Re-arm the loop around a player that is still running (gs-upgrade's
+    # way back from `hold` when it gives up before the write): wait for it
+    # to exit, then respawn as `start` does. Its exit code is not ours to
+    # read, so its exit always respawns. A loop already running wins.
+    for pid in $(pidof S97maburplay); do
+      [ "$pid" != "$$" ] && [ "$pid" != "$PPID" ] && exit 0
+    done
+    ;;
   start|"") ;;
-  *) echo "usage: $0 {start|stop|restart|hold}"; exit 1 ;;
+  *) echo "usage: $0 {start|stop|restart|hold|watch}"; exit 1 ;;
 esac
 
 # The GS image keeps its configs on the CONFIG partition; other hosts in /etc.
 CONF=/config/maburplay.toml
 [ -f "$CONF" ] || CONF=/etc/maburplay.toml
 
+# `watch` appends: the running player still writes to this log.
+[ "$1" = watch ] || : >/tmp/maburplay.log
 (
+  if [ "$1" = watch ]; then
+    while pidof maburplay >/dev/null; do sleep 1; done
+  fi
   while true; do
     /usr/local/bin/maburplay -c "$CONF"
     rc=$?
@@ -45,4 +59,4 @@ CONF=/config/maburplay.toml
     echo "maburplay exited: $rc, restart ...."
     sleep 1
   done
-) >/tmp/maburplay.log 2>&1 &
+) >>/tmp/maburplay.log 2>&1 &
