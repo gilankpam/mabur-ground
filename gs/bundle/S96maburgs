@@ -2,7 +2,9 @@
 # maburgs respawn loop for BusyBox-init GS images (OpenIPC SBC GS / buildroot).
 # Mirrors the drone's S96mabur. systemd hosts use maburgs.service instead.
 DAEMON=/usr/local/bin/maburgs
-CONF=/etc/maburgs.toml
+# The GS image keeps its configs on the CONFIG partition; other hosts in /etc.
+CONF=/config/maburgs.toml
+[ -f "$CONF" ] || CONF=/etc/maburgs.toml
 PIDFILE=/var/run/maburgs-loop.pid
 
 loop() {

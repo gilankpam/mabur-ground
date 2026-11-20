@@ -11,7 +11,9 @@ board, and flashing the GS image.
 
 `gs/bundle/install.sh root@<gs>` builds (unless a prebuilt binary is
 passed as the second argument), stops `S96maburgs`, copies the binary and
-the init script, leaves an existing `/etc/maburgs.toml` alone, and starts
+the init script, leaves an existing `/config/maburgs.toml` or
+`/etc/maburgs.toml` alone (seeding `/etc/maburgs.toml` when there is
+neither), and starts
 the service. It also keeps
 `/usr/local/bin/maburgs.prev` and installs `tools/maburtop.py` and
 `gs/bundle/maburcal` to `/usr/bin`. Without a binary argument it reads the
@@ -42,12 +44,13 @@ before the daemon is gone, and copying over a running binary fails with
   is the musl-static build of the same daemon, a rollback that runs on any
   board but costs ~2 ms of GS latency per frame
   ([`docs/findings/2026-10-15-gs-musl-latency.md`](https://github.com/gilankpam/mabur/blob/master/docs/findings/2026-10-15-gs-musl-latency.md)).
-- **`/etc/maburplay.toml` is a symlink to `/config/maburplay.toml`** (the
-  vfat partition). Back up and edit the **target**, not the link: BusyBox
-  `sed -i` on the symlink replaces it with a regular overlay file, after
-  which the `/config` copy goes silently dead, and `cp -a` on the link
-  backs up only the link. Because it is vfat, run `sync` after a hand
-  edit before power-cycling the GS: the write can otherwise sit in the
+- **On the GS image the configs and the key are on `/config`** (the vfat
+  partition): `S96maburgs` / `S97maburplay` pass `-c /config/<file>` when
+  that file exists and `/etc/<file>` otherwise, and the image's default
+  `maburgs.toml` reads the key from `/config/mabur.key`. A host without
+  `/config` keeps `/etc/maburgs.toml` and `/etc/mabur.key`.
+  Because it is vfat, run `sync` after a hand edit before power-cycling
+  the GS: the write can otherwise sit in the
   page cache and a power-cycle before it lands drops the edit (seen on
   the settings-menu's `[input.*]` tables below).
 - **`[input.*]` tables are per-unit wiring, not part of the shipped
@@ -66,12 +69,11 @@ before the daemon is gone, and copying over a running binary fails with
   (`/usr/local/share/mabur/`) and the bundle TOML together.
 - **Bench: running `tools/bench/mavparam.py` from the host** needs
   `maburgs`'s `[mavlink] bind` set to the GS's LAN address, not its
-  loopback default ([`docs/mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/mavlink.md)). `maburgs`'s config is
-  `/etc/maburgs.toml` on the overlay (only `maburplay.toml` is the vfat
-  symlink): back up `/etc/maburgs.toml`, edit it, restart `S96maburgs`.
+  loopback default ([`docs/mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/mavlink.md)): back up
+  `/config/maburgs.toml`, edit it, `sync`, restart `S96maburgs`.
 - There is no `maburplay` installer: copy `out/arm64/maburplay.default.toml`
   (staged by `tools/build-arm64.sh`) to the config by hand on a fresh GS.
-  With no config, `maburplay -c /etc/maburplay.toml` exits 2 and
+  With no config, `maburplay -c <config>` exits 2 and
   `S97maburplay` does not respawn.
 - `maburplay` is glibc-DYNAMIC (Mesa EGL/GLESv2/GBM + librga for the
   burned-DVR colortrans stage, `docs/colortrans.md`). NEEDED:

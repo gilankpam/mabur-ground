@@ -366,7 +366,7 @@ What the status overlay shows (`statusText()`, `web/ui/src/lib/view.js`):
 This page's ladder starts from whatever `web/CMakeLists.txt` embeds into the
 WASM module at build time. That is the bundle default,
 `gs/bundle/maburgs.default.toml` (6 rungs, all 20 MHz, top = rung 5
-mcs5/20), not a GS's own tuned `/etc/maburgs.toml`. The Config form (below)
+mcs5/20), not a GS's own tuned `maburgs.toml`. The Config form (below)
 overrides it per session. A GS box on the same drone may run a different
 ladder, so don't read this page's rung numbers as that GS's unless the form
 was left at its defaults.

@@ -82,10 +82,16 @@ boot:
 | `maburplay.toml` | `maburplay`: decoder, screen mode, DVR, OSD, buttons |
 
 It is FAT32 with a Microsoft basic-data partition type, so the SD card can be
-edited in any computer. On the board the same files are `/etc/maburgs.toml`
-and `/etc/maburplay.toml` (symlinks into `/config`) and
-`/config/wifi.toml`. Reboot, or restart `S96maburgs` / `S97maburplay` /
-`S39wifi`, to apply.
+edited in any computer. On the board they are `/config/maburgs.toml`,
+`/config/maburplay.toml` and `/config/wifi.toml`; `S96maburgs` and
+`S97maburplay` start the daemons on the `/config` copy. Reboot, or restart `S96maburgs` /
+`S97maburplay` / `S39wifi`, to apply.
+
+The pairing key goes on the same partition: the image's default
+`maburgs.toml` sets `key_file = "/config/mabur.key"`, so copy the drone's
+key there as `mabur.key` (with no file, `maburgs` uses the built-in default
+key). A `maburgs.toml` seeded by an older image keeps the `key_file` it
+was written with.
 
 `wifi.toml` runs a hotspot called `OpenIPC GS` by default (password
 `12345678`, channel 6, the board at `10.18.0.1`). `mode = "client"` with

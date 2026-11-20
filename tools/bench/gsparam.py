@@ -23,8 +23,8 @@ the GS): sends one datagram, waits up to 5 s for the one-datagram reply.
 `--all` drives every live key of the named daemon away from its bundle
 default and back, checking along the way: the `set` reply is `ok`, a
 follow-up `get` reads the value back, and the daemon's TOML on the GS
-(/etc/maburgs.toml; /etc/maburplay.toml, a symlink onto vfat /config --
-`cat` follows it) shows the written value, under the key's own section
+(/config/maburgs.toml, /config/maburplay.toml: the GS image's vfat
+CONFIG partition) shows the written value, under the key's own section
 (several leaf names, `enable` most of all, are shared across sections, so
 the check is scoped rather than a file-wide search). `link.ladder`'s file
 shape is a run of `[[link.ladder]]` blocks rather than one line, so it is
@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 ROLE_PORT = {"gs": 8402, "player": 8403}
-ROLE_FILE = {"gs": "/etc/maburgs.toml", "player": "/etc/maburplay.toml"}
+ROLE_FILE = {"gs": "/config/maburgs.toml", "player": "/config/maburplay.toml"}
 
 # The UDP client run on the GS over ssh: one datagram out, one datagram (up
 # to 64 KiB, enough for a `get` with no key) back within 5 s.
