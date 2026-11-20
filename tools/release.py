@@ -12,6 +12,7 @@ v* tags must pin a commit on mabur master.
 
   release.py pin-check [--ref REF]       exit 1 if REF's pin is off mabur master
   release.py check <tag>                 exit 1 if <tag> breaks either rule
+  release.py package-meta --version V --sha S --board B --out DIR
   release.py notes --version V --sha S --build-info F [--build-info F ...] --files DIR
 
 The mabur checkout is third_party/mabur (--mabur DIR to override); it needs
@@ -109,7 +110,41 @@ def check_tag(tag, ground_tags, pin_sha, pin_ok, drone_tag, changes):
     return None
 
 
-def notes(version, sha, pin_sha, paired_tag, contract, infos, files):
+def changelog(repo, sha, cap=50):
+    """First-parent history since the previous v* tag, as "- text" lines, newest first.
+
+    A GitHub merge commit reads as its PR title (the body's first line) plus
+    the PR number; anything else reads as its subject.
+    """
+    prev = _git(repo, "describe", "--tags", "--abbrev=0", "--match", "v*", f"{sha}^",
+                check=False)
+    rng = f"{prev.stdout.strip()}..{sha}" if prev.returncode == 0 else sha
+    log = _git(repo, "log", "--first-parent", "--format=%s%x00%b%x1e", rng).stdout
+    lines = []
+    for rec in log.split("\x1e"):
+        if not rec.strip():
+            continue
+        subject, _, body = rec.partition("\x00")
+        subject = subject.strip()
+        m = re.match(r"Merge pull request #(\d+) from ", subject)
+        if m:
+            title = next((l.strip() for l in body.splitlines() if l.strip()), subject)
+            lines.append(f"- {title} (#{m.group(1)})")
+        else:
+            lines.append(f"- {subject}")
+    if not lines:
+        return ["- No changes"]
+    if len(lines) > cap:
+        lines = lines[:cap] + [f"- \u2026 and {len(lines) - cap} more"]
+    return lines
+
+
+def version_file(version, board, drone):
+    """The VERSION file shipped in an upgrade package."""
+    return f"version={version}\nboard={board}\ndrone={drone or ''}\n"
+
+
+def notes(version, sha, pin_sha, paired_tag, contract, infos, files, changes):
     """The release body, as markdown."""
     caps = " ".join(k.replace("CAP_", "")
                     for k in sorted(contract["caps"], key=contract["caps"].get))
@@ -126,6 +161,7 @@ def notes(version, sha, pin_sha, paired_tag, contract, infos, files):
                      f"Buildroot {info.get('buildroot', 'unknown')}, "
                      f"kernel `{info.get('kernel', 'unknown')}` "
                      f"(sha256 `{info.get('kernel_sha256', 'unknown')}`)")
+    lines += ["", "**Changes**", *changes]
     lines += ["", "| file | md5 |", "|---|---|"]
     lines += [f"| `{name}` | `{md5}` |" for name, md5 in sorted(files.items())]
     return "\n".join(lines) + "\n"
@@ -168,6 +204,11 @@ def main(argv):
     n.add_argument("--sha", required=True)
     n.add_argument("--build-info", action="append", default=[])
     n.add_argument("--files", required=True)
+    m = sub.add_parser("package-meta")
+    m.add_argument("--version", required=True)
+    m.add_argument("--sha", required=True)
+    m.add_argument("--board", required=True)
+    m.add_argument("--out", required=True)
     a = ap.parse_args(argv)
 
     if a.cmd == "pin-check":
@@ -196,8 +237,16 @@ def main(argv):
         return 0
     sha_pin = pin(a.sha)
     contract = contract_in(a.mabur, sha_pin)
+    if a.cmd == "package-meta":
+        drone = paired_drone_tag(a.mabur, contract)
+        with open(os.path.join(a.out, "VERSION"), "w") as f:
+            f.write(version_file(a.version, a.board, drone))
+        with open(os.path.join(a.out, "CHANGELOG"), "w") as f:
+            f.write("\n".join(changelog(".", a.sha)) + "\n")
+        return 0
     sys.stdout.write(notes(a.version, a.sha, sha_pin, paired_drone_tag(a.mabur, contract),
-                           contract, [_read_info(f) for f in a.build_info], _md5s(a.files)))
+                           contract, [_read_info(f) for f in a.build_info], _md5s(a.files),
+                           changelog(".", a.sha)))
     return 0
 
 
