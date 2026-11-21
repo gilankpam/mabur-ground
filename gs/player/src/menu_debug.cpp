@@ -115,6 +115,22 @@ std::string menu_view_text(const MenuView& v) {
   out += "confirm " + v.confirm_text + "\n";
   out += "toast " + v.toast + "\n";
   out += "banner " + v.banner + "\n";
+  if (v.upgrade.shown) {
+    const UpgradePage& u = v.upgrade;
+    out += "upgrade.shown 1\n";
+    out += "upgrade.title=" + u.title + "\n";
+    out += "upgrade.header=" + u.header + (u.header_warn ? " (warn)" : "") + "\n";
+    out += "upgrade.pair=" + u.pair + (u.pair_warn ? " (warn)" : "") + "\n";
+    for (size_t i = 0; i < u.lines.size(); ++i)
+      out += std::string("upgrade.line ") + (static_cast<int>(i) == u.cursor ? "> " : "") +
+             u.lines[i] + "\n";
+    out += "upgrade.first=" + std::to_string(u.first) + "\n";
+    out += "upgrade.pct=" + std::to_string(u.pct) + "\n";
+    out += "upgrade.phase=" + u.phase_text + "\n";
+    out += "upgrade.error=" + u.error + "\n";
+    out += "upgrade.confirm=" + u.confirm + "\n";
+    out += "upgrade.keys=" + u.keys + "\n";
+  }
   return out;
 }
 

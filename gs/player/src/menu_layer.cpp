@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <tuple>
+#include <utility>
 
 #include "gs_draw.h"
 #include "gs_font.h"
@@ -266,7 +267,9 @@ void MenuLayer::rebuild_() {
   if (!laid_out_) return;
   if (view_.open) {
     build_panel_(&target_[kPanel]);
-    if (view_.picker != MenuView::Picker::kNone) {
+    // An update page owns the picker slot: only its own confirm opens one.
+    if (view_.upgrade.shown ? !view_.upgrade.confirm.empty()
+                            : view_.picker != MenuView::Picker::kNone) {
       const DirtyRect p = target_[kPanel].rect();
       build_picker_(p.x + p.w + sc_(kPickerGap), p.y, &target_[kPicker]);
     }
@@ -287,6 +290,19 @@ void MenuLayer::build_panel_(Box* box) const {
   const int pad = sc_(kPadX), gap = sc_(kGap);
   const int inner = w - 2 * pad;
   int y = sc_(kInset);
+  const UpgradePage& pg = view_.upgrade;
+  const std::string& crumb = pg.shown ? pg.title : view_.crumb;
+  // The lines under the crumb: a page's version header and pairing line
+  // (each amber only when it warns), else the menu's amber header.
+  std::vector<std::pair<std::string, uint32_t>> heads;
+  if (pg.shown) {
+    if (!pg.header.empty())
+      heads.push_back({pg.header, pg.header_warn ? tok::kStatusCaution : tok::kTextPrimary});
+    if (!pg.pair.empty())
+      heads.push_back({pg.pair, pg.pair_warn ? tok::kStatusCaution : tok::kTextPrimary});
+  } else if (!view_.header.empty()) {
+    heads.push_back({view_.header, tok::kStatusCaution});
+  }
 
   // Header: the crumb, and the link pill on the right. A non-empty pill
   // mark (e.g. "no heartbeat") sits immediately to the pill's left, taking
@@ -306,19 +322,19 @@ void MenuLayer::build_panel_(Box* box) const {
       crumb_right = mark_x;
     }
     b.runs.push_back({small_, x + pad, base,
-                      fit(small_, view_.crumb, crumb_right - gap - (x + pad)), tok::kTextPrimary});
+                      fit(small_, crumb, crumb_right - gap - (x + pad)), tok::kTextPrimary});
     if (!mark.empty()) b.runs.push_back({small_, mark_x, base, mark, tok::kStatusCaution});
     b.runs.push_back({small_, pill_x, base, pill,
                       view_.linked ? tok::kStatusOk : tok::kTextLabel});
-    if (view_.header.empty()) b.fills.push_back({x, y + b.h - 1, w, 1, tok::kTrack});
+    if (heads.empty()) b.fills.push_back({x, y + b.h - 1, w, 1, tok::kTrack});
     y += b.h;
     box->blocks.push_back(std::move(b));
   }
-  if (!view_.header.empty()) {
+  for (size_t i = 0; i < heads.size(); ++i) {
     Block b{x, y, w, small_->glyph_h + sc_(kLinePadY), tok::kMenuPanel, {}, {}};
     b.runs.push_back({small_, x + pad, y + (b.h - small_->glyph_h) / 2 + small_->baseline,
-                      fit(small_, view_.header, inner), tok::kStatusCaution});
-    b.fills.push_back({x, y + b.h - 1, w, 1, tok::kTrack});
+                      fit(small_, heads[i].first, inner), heads[i].second});
+    if (i + 1 == heads.size()) b.fills.push_back({x, y + b.h - 1, w, 1, tok::kTrack});
     y += b.h;
     box->blocks.push_back(std::move(b));
   }
@@ -326,7 +342,7 @@ void MenuLayer::build_panel_(Box* box) const {
   // Rows: a text block, then the strip the busy sweep runs in.
   const int strip = std::max(2, sc_(2));
   const int text_h = row_->glyph_h + sc_(kRowPadY) - strip;
-  for (size_t i = 0; i < view_.rows.size() && i < kMaxRows; ++i) {
+  for (size_t i = 0; !pg.shown && i < view_.rows.size() && i < kMaxRows; ++i) {
     const ViewRow& r = view_.rows[i];
     const uint32_t bg = r.selected ? tok::kMenuSelect : tok::kMenuPanel;
     Block b{x, y, w, text_h, bg, {}, {}};
@@ -402,12 +418,49 @@ void MenuLayer::build_panel_(Box* box) const {
     box->blocks.push_back(std::move(sb));
   }
 
-  // Help: two lines, red while it explains a failure.
+  if (pg.shown) {
+    const int line_h = row_->glyph_h + sc_(kRowPadY);
+    // One text line of row height, flush left.
+    auto line = [&](const std::string& t, uint32_t rgb, uint32_t bg) {
+      Block b{x, y, w, line_h, bg, {}, {}};
+      b.runs.push_back({row_, x + pad, y + (line_h - row_->glyph_h) / 2 + row_->baseline,
+                        fit(row_, t, inner), rgb});
+      y += line_h;
+      box->blocks.push_back(std::move(b));
+    };
+    const int first = std::max(0, pg.first);
+    for (int i = first; i < (int)pg.lines.size() && i < first + UpgradeFlow::kBodyRows; ++i)
+      line(pg.lines[(size_t)i], tok::kTextPrimary,
+           i == pg.cursor ? tok::kMenuSelect : tok::kMenuPanel);
+    if (pg.pct >= 0) {
+      // The bar on the left, its percent on the right.
+      Block b{x, y, w, line_h, tok::kMenuPanel, {}, {}};
+      const std::string label = std::to_string(std::min(pg.pct, 100)) + " %";
+      const int label_w = tw(small_, label);
+      const int bar_w = std::max(0, inner - gap - label_w);
+      const int bar_h = std::max(4, sc_(8));
+      const int bar_y = y + (line_h - bar_h) / 2;
+      b.fills.push_back({x + pad, bar_y, bar_w, bar_h, tok::kTrack});
+      b.fills.push_back({x + pad, bar_y, bar_w * std::min(pg.pct, 100) / 100, bar_h,
+                         tok::kStatusOk});
+      b.runs.push_back({small_, x + w - pad - label_w,
+                        y + (line_h - small_->glyph_h) / 2 + small_->baseline, label,
+                        tok::kTextSecondary});
+      y += line_h;
+      box->blocks.push_back(std::move(b));
+    }
+    if (!pg.phase_text.empty()) line(pg.phase_text, tok::kTextPrimary, tok::kMenuPanel);
+    if (pg.pct >= 0 || !pg.phase_text.empty())
+      line("Don't power off", tok::kStatusCaution, tok::kMenuPanel);
+  }
+
+  // Help: two lines, red while it explains a failure (a page's error).
   {
     Block b{x, y, w, kHelpLines * small_->glyph_h + sc_(kLinePadY), tok::kMenuPanel, {}, {}};
     b.fills.push_back({x, y, w, 1, tok::kTrack});
-    const uint32_t rgb = view_.help_is_error ? tok::kStatusCritical : tok::kTextLabel;
-    const auto lines = wrap(small_, view_.help, inner, kHelpLines);
+    const uint32_t rgb =
+        pg.shown || view_.help_is_error ? tok::kStatusCritical : tok::kTextLabel;
+    const auto lines = wrap(small_, pg.shown ? pg.error : view_.help, inner, kHelpLines);
     for (size_t i = 0; i < lines.size(); ++i)
       b.runs.push_back({small_, x + pad,
                         y + sc_(kLinePadY) / 2 + (int)i * small_->glyph_h + small_->baseline,
@@ -419,7 +472,7 @@ void MenuLayer::build_panel_(Box* box) const {
   {
     Block b{x, y, w, small_->glyph_h + sc_(kLinePadY), tok::kMenuPanel, {}, {}};
     b.runs.push_back({small_, x + pad, y + (b.h - small_->glyph_h) / 2 + small_->baseline,
-                      fit(small_, view_.keys, inner), tok::kTextLabel});
+                      fit(small_, pg.shown ? pg.keys : view_.keys, inner), tok::kTextLabel});
     box->blocks.push_back(std::move(b));
   }
 }
@@ -427,6 +480,11 @@ void MenuLayer::build_panel_(Box* box) const {
 void MenuLayer::build_picker_(int x, int y, Box* box) const {
   const int pad = sc_(kPadX);
   const int max_w = std::max(0, screen_w_ - x - sc_(kInset));
+  const bool page = view_.upgrade.shown;
+  const MenuView::Picker picker = !page                         ? view_.picker
+                                  : view_.upgrade.confirm.empty() ? MenuView::Picker::kNone
+                                                                  : MenuView::Picker::kConfirm;
+  const std::string& confirm_text = page ? view_.upgrade.confirm : view_.confirm_text;
   const int line_h = row_->glyph_h + sc_(kRowPadY);
   const std::string go = "▶ Go ahead", cancel = "◀ Cancel";
   auto choice_label = [&](size_t i) {
@@ -435,7 +493,7 @@ void MenuLayer::build_picker_(int x, int y, Box* box) const {
 
   // The width first: every block spans the whole box.
   int w = 0;
-  switch (view_.picker) {
+  switch (picker) {
     case MenuView::Picker::kChoices:
       w = sc_(kPickerMinW);
       for (size_t i = 0; i < view_.choices.size(); ++i) {
@@ -473,7 +531,7 @@ void MenuLayer::build_picker_(int x, int y, Box* box) const {
   };
 
   pad_block(sc_(kBoxPadY));
-  switch (view_.picker) {
+  switch (picker) {
     case MenuView::Picker::kChoices:
       for (size_t i = 0; i < view_.choices.size(); ++i) {
         const Choice& c = view_.choices[i];
@@ -504,7 +562,7 @@ void MenuLayer::build_picker_(int x, int y, Box* box) const {
            tok::kMenuPanel, true);
       break;
     case MenuView::Picker::kConfirm:
-      for (const std::string& l : wrap(row_, view_.confirm_text, inner, kConfirmLines))
+      for (const std::string& l : wrap(row_, confirm_text, inner, kConfirmLines))
         line(row_, row_->glyph_h + sc_(2), l, tok::kTextPrimary, tok::kMenuPanel, false);
       pad_block(sc_(kBoxPadY));
       line(row_, line_h, go, tok::kTextPrimary, tok::kMenuSelect, false);
