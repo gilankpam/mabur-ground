@@ -36,6 +36,8 @@ void version_header(const std::string& cur, const std::string& next, std::string
       break;
   }
 }
+
+std::string file_name(const std::string& path) { return path.substr(path.find_last_of('/') + 1); }
 }  // namespace
 
 UpgradeFlow::UpgradeFlow(std::string current_version, std::string board)
@@ -202,7 +204,8 @@ UpgradePage UpgradeFlow::page() const {
   p.shown = true;
   if (view_ == View::kList) {
     p.title = "Update from file";
-    for (const auto& it : items_) p.lines.push_back(it.version.empty() ? it.arg : it.version + "  " + it.arg);
+    for (const auto& it : items_) p.lines.push_back(it.version.empty() ? file_name(it.arg)
+                                                               : it.version + "  " + file_name(it.arg));
     p.cursor = sel_;
     p.first = std::max(0, sel_ - kBodyRows + 1);
     p.keys = "▲▼ choose  ▶ open  ◀ close";
@@ -221,7 +224,7 @@ UpgradePage UpgradeFlow::page() const {
     if (confirm_) {
       // A package with no VERSION is named by its file.
       const std::string name =
-          it.version.empty() ? it.arg.substr(it.arg.find_last_of('/') + 1) : it.version;
+          it.version.empty() ? file_name(it.arg) : it.version;
       p.confirm = "Install " + name + "? The GS reboots. Keep the power on.";
       p.keys = "▶ install  ◀ back";
     } else {

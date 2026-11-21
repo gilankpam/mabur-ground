@@ -56,6 +56,7 @@ TEST(several_packages_list) {
   auto f = flow();
   f.show_packages({pkg("/a.tgz", "v0.2.0"), pkg("/b.tgz", "v0.3.0")});
   CHECK(f.page().cursor == 0 && f.page().lines.size() == 2);
+  CHECK(f.page().lines[1] == "v0.3.0  b.tgz");  // file name only, not the path
   f.key(K::kDown);
   CHECK(f.page().cursor == 1);
   f.key(K::kRight);
