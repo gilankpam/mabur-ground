@@ -238,8 +238,8 @@ reading it as a missed latch.
 - The candidate scratch file is `<realpath>.new`, written beside the
   config's **resolved** target — the same scratch name the drone's own
   config writer uses (`common/include/mabur/config_write.h`).
-- **The publish resolves symlinks.** `maburplay`'s `/etc/maburplay.toml`
-  is typically a symlink onto a vfat `/config` mount; every step —
+- **The publish resolves symlinks.** A config path that is a symlink
+  (for instance onto a vfat `/config` mount) is written through: every step —
   reading the original, writing the scratch, the backup, the rename —
   happens beside the symlink's *target*. After each rename (the
   backup's and the publish's) the renamed file is fsynced, then its

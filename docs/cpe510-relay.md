@@ -83,7 +83,7 @@ hop lead. **A relay-only GS (no USB card) is supported**: `main.cpp`'s
 boot scan stays search-only (no energy reads to rank with); see
 "Interference + hop on a relay" below for what it gets instead.
 
-**Config.** `[radio] relays = ["10.83.11.1:8310"]` in `/etc/maburgs.toml`
+**Config.** `[radio] relays = ["10.83.11.1:8310"]` in `maburgs.toml`
 (default `[]`). Each entry is `ipv4:port` — a numeric dotted IPv4 address
 (`inet_pton`; a hostname fails boot, because the UDP transport's
 `getaddrinfo` runs on the core thread on every 2 s reopen and a dead

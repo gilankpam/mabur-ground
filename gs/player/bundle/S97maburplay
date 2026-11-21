@@ -27,9 +27,13 @@ case "$1" in
   *) echo "usage: $0 {start|stop|restart}"; exit 1 ;;
 esac
 
+# The GS image keeps its configs on the CONFIG partition; other hosts in /etc.
+CONF=/config/maburplay.toml
+[ -f "$CONF" ] || CONF=/etc/maburplay.toml
+
 (
   while true; do
-    /usr/local/bin/maburplay -c /etc/maburplay.toml
+    /usr/local/bin/maburplay -c "$CONF"
     rc=$?
     if [ "$rc" = 2 ] || [ "$rc" = 143 ]; then
       echo "maburplay exited: $rc, skip restart ...."

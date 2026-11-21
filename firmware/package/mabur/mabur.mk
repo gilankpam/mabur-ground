@@ -162,18 +162,17 @@ MABUR_CONF_OPTS = \
 # read-only squashfs (writable only through the ext4 overlay, which Windows
 # cannot read), and the point of the config partition is that these two files
 # are editable with the card in a laptop. So they are installed as *defaults*
-# under /usr/share/config-defaults, /etc/maburgs.toml and /etc/maburplay.toml
-# become symlinks into /config, and /etc/init.d/S00config copies any missing
-# default onto the FAT32 CONFIG partition on first boot.
+# under /usr/share/config-defaults, /etc/init.d/S00config copies any missing
+# default onto the FAT32 CONFIG partition on first boot, and the daemons read
+# them straight from /config (S96maburgs and S97maburplay prefer
+# /config/<file> over /etc/<file>). The pairing key sits beside them: the installed
+# maburgs default names /config/mabur.key, so the key is dropped onto the
+# same partition. The bundle files keep /etc for install.sh hosts.
 #
-# Both files are installed verbatim, and nothing overrides them wholesale any
-# more. A board that needs a different default edits the installed file in
-# board/common/post-build-script.sh instead -- see the note above
-# MABUR_INSTALL_INIT_SYSV.
-#
-# The symlinks live here rather than in board/common/overlay because that
-# overlay is shared with the non-mabur boards (orangepi), which would
-# otherwise carry two dangling /etc symlinks.
+# Both files are otherwise installed verbatim, and nothing overrides them
+# wholesale any more. A board that needs a different default edits the
+# installed file in board/common/post-build-script.sh instead -- see the note
+# above MABUR_INSTALL_INIT_SYSV.
 #
 # The three assets under /usr/local/share/mabur are runtime files, not linked-in
 # blobs: maburplay.toml names font_btfl.mfont and gs_osd.gfont by path, and
@@ -212,9 +211,10 @@ define MABUR_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/share/config-defaults/maburgs.toml
 	$(INSTALL) -D -m 0644 $(@D)/gs/player/bundle/maburplay.default.toml \
 		$(TARGET_DIR)/usr/share/config-defaults/maburplay.toml
-
-	ln -sfn /config/maburgs.toml $(TARGET_DIR)/etc/maburgs.toml
-	ln -sfn /config/maburplay.toml $(TARGET_DIR)/etc/maburplay.toml
+	sed -i 's|"/etc/mabur.key"|"/config/mabur.key"|' \
+		$(TARGET_DIR)/usr/share/config-defaults/maburgs.toml
+	grep -q '^key_file *= *"/config/mabur.key"' \
+		$(TARGET_DIR)/usr/share/config-defaults/maburgs.toml
 endef
 
 # Both wrappers are this repo's bundled files, installed unmodified.

@@ -65,8 +65,8 @@ scp -O gs/bundle/maburcal "$HOST:/usr/bin/maburcal"
 # cleanly on repo defaults (no crash, no signal; the startup defaulted-keys
 # report can't catch it either, since it compares against compiled defaults,
 # not the old config) and silently runs on the wrong values. Convert first.
-if ssh "$HOST" '[ -f /etc/maburgs.toml ]'; then
-  : # tuned config already present -- never clobber it
+if ssh "$HOST" '[ -f /config/maburgs.toml ] || [ -f /etc/maburgs.toml ]'; then
+  : # tuned config already present (the GS image's /config, else /etc) -- never clobber it
 elif ssh "$HOST" '[ -f /etc/maburgs.json ]'; then
   echo "error: $HOST has /etc/maburgs.json but no /etc/maburgs.toml -- convert" >&2
   echo "the tuned JSON config to TOML by hand before deploying (mabur's docs/deploy.md," >&2

@@ -8,14 +8,14 @@
 # comment-heavy toml rather than anything generated.
 #
 # Runs before everything else (S00) because S39wifi reads /config/wifi.toml,
-# and S96maburgs and S97maburplay read /etc/maburgs.toml and
-# /etc/maburplay.toml, both of which are symlinks into /config.
+# and S96maburgs and S97maburplay read /config/maburgs.toml and
+# /config/maburplay.toml (and maburgs the key, /config/mabur.key).
 #
 # This deliberately runs after pivot_root rather than inside /init: / is the
 # overlay by now, so if the mount fails -- card yanked, FAT trashed by an
 # unclean eject on the PC -- /config stays a writable directory on the overlay,
 # the seeding below still fills it, and the box boots with working configs
-# instead of two dangling symlinks and no ground station.
+# instead of no configs and no ground station.
 
 CONFIG_DIR=/config
 DEFAULTS_DIR=/usr/share/config-defaults

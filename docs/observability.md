@@ -978,7 +978,7 @@ against it, not against the housekeeping loop that prints the line.
 maburplay draws it from the SAME datagram `maburtop` reads (`osd.gs.port`
 = one of maburgs' `[[stats.out]]` ports), so the screen and the recorder
 cannot disagree — if the OSD shows something surprising, the answer is in
-`flight.jsonl`. Config is `[osd.gs]` in `/etc/maburplay.toml` (`enable`,
+`flight.jsonl`. Config is `[osd.gs]` in `maburplay.toml` (`enable`,
 code default false, bundle true; `stale_ms` dims every link-derived field
 after silence; fps/jitter/bitrate/REC are player-measured and never dim).
 There is one layout, the compact bar — two rows along the bottom edge,
@@ -1079,7 +1079,7 @@ actually hit (`osd_compose.cpp`).
 ### Record button (GPIO)
 
 `maburplay` toggles the DVR from a button on the GS header: `[input.rec]`
-in `/etc/maburplay.toml` (`pin` is the header pin number, required,
+in `maburplay.toml` (`pin` is the header pin number, required,
 resolved at startup by matching the kernel's line names — the Radxa ZERO 3
 names its header `PIN_7`…`PIN_40` across gpiochip1/3/4;
 `active_low`/`bias` default to a button between the pin and GND with the
