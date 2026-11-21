@@ -58,11 +58,11 @@ a package left on the SD card or the `DVR` partition does nothing by itself.
 
 ### From the menu
 
-- **System > Update from file** lists this board's packages on the media
+- **Firmware > Ground station > Update from file** lists this board's packages on the media
   (`/media/dvr`: the SD card if one is inserted, else the `DVR` partition),
   named `<board>.tar.gz` or `mabur-ground-<version>-<board>.tar.gz`. Copy one
   there by `scp`, gadget mode or a card reader.
-- **System > Check online** asks GitHub for the latest release (Stable) or
+- **Firmware > Ground station > Check online** asks GitHub for the latest release (Stable) or
   the `snapshot` pre-release built from master (Snapshot).
 
 Either way the menu shows the package's version and changelog, asks before

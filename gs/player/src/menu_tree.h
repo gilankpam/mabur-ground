@@ -47,7 +47,7 @@ struct MenuTreeDeps {
   // link and no measurement.
   std::function<bool()> snap_stale;
   std::string gs_version;  // "" = unknown
-  // The System update rows' hooks. All null-safe: null busy = false, null
+  // The Firmware › Ground station update rows' hooks. All null-safe: null busy = false, null
   // file/online = do nothing.
   std::function<void()> upgrade_file;
   std::function<void(const std::string& channel)> upgrade_online;  // "stable" | "snapshot"

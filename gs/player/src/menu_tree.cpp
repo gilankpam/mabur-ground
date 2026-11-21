@@ -1266,19 +1266,26 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
   debug.choices = on_off;
   debug.current = [d] { return bool_text(d->gs->debug_log); };
   debug.help = text("Writes a per-session debug log to the GS DVR card.");
+  return {adv, size, debug};
+}
 
+// --- Firmware ----------------------------------------------------------
+
+// One subgroup per device: the GS now, the drone's own updates beside it later.
+MenuNode gs_firmware_group(const Deps& d) {
+  auto version_text = [d] { return d->gs_version.empty() ? std::string("unknown") : d->gs_version; };
   MenuNode version;
-  version.id = "sys.version";
-  version.label = "Software";
+  version.id = "fw.gs.version";
+  version.label = "Version";
   version.kind = NodeKind::kInfo;
-  version.value_text = [d] { return d->gs_version.empty() ? std::string("unknown") : d->gs_version; };
+  version.value_text = version_text;
 
   // "Checking…" while a find or check runs, else the row's own note.
   auto checking_or = [d](std::string note) {
     return [d, note] { return d->upgrade_busy && d->upgrade_busy() ? std::string("Checking…") : note; };
   };
   MenuNode file;
-  file.id = "sys.update.file";
+  file.id = "fw.gs.file";
   file.label = "Update from file";
   file.kind = NodeKind::kAction;
   file.value_text = checking_or("");
@@ -1296,16 +1303,16 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
       return std::vector<SetStep>{};
     };
   };
-  MenuNode online = group("sys.update.online", "Check online",
+  MenuNode online = group("fw.gs.online", "Check online",
                           "Needs the GS on a network (wifi.toml client mode).", [online_action, checking_or] {
     MenuNode stable;
-    stable.id = "sys.update.stable";
+    stable.id = "fw.gs.stable";
     stable.label = "Stable";
     stable.kind = NodeKind::kAction;
     stable.value_text = checking_or("releases");
     stable.action = online_action("stable");
     MenuNode snap;
-    snap.id = "sys.update.snapshot";
+    snap.id = "fw.gs.snapshot";
     snap.label = "Snapshot";
     snap.kind = NodeKind::kAction;
     snap.value_text = checking_or("");
@@ -1313,7 +1320,10 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
     snap.action = online_action("snapshot");
     return std::vector<MenuNode>{stable, snap};
   });
-  return {adv, size, debug, version, file, online};
+  MenuNode gs = group("fw.gs", "Ground station", "This GS's image, and updating it.",
+                      [version, file, online] { return std::vector<MenuNode>{version, file, online}; });
+  gs.group_value = version_text;
+  return gs;
 }
 
 // --- Unread GS values ----------------------------------------------------
@@ -1400,6 +1410,8 @@ std::vector<MenuNode> build_menu_tree(const MenuTreeDeps& deps) {
       group("osd", "OSD", "What is drawn over the video.", [d] { return osd_rows(d); }),
       group("power", "Power & FC", "The drone's power saving and its flight-controller link.",
             [d] { return power_rows(d); }),
+      group("fw", "Firmware", "What runs on the GS, and updating it.",
+            [d] { return std::vector<MenuNode>{gs_firmware_group(d)}; }),
       group("sys", "System", "GS housekeeping.", [d] { return sys_rows(d); }),
   });
 }

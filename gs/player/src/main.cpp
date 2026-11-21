@@ -57,7 +57,7 @@
 #include "rec_control.h"  // maburgs::kRecControlPort
 #include "ring_client.h"
 #include "stream_feeder.h"
-#include "upgrade_flow.h"    // the update pages behind the System rows
+#include "upgrade_flow.h"    // the update pages behind the Firmware rows
 #include "upgrade_runner.h"  // runs gs-upgrade for them
 #include "video_backend.h"
 #include "core_control_client.h"  // sends the button's VTX wish + refresh reports to maburgs
@@ -2406,7 +2406,7 @@ int main(int argc, char** argv) {
     return display_lock && display_lock->available() && !display_lock->refused();
   };
 #endif
-  // Updating the GS from the System rows: built only with the menu, the one
+  // Updating the GS from the Firmware rows: built only with the menu, the one
   // place its pages are drawn and its keys come from. The flash itself runs
   // in gs-upgrade and does not depend on this process.
   std::optional<maburplay::UpgradeRunner> upgrader;

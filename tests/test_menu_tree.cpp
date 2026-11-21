@@ -202,7 +202,7 @@ TEST(the_top_level_groups_are_video_link_recording_osd_system) {
     got.push_back(n.label);
   }
   REQUIRE((got ==
-           std::vector<std::string>{"Video", "Link", "Recording", "OSD", "Power & FC", "System"}));
+           std::vector<std::string>{"Video", "Link", "Recording", "OSD", "Power & FC", "Firmware", "System"}));
   // No Calibration group yet.
   for (const MenuNode& n : t[1].children()) CHECK(n.label != "Calibration");
 }
@@ -211,7 +211,7 @@ TEST(top_level_groups_include_power_and_fc) {
   Fx f;
   std::vector<std::string> ids;
   for (const MenuNode& n : f.tree()) ids.push_back(n.id);
-  CHECK((ids == std::vector<std::string>{"video", "link", "rec", "osd", "power", "sys"}));
+  CHECK((ids == std::vector<std::string>{"video", "link", "rec", "osd", "power", "fw", "sys"}));
 }
 
 TEST(rate_fixed_sends_four_steps_with_static_mcs_last) {
@@ -1414,42 +1414,48 @@ TEST(every_step_key_is_a_live_key_of_its_owner) {
 }
 
 
-TEST(system_group_lists_the_update_rows_after_debug) {
+TEST(firmware_group_holds_the_gs_update_rows) {
   Fx f;
   std::vector<std::string> ids;
+  for (const MenuNode& n : f.node("fw").children()) ids.push_back(n.id);
+  CHECK((ids == std::vector<std::string>{"fw.gs"}));
+  ids.clear();
+  for (const MenuNode& n : f.node("fw.gs").children()) ids.push_back(n.id);
+  CHECK((ids == std::vector<std::string>{"fw.gs.version", "fw.gs.file", "fw.gs.online"}));
+  ids.clear();
   for (const MenuNode& n : f.node("sys").children()) ids.push_back(n.id);
-  CHECK((ids == std::vector<std::string>{"sys.adv", "sys.size", "sys.debug", "sys.version",
-                                         "sys.update.file", "sys.update.online"}));
+  CHECK((ids == std::vector<std::string>{"sys.adv", "sys.size", "sys.debug"}));
+  CHECK(f.node("fw.gs").group_value() == "v0.1.0");
 }
 
-TEST(system_version_reads_the_version_or_unknown) {
+TEST(gs_version_reads_the_version_or_unknown) {
   Fx f;
-  CHECK(f.node("sys.version").value_text() == "v0.1.0");
+  CHECK(f.node("fw.gs.version").value_text() == "v0.1.0");
   f.version = "";
-  CHECK(f.node("sys.version").value_text() == "unknown");
+  CHECK(f.node("fw.gs.version").value_text() == "unknown");
   // Player-side rows are never dashed before maburgs' first get.
   f.gs = GsLiveView{};
-  CHECK(f.node("sys.version").value_text() == "unknown");
+  CHECK(f.node("fw.gs.version").value_text() == "unknown");
 }
 
 TEST(update_from_file_calls_the_dep_and_sends_nothing) {
   Fx f;
-  const MenuNode n = f.node("sys.update.file");
+  const MenuNode n = f.node("fw.gs.file");
   CHECK(n.action().empty());
   CHECK(f.file_calls == 1);
   CHECK(!n.value_text || n.value_text().empty());
   f.upgrade_busy = true;
-  CHECK(f.node("sys.update.file").value_text() == "Checking…");
+  CHECK(f.node("fw.gs.file").value_text() == "Checking…");
 }
 
 TEST(update_online_children_call_the_dep_stable_first) {
   Fx f;
-  const MenuNode g = f.node("sys.update.online");
+  const MenuNode g = f.node("fw.gs.online");
   REQUIRE(g.kind == NodeKind::kGroup);
   const auto kids = g.children();
   REQUIRE(kids.size() == 2);
-  CHECK(kids[0].id == "sys.update.stable");
-  CHECK(kids[1].id == "sys.update.snapshot");
+  CHECK(kids[0].id == "fw.gs.stable");
+  CHECK(kids[1].id == "fw.gs.snapshot");
   CHECK(kids[0].action().empty());
   CHECK(kids[1].action().empty());
   CHECK((f.online_calls == std::vector<std::string>{"stable", "snapshot"}));
@@ -1457,12 +1463,12 @@ TEST(update_online_children_call_the_dep_stable_first) {
 
 TEST(update_online_children_read_checking_while_busy) {
   Fx f;
-  CHECK(f.node("sys.update.stable").value_text() == "releases");
-  CHECK(f.node("sys.update.snapshot").value_text().empty());
+  CHECK(f.node("fw.gs.stable").value_text() == "releases");
+  CHECK(f.node("fw.gs.snapshot").value_text().empty());
   f.upgrade_busy = true;
-  CHECK(f.node("sys.update.stable").value_text() == "Checking…");
-  CHECK(f.node("sys.update.snapshot").value_text() == "Checking…");
-  CHECK(f.node("sys.update.snapshot").warn() == "latest master build, untested");
+  CHECK(f.node("fw.gs.stable").value_text() == "Checking…");
+  CHECK(f.node("fw.gs.snapshot").value_text() == "Checking…");
+  CHECK(f.node("fw.gs.snapshot").warn() == "latest master build, untested");
 }
 
 TEST(update_rows_survive_null_deps) {
@@ -1472,11 +1478,10 @@ TEST(update_rows_survive_null_deps) {
   d.upgrade_online = nullptr;
   d.upgrade_busy = nullptr;
   const auto t = build_menu_tree(d);
-  const MenuNode& sys = t.back();
-  const auto rows = sys.children();
-  CHECK(rows[4].action().empty());
-  CHECK(rows[4].value_text().empty());
-  for (const MenuNode& k : rows[5].children()) {
+  const auto rows = f.find(t, "fw.gs")->children();
+  CHECK(rows[1].action().empty());
+  CHECK(rows[1].value_text().empty());
+  for (const MenuNode& k : rows[2].children()) {
     CHECK(k.action().empty());
     CHECK(k.value_text() != "Checking…");
   }
