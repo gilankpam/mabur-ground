@@ -662,6 +662,7 @@ TEST(an_upgrade_running_page_draws_a_bar_only_at_a_percent) {
   std::string err;
   REQUIRE(m.layout(1920, 1080, &err));
   MenuView v = page_view(0);
+  v.upgrade.running = true;
   v.upgrade.phase_text = "Writing";
   v.upgrade.pct = 25;
   v.upgrade.keys = "";
@@ -682,11 +683,14 @@ TEST(an_upgrade_running_page_draws_a_bar_only_at_a_percent) {
   CHECK(has(t, "Don't power off"));
   CHECK(m.debug_panel_box().h < with_bar);
 
-  // Not running: no warning line.
-  v.upgrade.phase_text = "";
+  // An ended page keeps its phase text but is not running: no warning line.
+  v.upgrade.running = false;
+  v.upgrade.phase_text = "Cancelled";
   m.set_view(v);
   m.paint(c.s, nullptr);
-  CHECK(!has(m.debug_texts(), "Don't power off"));
+  t = m.debug_texts();
+  CHECK(has(t, "Cancelled"));
+  CHECK(!has(t, "Don't power off"));
 }
 
 TEST(an_upgrade_page_error_is_drawn_in_the_error_token) {

@@ -20,8 +20,8 @@ struct MaskAtlas;
 //   panel   top-left; the crumb and link pill, up to 10 rows, two help
 //           lines, the keys line. An update page (view.upgrade.shown)
 //           takes the rows' place: its header and pairing lines, up to
-//           8 body lines, and while it runs a progress bar, the phase and
-//           "Don't power off"; its error fills the help lines and its
+//           8 body lines, a progress bar at its percent, the phase, and
+//           "Don't power off" while an install runs; its error fills the help lines and its
 //           confirm opens the confirm picker
 //   picker  right of the panel while a value is being changed: the
 //           choices, a number spinner or a go-ahead prompt; no title

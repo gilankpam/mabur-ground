@@ -209,6 +209,7 @@ UpgradePage UpgradeFlow::page() const {
   p.first = 0;
   p.lines.clear();
   if (view_ == View::kRunning) {
+    p.running = true;
     p.phase_text = phase_name(st_.phase);
     if (have_status_ && st_.total > 0) p.pct = static_cast<int>(st_.done * 100 / st_.total);
     p.keys = cancellable(st_.phase) ? "◀ cancel" : "";

@@ -126,6 +126,7 @@ std::string menu_view_text(const MenuView& v) {
              u.lines[i] + "\n";
     out += "upgrade.first=" + std::to_string(u.first) + "\n";
     out += "upgrade.pct=" + std::to_string(u.pct) + "\n";
+    out += std::string("upgrade.running=") + (u.running ? "1" : "0") + "\n";
     out += "upgrade.phase=" + u.phase_text + "\n";
     out += "upgrade.error=" + u.error + "\n";
     out += "upgrade.confirm=" + u.confirm + "\n";

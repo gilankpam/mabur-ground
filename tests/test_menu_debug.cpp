@@ -145,6 +145,7 @@ TEST(view_text_prints_the_upgrade_page_only_when_shown) {
   v.upgrade.shown = true;
   v.upgrade.header = "v0.4.0";
   v.upgrade.pct = 25;
+  v.upgrade.running = true;
   v.upgrade.phase_text = "Writing";
   v.upgrade.error = "Write failed";
   v.upgrade.confirm = "Install v0.4.0?";
@@ -152,6 +153,7 @@ TEST(view_text_prints_the_upgrade_page_only_when_shown) {
   CHECK(t.find("upgrade.shown 1\n") != std::string::npos);
   CHECK(t.find("upgrade.header=v0.4.0\n") != std::string::npos);
   CHECK(t.find("upgrade.pct=25\n") != std::string::npos);
+  CHECK(t.find("upgrade.running=1\n") != std::string::npos);
   CHECK(t.find("upgrade.phase=Writing\n") != std::string::npos);
   CHECK(t.find("upgrade.error=Write failed\n") != std::string::npos);
   CHECK(t.find("upgrade.confirm=Install v0.4.0?\n") != std::string::npos);

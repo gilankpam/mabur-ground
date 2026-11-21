@@ -38,6 +38,7 @@ struct UpgradePage {
   int cursor = -1;                 // package list only
   std::string confirm;             // non-empty: confirm prompt over the page
   int pct = -1;                    // -1: no bar
+  bool running = false;             // an install under way: the GS must stay powered
   std::string phase_text, error, keys;
   bool operator==(const UpgradePage&) const = default;
 };

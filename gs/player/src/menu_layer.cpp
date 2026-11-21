@@ -450,7 +450,7 @@ void MenuLayer::build_panel_(Box* box) const {
       box->blocks.push_back(std::move(b));
     }
     if (!pg.phase_text.empty()) line(pg.phase_text, tok::kTextPrimary, tok::kMenuPanel);
-    if (pg.pct >= 0 || !pg.phase_text.empty())
+    if (pg.running)
       line("Don't power off", tok::kStatusCaution, tok::kMenuPanel);
   }
 

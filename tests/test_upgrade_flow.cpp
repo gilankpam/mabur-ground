@@ -164,6 +164,32 @@ TEST(write_error_text) {
   CHECK(!h.active());
 }
 
+TEST(running_only_while_the_flow_runs) {
+  auto f = flow();
+  f.show_packages({pkg("/a.tgz", "v0.2.0"), pkg("/b.tgz", "v0.3.0")});
+  CHECK(!f.page().running);  // package list
+  f.key(K::kRight);
+  CHECK(!f.page().running);  // package page
+  f.key(K::kRight);
+  CHECK(!f.page().confirm.empty() && !f.page().running);
+  f.key(K::kRight);
+  CHECK(f.page().running);  // started, no status yet
+  UpgradeStatus st;
+  st.state = "running";
+  st.phase = "unpack";
+  f.on_status(st);
+  CHECK(f.page().running);
+  st.state = "cancelled";
+  f.on_status(st);
+  CHECK(f.page().phase_text == "Cancelled" && !f.page().running);
+  auto e = running("verify");
+  st.state = "error";
+  st.phase = "verify";
+  st.msg = "bad checksum";
+  e.on_status(st);
+  CHECK(e.page().error == "bad checksum" && !e.page().running);
+}
+
 TEST(scroll_clamps) {
   auto f = flow();
   std::vector<std::string> cl(20, "x");
