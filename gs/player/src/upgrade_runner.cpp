@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <chrono>
@@ -276,6 +277,13 @@ bool UpgradeRunner::run_alive() const {
   const long p = std::strtol(pid.c_str(), &end, 10);
   if (p <= 0 || end == pid.c_str()) return true;
   return ::kill(static_cast<pid_t>(p), 0) == 0 || errno == EPERM;
+}
+
+std::string UpgradeRunner::available() const {
+  std::string v = slurp(dir_ + "/available");
+  v = v.substr(0, v.find('\n'));
+  while (!v.empty() && std::isspace(static_cast<unsigned char>(v.back()))) v.pop_back();
+  return v;
 }
 
 }  // namespace maburplay

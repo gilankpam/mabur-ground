@@ -130,10 +130,11 @@ real values.
 | `power.lowpwr` "Low power when disarmed" | drone | `LOWPWR_ENABLE` (+ `MSP_ENABLE`) | On/off. Turning it on while `MSP_ENABLE == "0"` sends `MSP_ENABLE=1` first (confirm "Also turns the FC link on.") — low power needs the FC link for arm state. |
 | `power.msp` "FC link (MSP)" | drone | `MSP_ENABLE` (+ `LOWPWR_ENABLE`) | On/off. Turning it off while `LOWPWR_ENABLE == "1"` sends `LOWPWR_ENABLE=0` first (confirm "Also turns Low power off.") — low power depends on this link. |
 | **Firmware** | | | |
-| `fw.gs` "Ground station" | — | — | A group; its value is the running version. One subgroup per device, so the drone's updates can sit beside it. |
+| `fw` "Firmware" | — | — | A group; warns `update` while this boot's `gs-upgrade notify` has found a newer image (`/tmp/gs-upgrade/available`, [`gs-image.md`](gs-image.md)). |
+| `fw.gs` "Ground station" | — | — | A group; its value is the running version, `v0.1.1 → v0.1.2` with an update, which also warns `update`. One subgroup per device, so the drone's updates can sit beside it. |
 | `fw.gs.version` "Version" | — | — | Read-only: the image's `VERSION` from `/etc/os-release`, "unknown" without one. |
 | `fw.gs.file` "Update from file" | — | — | ▶ runs `gs-upgrade find` and opens the update page for what it finds; reads "Checking…" while a find or check runs ("Updating the GS" below). |
-| `fw.gs.online` "Check online" ▸ `fw.gs.stable` "Stable" / `fw.gs.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release; both read "Checking…" while a find or check runs. Snapshot warns "latest master build, untested". |
+| `fw.gs.online` "Check online" ▸ `fw.gs.stable` "Stable" / `fw.gs.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release; both read "Checking…" while a find or check runs. Snapshot warns "latest master build, untested". With an update, the row of the channel it came from (Snapshot on a snapshot build, else Stable) reads the new version and warns `update`. |
 | **System** | | | |
 | `sys.adv` "Show advanced settings" | player | `menu.show_advanced` | On/off; shows the rows marked (advanced) above in every group. |
 | `sys.size` "Menu size" | player | `menu.scale` | Normal / Large / Larger (×1, ×1.25, ×1.5). Previews live: while its picker is open the whole menu is drawn at the size under the cursor (`MenuModel::preview`), nothing written; ◀ or a held ◀ drops back to the saved size, ▶ saves it — and the menu stays at the picked size while that set runs, so it never flicks back to the old size before the save lands. |
@@ -341,6 +342,10 @@ with the menu closed; while the menu is open it moves below the panel
 and picker instead, so it never covers either.
 
 ## Updating the GS
+
+A newer image found by the boot check (`gs-upgrade notify`,
+[`gs-image.md`](gs-image.md)) marks Firmware and its rows (above); the mark
+goes with the reboot into the new image.
 
 The two update rows hand the work to the image's `gs-upgrade` tool
 (`docs/gs-image.md` "Upgrading"); the menu only finds, shows, confirms

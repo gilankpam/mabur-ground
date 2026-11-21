@@ -1272,6 +1272,18 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
 // --- Firmware ----------------------------------------------------------
 
 // One subgroup per device: the GS now, the drone's own updates beside it later.
+// The newer version `gs-upgrade notify` found, or "".
+std::string update_of(const Deps& d) { return d->update_available ? d->update_available() : std::string(); }
+
+// Marks a row amber "update" while one is available; `otherwise` keeps the
+// row's own warning (null = none).
+std::function<std::string()> update_warn(const Deps& d, std::function<std::string()> otherwise = nullptr) {
+  return [d, otherwise] {
+    if (!update_of(d).empty()) return std::string("update");
+    return otherwise ? otherwise() : std::string();
+  };
+}
+
 MenuNode gs_firmware_group(const Deps& d) {
   auto version_text = [d] { return d->gs_version.empty() ? std::string("unknown") : d->gs_version; };
   MenuNode version;
@@ -1303,26 +1315,43 @@ MenuNode gs_firmware_group(const Deps& d) {
       return std::vector<SetStep>{};
     };
   };
+  // notify follows snapshot on a snapshot build and stable otherwise.
+  const bool on_snapshot = d->gs_version.rfind("snapshot-", 0) == 0;
+  // The marked channel's row reads the new version instead of its own note.
+  auto note_or_update = [d, checking_or](std::string note, bool marked) {
+    return [d, marked, plain = checking_or(note)] {
+      const std::string up = update_of(d);
+      if (marked && !up.empty() && !(d->upgrade_busy && d->upgrade_busy())) return up;
+      return plain();
+    };
+  };
   MenuNode online = group("fw.gs.online", "Check online",
-                          "Needs the GS on a network (wifi.toml client mode).", [online_action, checking_or] {
+                          "Needs the GS on a network (wifi.toml client mode).",
+                          [d, online_action, note_or_update, on_snapshot] {
     MenuNode stable;
     stable.id = "fw.gs.stable";
     stable.label = "Stable";
     stable.kind = NodeKind::kAction;
-    stable.value_text = checking_or("releases");
+    stable.value_text = note_or_update("releases", !on_snapshot);
+    if (!on_snapshot) stable.warn = update_warn(d);
     stable.action = online_action("stable");
     MenuNode snap;
     snap.id = "fw.gs.snapshot";
     snap.label = "Snapshot";
     snap.kind = NodeKind::kAction;
-    snap.value_text = checking_or("");
-    snap.warn = [] { return std::string("latest master build, untested"); };
+    snap.value_text = note_or_update("", on_snapshot);
+    auto untested = [] { return std::string("latest master build, untested"); };
+    snap.warn = on_snapshot ? update_warn(d, untested) : untested;
     snap.action = online_action("snapshot");
     return std::vector<MenuNode>{stable, snap};
   });
   MenuNode gs = group("fw.gs", "Ground station", "This GS's image, and updating it.",
                       [version, file, online] { return std::vector<MenuNode>{version, file, online}; });
-  gs.group_value = version_text;
+  gs.group_value = [d, version_text] {
+    const std::string up = update_of(d);
+    return up.empty() ? version_text() : version_text() + " → " + up;
+  };
+  gs.warn = update_warn(d);
   return gs;
 }
 
@@ -1410,8 +1439,12 @@ std::vector<MenuNode> build_menu_tree(const MenuTreeDeps& deps) {
       group("osd", "OSD", "What is drawn over the video.", [d] { return osd_rows(d); }),
       group("power", "Power & FC", "The drone's power saving and its flight-controller link.",
             [d] { return power_rows(d); }),
-      group("fw", "Firmware", "What runs on the GS, and updating it.",
-            [d] { return std::vector<MenuNode>{gs_firmware_group(d)}; }),
+      [&] {
+        MenuNode fw = group("fw", "Firmware", "What runs on the GS, and updating it.",
+                            [d] { return std::vector<MenuNode>{gs_firmware_group(d)}; });
+        fw.warn = update_warn(d);
+        return fw;
+      }(),
       group("sys", "System", "GS housekeeping.", [d] { return sys_rows(d); }),
   });
 }

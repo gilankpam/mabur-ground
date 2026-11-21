@@ -184,4 +184,15 @@ TEST(run_alive_reads_the_pid_in_the_lock) {
   CHECK(!r.run_alive());
 }
 
+TEST(available_reads_the_mark_file) {
+  clear_env();
+  std::string d = fresh_dir();
+  UpgradeRunner r(fake(), d);
+  CHECK(r.available().empty());
+  put(d + "/available", "v0.1.2\n");
+  CHECK(r.available() == "v0.1.2");
+  put(d + "/available", "");
+  CHECK(r.available().empty());
+}
+
 MTEST_MAIN

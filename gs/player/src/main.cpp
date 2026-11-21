@@ -2413,6 +2413,9 @@ int main(int argc, char** argv) {
   std::optional<maburplay::UpgradeFlow> upgrade_flow;
   std::string upgrade_board;
   std::string upgrade_job;  // the find/check in flight: "find", "stable" or "snapshot"
+  std::string update_cached;  // the menu's update mark, see update_available
+  uint64_t update_read_ms = 0;
+  bool update_read = false;
   if (menu_on) {
     std::ifstream osr_file("/etc/os-release");
     const std::string osr((std::istreambuf_iterator<char>(osr_file)),
@@ -2432,6 +2435,18 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "maburplay: upgrade: check %s\n", channel.c_str());
     };
     menu_deps.upgrade_busy = [&] { return upgrader->busy(); };
+    // The rows read this on every view rebuild on the player loop: the file
+    // is re-read at most once a second. The cache lives out here because the
+    // tree copies its deps on every rebuild.
+    menu_deps.update_available = [&] {
+      const uint64_t now = mono_ms();
+      if (!update_read || now - update_read_ms >= 1000) {
+        update_read = true;
+        update_cached = upgrader->available();
+        update_read_ms = now;
+      }
+      return update_cached;
+    };
   }
   // The tree is rebuilt on every model call, so its snapshot pointer follows
   // gs_src as it is now.

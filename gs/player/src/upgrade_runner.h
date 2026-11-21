@@ -24,6 +24,8 @@ class UpgradeRunner {
   bool find();                             // false: a find/check is already in flight
   bool check(const std::string& channel);  // "stable" | "snapshot"
   bool busy() const { return job_.pid > 0; }
+  // The newer version `gs-upgrade notify` left in <dir>/available, or "".
+  std::string available() const;
 
   struct FindResult {
     std::vector<FoundPackage> pkgs;

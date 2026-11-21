@@ -104,6 +104,7 @@ struct Fx {
   int file_calls = 0;
   std::vector<std::string> online_calls;
   bool upgrade_busy = false;
+  std::string available;  // gs-upgrade notify's newer version, "" = none
 
   // Fills snap.vtx (creating it linked, list "complete") with one row,
   // updating it in place when `id` is already there.
@@ -144,6 +145,7 @@ struct Fx {
     d.upgrade_file = [this] { ++file_calls; };
     d.upgrade_online = [this](const std::string& c) { online_calls.push_back(c); };
     d.upgrade_busy = [this] { return upgrade_busy; };
+    d.update_available = [this] { return available; };
     return d;
   }
   std::vector<MenuNode> tree() { return build_menu_tree(deps()); }
@@ -1486,4 +1488,57 @@ TEST(update_rows_survive_null_deps) {
     CHECK(k.value_text() != "Checking…");
   }
 }
+
+// A null warn and an empty one both draw nothing.
+std::string warn_of(const MenuNode& n) { return n.warn ? n.warn() : std::string(); }
+
+TEST(firmware_unmarked_without_an_update) {
+  Fx f;
+  CHECK(warn_of(f.node("fw")).empty());
+  CHECK(warn_of(f.node("fw.gs")).empty());
+  CHECK(f.node("fw.gs").group_value() == "v0.1.0");
+  CHECK(f.node("fw.gs.stable").value_text() == "releases");
+  CHECK(warn_of(f.node("fw.gs.stable")).empty());
+  CHECK(warn_of(f.node("fw.gs.snapshot")) == "latest master build, untested");
+}
+
+TEST(firmware_marks_a_stable_update) {
+  Fx f;
+  f.available = "v0.1.2";
+  CHECK(warn_of(f.node("fw")) == "update");
+  CHECK(warn_of(f.node("fw.gs")) == "update");
+  CHECK(f.node("fw.gs").group_value() == "v0.1.0 → v0.1.2");
+  CHECK(f.node("fw.gs.stable").value_text() == "v0.1.2");
+  CHECK(warn_of(f.node("fw.gs.stable")) == "update");
+  CHECK(f.node("fw.gs.snapshot").value_text().empty());
+  CHECK(warn_of(f.node("fw.gs.snapshot")) == "latest master build, untested");
+}
+
+TEST(firmware_marks_a_snapshot_update) {
+  Fx f;
+  f.version = "snapshot-abcd1234";
+  f.available = "snapshot-ffff0000";
+  CHECK(f.node("fw.gs.snapshot").value_text() == "snapshot-ffff0000");
+  CHECK(warn_of(f.node("fw.gs.snapshot")) == "update");
+  CHECK(f.node("fw.gs.stable").value_text() == "releases");
+  CHECK(warn_of(f.node("fw.gs.stable")).empty());
+}
+
+TEST(firmware_mark_survives_null_dep) {
+  Fx f;
+  MenuTreeDeps d = f.deps();
+  d.update_available = nullptr;
+  const auto t = build_menu_tree(d);
+  CHECK(warn_of(*f.find(t, "fw")).empty());
+  CHECK(f.find(t, "fw.gs")->group_value() == "v0.1.0");
+  CHECK(f.find(t, "fw.gs.stable")->value_text() == "releases");
+}
+
+TEST(checking_wins_over_the_mark) {
+  Fx f;
+  f.available = "v0.1.2";
+  f.upgrade_busy = true;
+  CHECK(f.node("fw.gs.stable").value_text() == "Checking…");
+}
+
 MTEST_MAIN
