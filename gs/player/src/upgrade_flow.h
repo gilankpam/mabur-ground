@@ -16,8 +16,10 @@ namespace maburplay {
 
 enum class UpgradeKey { kUp, kDown, kLeft, kRight };
 
-// A pad event as a page key: Up/Down on tap or repeat, Left on tap, Right on
-// tap or hold, Sel on tap; nullopt for the rest (a Left hold does not close).
+// A pad event as a page key: Up/Down on tap, Left on tap, Right on tap or
+// hold, Sel on tap; nullopt for the rest (a Left hold does not close). The
+// bank's repeat stays off on a page, so ▲▼ scroll one line per press; a
+// repeat tick, should one come, maps like a tap.
 std::optional<UpgradeKey> upgrade_key(const KeyEvent& e);
 
 struct FoundPackage {

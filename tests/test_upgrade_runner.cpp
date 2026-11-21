@@ -155,6 +155,8 @@ TEST(ui_ready_is_wanted_at_stop_until_marked) {
   CHECK(!r.wants_ui_ready());
   put(d + "/status", "state=running\nphase=write\ndone=0\ntotal=0\nmsg=\n");
   CHECK(!r.wants_ui_ready());
+  put(d + "/status", "state=error\nphase=stop\ndone=0\ntotal=0\nmsg=Could not stop S96maburgs\n");
+  CHECK(!r.wants_ui_ready());
   put(d + "/status", "state=running\nphase=stop\ndone=0\ntotal=0\nmsg=\n");
   CHECK(r.wants_ui_ready());
   std::string why;

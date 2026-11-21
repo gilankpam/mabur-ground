@@ -251,7 +251,9 @@ std::optional<UpgradeStatus> UpgradeRunner::status() const {
 
 bool UpgradeRunner::wants_ui_ready() const {
   auto s = status();
-  return s && s->phase == "stop" && ::access((dir_ + "/ui-ready").c_str(), F_OK) != 0;
+  // A failed stop leaves "error stop" behind while the GS stays up: no ask.
+  return s && s->state == "running" && s->phase == "stop" &&
+         ::access((dir_ + "/ui-ready").c_str(), F_OK) != 0;
 }
 
 bool UpgradeRunner::mark_ui_ready(std::string* why) {

@@ -46,6 +46,7 @@ TEST(package_without_version) {
   CHECK(f.page().header == "version unknown");
   CHECK(f.page().lines.empty());
   CHECK(f.key(K::kRight).kind == UpgradeCmd::Kind::kNone);
+  CHECK(f.page().confirm == "Install a.tgz? The GS reboots. Keep the power on.");
   auto c = f.key(K::kRight);
   CHECK(c.kind == UpgradeCmd::Kind::kStartFile);
   CHECK(c.arg == "/a.tgz");

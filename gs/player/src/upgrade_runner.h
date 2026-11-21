@@ -40,7 +40,7 @@ class UpgradeRunner {
   bool start(const UpgradeCmd& c, std::string* why);
   bool cancel();
   std::optional<UpgradeStatus> status() const;
-  bool wants_ui_ready() const;  // phase=stop and no ui-ready file yet
+  bool wants_ui_ready() const;  // state=running phase=stop and no ui-ready file yet
   // Locks memory, then touches ui-ready even if the lock failed (false, *why).
   bool mark_ui_ready(std::string* why);
 

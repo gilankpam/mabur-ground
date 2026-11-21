@@ -360,7 +360,7 @@ was.
   "Install `<version>`? The GS reboots. Keep the power on."; ▶ again
   starts it, ◀ backs out. Another board's package reads "Built for
   `<board>`" and has no ▶; one with no readable `VERSION` reads "version
-  unknown" and installs as it is.
+  unknown", is named by its file name in the prompt, and installs as it is.
 - **Running:** the phase (Downloading, Unpacking, Checking, Stopping
   services, Writing, Rebooting), a bar where the phase has a size, and
   "Don't power off" on every running page. ◀ cancels during download,
@@ -370,7 +370,7 @@ was.
 
 The page is drawn even with the menu closed (the menu's view is forced
 open while it is shown). Left/Right take a tap, Right also a hold, Sel a
-tap as ▶; Up/Down a tap or an auto-repeat tick. The player reads
+tap as ▶; ▲▼ scroll one line per press (no auto-repeat). The player reads
 `gs-upgrade`'s status file at most every 250 ms.
 
 In its stop phase `gs-upgrade` stops maburgs but only holds maburplay's

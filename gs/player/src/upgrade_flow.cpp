@@ -219,7 +219,10 @@ UpgradePage UpgradeFlow::page() const {
   p.error = it.error;
   if (view_ == View::kInfo) {
     if (confirm_) {
-      p.confirm = "Install " + it.version + "? The GS reboots. Keep the power on.";
+      // A package with no VERSION is named by its file.
+      const std::string name =
+          it.version.empty() ? it.arg.substr(it.arg.find_last_of('/') + 1) : it.version;
+      p.confirm = "Install " + name + "? The GS reboots. Keep the power on.";
       p.keys = "▶ install  ◀ back";
     } else {
       p.keys = it.error.empty() ? "▲▼ scroll  ▶ install  ◀ back" : "▲▼ scroll  ◀ back";
