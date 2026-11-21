@@ -48,16 +48,19 @@ exit 0
 EOF
 # A gunzip that hangs, so a cancel lands mid-unpack.
 printf '#!/bin/sh\nsleep 3\nexit 1\n' >"$T/slow/gunzip"
+# A start also logs the signals it was started with ignored (SigIgn).
 for s in S97maburplay S96maburgs S50crond S02klogd S01syslogd; do
-	printf '#!/bin/sh\necho "%s $1" >>"%s/initd.log"\n[ "$1" = stop ] && [ "$FAIL_STOP" = %s ] && exit 1\nexit 0\n' \
+	printf '#!/bin/sh\necho "%s $1" >>"%s/initd.log"\n[ "$1" = stop ] && [ "$FAIL_STOP" = %s ] && exit 1\n' \
 		"$s" "$T" "$s" >"$T/initd/$s"
+	printf '[ "$1" = start ] && while read -r k v; do [ "$k" = SigIgn: ] && echo "$v"; done </proc/$$/status >>"%s/sigign.log"\nexit 0\n' \
+		"$T" >>"$T/initd/$s"
 done
 chmod +x "$T"/bin/* "$T"/slow/* "$T"/initd/*
 
 export GS_UPGRADE_TEST=1 GS_UPGRADE_DIR="$T/dir" GS_UPGRADE_MEDIA="$T/media" \
 	GS_UPGRADE_OS_RELEASE="$T/os-release" GS_UPGRADE_INITD="$T/initd" \
 	GS_UPGRADE_API=https://api.example.invalid/repos/o/r BOOT_DISK="$T/disk" \
-	PATH="$T/bin:$PATH"
+	GS_UPGRADE_ROUTE="$T/route" PATH="$T/bin:$PATH"
 
 pass=0
 fail=0
@@ -77,6 +80,8 @@ reset() {
 	head -c 1048576 /dev/zero >"$T/zeros"
 	cp "$T/zeros" "$T/diskp1"
 	: >"$T/disk"
+	# A client-mode GS: a default route.
+	printf 'Iface\tDestination\tGateway\nwlan0\t00000000\t0100A8C0\nwlan0\t0000A8C0\t00000000\n' >"$T/route"
 	unset FAIL_STOP FAKE_CURL_RC FAKE_CURL_HTTP FAKE_CURL_BODY FAKE_CURL_JSON GS_UPGRADE_FREE_KB
 }
 
@@ -230,6 +235,7 @@ name="busy"
 reset radxa_zero3
 mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
 mkdir -p "$T/dir/lock"
+echo $$ >"$T/dir/lock/pid"
 printf 'state=running\nphase=unpack\ndone=5\ntotal=10\nmsg=\n' >"$T/dir/status"
 cp "$T/dir/status" "$T/status.before"
 out=$(gsu start file "$T/media/radxa_zero3.tar.gz"); rc=$?
@@ -238,6 +244,29 @@ out=$(gsu start file "$T/media/radxa_zero3.tar.gz"); rc=$?
 cmp -s "$T/status.before" "$T/dir/status" && ok || ko "status changed: $(cat "$T/dir/status")"
 out=$(gsu install "$T/media/radxa_zero3.tar.gz" -y); rc=$?
 [ $rc = 1 ] && [ "$out" = "error busy An update is already running" ] && ok || ko "install: exit $rc, $out"
+# A lock made but not yet named (no pid) is live too.
+rm -f "$T/dir/lock/pid"
+out=$(gsu start file "$T/media/radxa_zero3.tar.gz")
+[ "$out" = "error busy An update is already running" ] && ok || ko "pid-less lock: $out"
+
+# A run killed without dropping the lock leaves a dead pid: the next start
+# takes the lock over, and names its own run in it.
+name="stale lock"
+reset radxa_zero3
+mkpkg "$T/media/radxa_zero3.tar.gz" radxa_zero3 v0.2.0 yes
+sh -c 'exit 0' &
+dead=$!
+wait $dead
+mkdir -p "$T/dir/lock"
+echo $dead >"$T/dir/lock/pid"
+printf 'state=running\nphase=write\ndone=5\ntotal=10\nmsg=\n' >"$T/dir/status"
+out=$(PATH="$T/slow:$PATH" sh "$GSU" start file "$T/media/radxa_zero3.tar.gz")
+[ "$out" = started ] && ok || ko "start said: $out"
+lp=$(cat "$T/dir/lock/pid" 2>/dev/null)
+[ -n "$lp" ] && [ "$lp" != "$dead" ] && kill -0 "$lp" 2>/dev/null && ok || ko "lock pid $lp not the live run"
+wait_end && ok || ko "never ended"
+[ "$(st state)" = error ] && [ "$(st msg)" = "Package damaged" ] && ok || ko "state $(st state) $(st msg)"
+lock_gone && ok || ko "lock left"
 
 # 8. A package whose VERSION names another board is refused.
 name="wrong board"
@@ -265,6 +294,20 @@ reset radxa_zero3 $(($(date +%s) + 86400))
 out=$(gsu check stable); rc=$?
 [ $rc = 1 ] && ok || ko "exit $rc"
 case $out in "error clock "*) ok ;; *) ko "out: $out" ;; esac
+
+# Hotspot mode: no default route is "No network", ahead of the clock that a
+# board with no network never syncs.
+name="check no default route"
+reset radxa_zero3 $(($(date +%s) + 86400))
+printf 'Iface\tDestination\tGateway\nwlan0\t0000A8C0\t00000000\n' >"$T/route"
+out=$(gsu check stable); rc=$?
+[ $rc = 1 ] && ok || ko "exit $rc"
+[ "$out" = "error network No network" ] && ok || ko "out: $out"
+[ ! -e "$T/curl.log" ] && ok || ko "curl called: $(cat "$T/curl.log")"
+out=$(gsu install --online stable -y); rc=$?
+[ $rc = 1 ] && [ "$out" = "error network No network" ] && ok || ko "install --online: exit $rc, $out"
+lock_gone && ok || ko "lock left"
+nothing_stopped && ok || ko "stopped: $(cat "$T/initd.log")"
 
 name="check curl exit 7"
 reset radxa_zero3
@@ -334,6 +377,14 @@ FAIL_STOP=S96maburgs sh "$GSU" install "$T/media/radxa_zero3.tar.gz" -y >"$T/out
 grep -q "S97maburplay start" "$T/initd.log" && ok || ko "not restarted: $(cat "$T/initd.log")"
 grep -q "S50crond" "$T/initd.log" && ko "kept stopping after the failure" || ok
 grep -q "S97maburplay watch" "$T/initd.log" && ko "watch from ssh" || ok
+# What starts again has the signals the test shell has: the write phase's
+# ignore is not passed on.
+base=$(while read -r k v; do [ "$k" = SigIgn: ] && echo "$v"; done </proc/$$/status)
+mask=$((0x4001 | 0x1000)) # HUP, PIPE, TERM
+for v in $(cat "$T/sigign.log" 2>/dev/null); do
+	[ $((0x$v & mask)) = $((0x$base & mask)) ] && ok || ko "restarted with SigIgn $v (shell $base)"
+done
+[ -s "$T/sigign.log" ] && ok || ko "no start logged its signals"
 cmp -s "$T/zeros" "$T/diskp1" && ok || ko "p1 written"
 lock_gone && ok || ko "lock left"
 
@@ -404,6 +455,60 @@ FAKE_CURL_JSON="$T/release.json" FAKE_CURL_BODY="$T/dl.tar.gz" sh "$GSU" install
 tail -1 "$T/curl.log" | grep -q "/mabur-ground-v0.2.0-radxa_zero3.tar.gz" && ok || ko "downloaded: $(tail -1 "$T/curl.log")"
 rootfs_written && ok || ko "p1 does not hold the rootfs"
 [ ! -e "$T/dir/download.tar.gz" ] && ok || ko "download left in RAM"
+
+# 15. The write path runs from the RAM copy, so after the exec its every
+#     command must be a shell builtin or keyword, one of the write-path
+#     functions named here, "$BB <applet>", or an init script run by path
+#     (they run before the write starts): a bare applet name would exec the
+#     rootfs's symlink. The check reads these functions' bodies, splits each
+#     line at ; && || |, and takes the first word of each command after
+#     keywords, case patterns and assignments. A command substitution in
+#     them fails it outright, and so does a call to a function not in the
+#     list: add the function to WRITE_FNS so that it is checked too.
+name="write path is RAM-only"
+WRITE_FNS="do_write stop_svc write_failed st drop_lock"
+bad=$(awk -v fns="$WRITE_FNS" '
+BEGIN {
+	n = split(fns, f, " ")
+	for (i = 1; i <= n; i++) { want[f[i]] = 1; ok[f[i]] = 1 }
+	n = split("[ test echo printf exit return trap export set shift read wait kill true false : . unset fi done esac }", b, " ")
+	for (i = 1; i <= n; i++) ok[b[i]] = 1
+	n = split("if then else elif while until do ! {", b, " ")
+	for (i = 1; i <= n; i++) pre[b[i]] = 1
+}
+/^[a-z_]+\(\) \{/ { fn = substr($0, 1, index($0, "(") - 1); inb = fn in want; next }
+inb && /^}/ { inb = 0; next }
+!inb { next }
+{
+	line = $0
+	while (line ~ /\\$/ && (getline nx) > 0) line = substr(line, 1, length(line) - 1) nx
+	sub(/^[ \t]*#.*/, "", line)
+	sub(/[ \t]#.*$/, "", line)
+	gsub(/\$\(\([^)]*\)\)/, "0", line)
+	gsub(/\047[^\047]*\047/, "Q", line)
+	gsub(/="[^"]*"/, "=Q", line)
+	if (line ~ /\$\(|`/) { print fn ": command substitution: " line; next }
+	gsub(/&&|\|\||\|/, ";", line)
+	m = split(line, seg, ";")
+	for (s = 1; s <= m; s++) {
+		k = split(seg[s], w, /[ \t]+/)
+		for (j = 1; j <= k; j++) {
+			if (w[j] == "" || w[j] in pre) continue
+			if (w[j] ~ /\)$/ && w[j] !~ /^\$/) continue
+			if (w[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+			break
+		}
+		if (j > k) continue
+		c = w[j]
+		if (c == "for" || c == "case") continue
+		if (c == "$BB" || c == "\"$BB\"" || c ~ /^"\$INITD\//) continue
+		if (!(c in ok)) print fn ": " c ": " line
+	}
+}' "$GSU")
+[ -z "$bad" ] && ok || ko "$bad"
+seen=$(awk -v fns="$WRITE_FNS" 'BEGIN { split(fns, f, " "); for (i in f) w[f[i]] = 1 }
+	/^[a-z_]+\(\) \{/ { if (substr($0, 1, index($0, "(") - 1) in w) n++ } END { print n + 0 }' "$GSU")
+[ "$seen" = 5 ] && ok || ko "found $seen of the 5 write-path functions"
 
 echo "gs-upgrade: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

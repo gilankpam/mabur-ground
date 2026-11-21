@@ -71,9 +71,12 @@ in [`gs-menu.md`](gs-menu.md).
 
 Online needs the GS on a network (`wifi.toml` in client mode) and a synced
 clock: GitHub's certificate is verified, and the boards have no
-battery-backed clock. The image syncs it by NTP once it has a network;
-until then, while the clock is still before the image's own build time,
-the check refuses with "Clock not synced yet — try again in a minute".
+battery-backed clock. With no default route (hotspot mode, the default)
+the check refuses with "No network — set wifi.toml to client mode" before
+it looks at the clock. The image syncs the clock by NTP once it has a
+network; until then, while the clock is still before the image's own
+build time, the check refuses with "Clock not synced yet — try again in a
+minute".
 
 ### Over ssh
 
@@ -102,6 +105,11 @@ either way; once started it does not depend on maburplay.
   syslog daemon failing to stop (it was already gone) does not block it.
 - A failure during the write reports "Write failed — reflash from SD card"
   and does not reboot: flash the image again (above).
+- One run at a time: a second `start` or `install` answers "An update is
+  already running". The lock (`/tmp/gs-upgrade/lock`) holds the run's pid;
+  a run killed before it could drop the lock leaves a pid that is gone,
+  and the next run takes the lock over.
+- The reboot is sysrq's; should that be refused, `reboot -f` follows.
 
 Files installed by hand on the overlay (`/overlay/root`, such as a branch
 `maburplay` in `/usr/local/bin`) keep shadowing the new image afterwards.

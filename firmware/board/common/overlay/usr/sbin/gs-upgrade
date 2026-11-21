@@ -27,6 +27,7 @@ API=${GS_UPGRADE_API:-https://api.github.com/repos/gilankpam/mabur-ground}
 INITD=${GS_UPGRADE_INITD:-/etc/init.d}
 # Buildroot's libcurl on mbedTLS has no default CA store, so every call names it.
 CACERT=${GS_UPGRADE_CACERT:-/etc/ssl/certs/ca-certificates.crt}
+ROUTE=${GS_UPGRADE_ROUTE:-/proc/net/route}
 U=$DIR/unpack
 DL=$DIR/download.tar.gz
 # The busybox the write phase copies to RAM (a test points it elsewhere).
@@ -57,7 +58,20 @@ st() {
 	esac
 }
 
-take_lock() { mkdir -p "$DIR" && mkdir "$DIR/lock" 2>/dev/null; }
+# The lock is a directory (mkdir is the atomic take) holding the run's pid.
+# A run killed before it could drop the lock leaves a pid that is gone, and
+# such a lock is taken over; one with no pid yet counts as live.
+take_lock() {
+	mkdir -p "$DIR" || return 1
+	if ! mkdir "$DIR/lock" 2>/dev/null; then
+		lp=$(cat "$DIR/lock/pid" 2>/dev/null)
+		[ -n "$lp" ] && ! kill -0 "$lp" 2>/dev/null || return 1
+		# shortcut: two takers racing over one stale lock can both win; only
+		# the menu and ssh take it, so a guard is not worth the code.
+		rm -rf "$DIR/lock" && mkdir "$DIR/lock" 2>/dev/null || return 1
+	fi
+	echo $$ >"$DIR/lock/pid"
+}
 drop_lock() { $BB rm -rf "$DIR/lock"; }
 
 # abort <state> <msg>: a stop before the stop phase; nothing on the board
@@ -109,6 +123,12 @@ do_check() {
 	snapshot) path=releases/tags/snapshot ;;
 	*) usage ;;
 	esac
+	# Hotspot mode (the default) has no default route: say so, rather than
+	# blame the clock that a board with no network can never sync.
+	if ! awk '$2 == "00000000" { f = 1 } END { exit !f }' "$ROUTE" 2>/dev/null; then
+		echo "error network No network"
+		return 1
+	fi
 	# No battery-backed clock: one earlier than the image's own build is
 	# certainly unsynced, and TLS would fail on it for a confusing reason.
 	epoch=$(osr BUILD_EPOCH)
@@ -135,6 +155,8 @@ do_check() {
 # Called with the lock held.
 do_run() {
 	MODE=$1 KIND=$2 SRC=$3 WANT=$4 pid='' gz=''
+	# The lock names this shell, which the exec into the write keeps.
+	echo $$ >"$DIR/lock/pid"
 	if [ "$KIND" = online ]; then PHASE=download; else PHASE=unpack; fi
 	trap 'abort cancelled Interrupted' INT TERM HUP
 
@@ -253,9 +275,6 @@ do_run() {
 
 	PHASE=stop
 	st running stop 0 0
-	# From here on an interrupted run (an ssh session dropping) must not
-	# stop a half-done write.
-	trap '' INT TERM HUP PIPE
 	export MODE BOARD BOOT_DISK RSIZE GS_UPGRADE_DIR="$DIR"
 	[ "$GS_UPGRADE_TEST" = 1 ] && do_write
 	stage || abort error "Could not copy the upgrader to RAM"
@@ -299,6 +318,8 @@ stop_svc() {
 		[ "$2" = stop ] && stopped="$1 $stopped"
 		return 0
 	fi
+	# What starts again gets the signals back: do_write ignores them.
+	trap - INT TERM HUP PIPE
 	for s in $stopped; do "$INITD/$s" start; done
 	[ "$MODE" = menu ] && [ -x "$INITD/S97maburplay" ] && "$INITD/S97maburplay" watch
 	$BB rm -rf "$DIR/ram"
@@ -315,6 +336,11 @@ write_failed() {
 
 # do_write: stop, write and reboot. Runs from the RAM copy outside test mode.
 do_write() {
+	# From here on an interrupted run (an ssh session dropping) must not
+	# stop a half-done write. Set after the exec, not before it: a signal
+	# ignored when a shell starts can never be restored in it, nor in what
+	# it starts.
+	trap '' INT TERM HUP PIPE
 	PHASE=stop stopped=
 	if [ "$MODE" = menu ]; then
 		# maburplay keeps drawing the progress; only its respawn loop goes,
@@ -368,6 +394,8 @@ do_write() {
 	echo u >/proc/sysrq-trigger
 	$BB sleep 1
 	echo b >/proc/sysrq-trigger
+	# Only reached if sysrq is off or refused the reboot.
+	$BB reboot -f
 	exit 0
 }
 
@@ -384,6 +412,8 @@ do_start() {
 	# setsid: the run outlives maburplay, which started it.
 	if [ "$GS_UPGRADE_TEST" = 1 ]; then s=; else s=setsid; fi
 	$s sh "$0" __run menu "$@" </dev/null >"$DIR/log" 2>&1 &
+	# The run's pid, before this shell exits and its own pid in the lock dies.
+	echo $! >"$DIR/lock/pid"
 	echo started
 }
 
