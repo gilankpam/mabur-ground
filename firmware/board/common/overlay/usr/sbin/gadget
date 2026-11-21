@@ -2,8 +2,15 @@
 # Credits to zhouruixi
 # see: https://github.com/zhouruixi/SBC-GS/blob/main/gs/otg-gadget.sh
 
-sed -i '/^ttyGS0/d' /etc/inittab
-kill -HUP 1
+# An older image ran the serial getty from inittab and left its line there
+# when switched off in gadget mode. Rewrite inittab only to drop such a line:
+# on a fresh card the rewrite lands in the overlay as a new file, and a power
+# cut before writeback leaves it empty -- init then runs no init scripts.
+if grep -q '^ttyGS0' /etc/inittab; then
+	sed -i '/^ttyGS0/d' /etc/inittab
+	sync
+	kill -HUP 1
+fi
 if [ x$1 = "xinit" -a ! -f /tmp/gadget ] ; then
 	exit 0
 fi
@@ -53,6 +60,10 @@ if [ -d /sys/kernel/config/usb_gadget/g1 ]; then
 	# Run over the gadget's own serial or network link, the steps below cut
 	# that link. /config and the services still have to come back.
 	trap '' HUP PIPE
+
+	# The serial console's getty loop; its agetty dies with ttyGS0.
+	[ -f /tmp/gadget-getty.pid ] && kill $(cat /tmp/gadget-getty.pid) 2>/dev/null
+	rm -f /tmp/gadget-getty.pid
 
 	ifdown usb0
 
@@ -197,9 +208,14 @@ echo ">>>>>>>>>>>Bind config1 to $(ls /sys/class/udc)"
 ls /sys/class/udc > UDC
 echo "All is done, Run script again to delete the gadget!"
 
-# Start agetty for serial connection
-echo 'ttyGS0::respawn:/sbin/agetty ttyGS0' >> /etc/inittab
-kill -HUP 1
+# Login prompt on the serial console for as long as the gadget exists,
+# respawned after each logout. Not from inittab: nothing of gadget mode is
+# written to the overlay, so a reboot leaves nothing to clean up.
+setsid sh -c 'while [ -d /sys/kernel/config/usb_gadget/g1 ]; do
+	/sbin/agetty ttyGS0
+	sleep 1
+done' </dev/null >/dev/null 2>&1 &
+echo $! >/tmp/gadget-getty.pid
 
 # start network on usb network
 ifup usb0
