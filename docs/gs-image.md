@@ -78,6 +78,16 @@ network; until then, while the clock is still before the image's own
 build time, the check refuses with "Clock not synced yet — try again in a
 minute".
 
+Each boot also looks for a newer image on its own: `S42upgradenotify`
+starts `gs-upgrade notify`, which waits for the same network and clock and
+retries every 30 s until one check succeeds, then exits. A release
+(`vX.Y.Z`) checks Stable and counts only a higher release; a snapshot
+checks the snapshot channel and counts any other snapshot; any other build
+checks nothing. A newer image's version goes in `/tmp/gs-upgrade/available`
+and the menu marks Firmware (`gs-menu.md`); without a network the check
+just waits, silently. Nothing downloads or installs until it is asked for
+from the menu.
+
 ### Over ssh
 
     gs-upgrade install /media/dvr/<board>.tar.gz

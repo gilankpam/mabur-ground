@@ -26,6 +26,7 @@ printf '#!/bin/sh\necho "dd $*" >>"%s/dd.log"\nexec "%s" "$@"\n' "$T" "$REAL_DD"
 cat >"$T/bin/curl" <<EOF
 #!/bin/sh
 echo "\$*" >>"$T/curl.log"
+[ -e "$T/curlfail" ] && exit 7
 out= hdr= w= url=
 while [ \$# -gt 0 ]; do
 	case \$1 in
@@ -509,6 +510,116 @@ inb && /^}/ { inb = 0; next }
 seen=$(awk -v fns="$WRITE_FNS" 'BEGIN { split(fns, f, " "); for (i in f) w[f[i]] = 1 }
 	/^[a-z_]+\(\) \{/ { if (substr($0, 1, index($0, "(") - 1) in w) n++ } END { print n + 0 }' "$GSU")
 [ "$seen" = 5 ] && ok || ko "found $seen of the 5 write-path functions"
+
+# 16. notify: one check per boot, on the channel the running version follows,
+#     marking a newer release in $DIR/available and never touching the
+#     manual check's release.json.
+setver() { sed -i "s/^VERSION=.*/VERSION=$1/" "$T/os-release"; }
+rel() {
+	printf '{"assets":[{"browser_download_url": "https://x/mabur-ground-%s-%s.tar.gz"}]}' \
+		"$1" "${2:-radxa_zero3}" >"$T/rel.json"
+}
+notify() { FAKE_CURL_JSON="$T/rel.json" GS_UPGRADE_NOTIFY_SLEEP=0.1 sh "$GSU" notify; }
+avail() { cat "$T/dir/available" 2>/dev/null; }
+# gone <pid>: the process exits within 2 s.
+gone() {
+	i=0
+	while kill -0 "$1" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.1; i=$((i + 1)); done
+	! kill -0 "$1" 2>/dev/null
+}
+
+name="notify newer stable"
+reset radxa_zero3
+rel v0.1.2
+notify; rc=$?
+[ $rc = 0 ] && ok || ko "exit $rc"
+[ "$(avail)" = v0.1.2 ] && ok || ko "available: $(avail)"
+grep -q "/releases/latest" "$T/curl.log" && ok || ko "URL: $(cat "$T/curl.log")"
+[ ! -e "$T/dir/release.json" ] && ok || ko "release.json written"
+
+name="notify numeric"
+reset radxa_zero3
+setver v0.2.0
+rel v0.10.0
+notify
+[ "$(avail)" = v0.10.0 ] && ok || ko "v0.10.0 over v0.2.0: $(avail)"
+rel v0.1.9
+notify
+[ ! -e "$T/dir/available" ] && ok || ko "v0.1.9 over v0.2.0 left: $(avail)"
+
+name="notify same"
+reset radxa_zero3
+rel v0.1.0
+notify
+[ ! -e "$T/dir/available" ] && ok || ko "available: $(avail)"
+
+name="notify snapshot"
+reset radxa_zero3
+setver snapshot-abcd1234
+rel snapshot-ffff0000
+notify
+[ "$(avail)" = snapshot-ffff0000 ] && ok || ko "available: $(avail)"
+grep -q "/releases/tags/snapshot" "$T/curl.log" && ok || ko "URL: $(cat "$T/curl.log")"
+rel snapshot-abcd1234
+notify
+[ ! -e "$T/dir/available" ] && ok || ko "same snapshot left: $(avail)"
+
+name="notify other build"
+for v in pr8-6b81fbf0 6b81fbf-dirty v0.1.1-dirty snapshot-abcd1234-dirty; do
+	reset radxa_zero3
+	setver $v
+	rel v9.9.9
+	notify; rc=$?
+	[ $rc = 0 ] && ok || ko "$v: exit $rc"
+	[ ! -e "$T/curl.log" ] && ok || ko "$v: curl called"
+	[ ! -e "$T/dir/available" ] && ok || ko "$v: available: $(avail)"
+done
+
+name="notify no board asset"
+reset radxa_zero3
+rel v0.2.0 orangepi_zero2w
+notify; rc=$?
+[ $rc = 0 ] && ok || ko "exit $rc"
+[ ! -e "$T/dir/available" ] && ok || ko "available: $(avail)"
+
+name="notify waits for route"
+reset radxa_zero3
+rel v0.1.2
+cp "$T/route" "$T/route.up"
+printf 'Iface\tDestination\tGateway\nwlan0\t0000A8C0\t00000000\n' >"$T/route"
+FAKE_CURL_JSON="$T/rel.json" GS_UPGRADE_NOTIFY_SLEEP=0.1 sh "$GSU" notify &
+pid=$!
+sleep 0.5
+kill -0 $pid 2>/dev/null && ok || ko "gave up without a route"
+[ ! -e "$T/curl.log" ] && ok || ko "curl called without a route"
+[ ! -e "$T/dir/available" ] && ok || ko "marked without a route"
+cp "$T/route.up" "$T/route"
+gone $pid && ok || { kill $pid; ko "still running with a route"; }
+[ "$(avail)" = v0.1.2 ] && ok || ko "available: $(avail)"
+
+name="notify retries a failed fetch"
+reset radxa_zero3
+rel v0.1.2
+: >"$T/curlfail"
+FAKE_CURL_JSON="$T/rel.json" GS_UPGRADE_NOTIFY_SLEEP=0.1 sh "$GSU" notify &
+pid=$!
+sleep 0.5
+rm -f "$T/curlfail"
+gone $pid && ok || { kill $pid; ko "still running after curl recovered"; }
+[ "$(avail)" = v0.1.2 ] && ok || ko "available: $(avail)"
+[ "$(wc -l <"$T/curl.log")" -gt 1 ] && ok || ko "curl calls: $(wc -l <"$T/curl.log")"
+
+name="notify keeps release.json"
+reset radxa_zero3
+mkdir -p "$T/dir"
+echo '{"tag_name":"manual"}' >"$T/dir/release.json"
+cp "$T/dir/release.json" "$T/manual.json"
+rel v0.1.2
+notify
+cmp -s "$T/manual.json" "$T/dir/release.json" && ok || ko "release.json changed"
+
+name="notify usage"
+sh "$GSU" 2>&1 | grep -q notify && ok || ko "usage has no notify"
 
 echo "gs-upgrade: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -8,6 +8,7 @@
 #   gs-upgrade cancel                        honoured in download/unpack/verify
 #   gs-upgrade install <file> [-y]           upgrade in the foreground (ssh)
 #   gs-upgrade install --online stable|snapshot [-y]
+#   gs-upgrade notify                        once per boot: mark a newer release
 #
 # Phases: download (online only), unpack, verify, stop, write, reboot.
 # Progress goes to $DIR/status (state=, phase=, done=, total=, msg=),
@@ -35,7 +36,7 @@ BUSYBOX=${GS_UPGRADE_BUSYBOX:-/bin/busybox}
 CHUNK=4194304
 
 usage() {
-	sed -n '3,9s/^# *//p' "$0" >&2
+	sed -n '3,11s/^# *//p' "$0" >&2
 	exit 2
 }
 
@@ -117,7 +118,10 @@ do_find() {
 }
 
 # do_check <stable|snapshot>: $DIR/release.json, or one "error <code> <text>" line.
+# do_check <channel> [out]: the release record into out (default
+# release.json, the manual check's).
 do_check() {
+	out=${2:-$DIR/release.json}
 	case $1 in
 	stable) path=releases/latest ;;
 	snapshot) path=releases/tags/snapshot ;;
@@ -139,15 +143,15 @@ do_check() {
 	mkdir -p "$DIR"
 	code=$(curl -s -L --cacert "$CACERT" --connect-timeout 15 -m 60 \
 		-H 'Accept: application/vnd.github+json' \
-		-o "$DIR/release.tmp" -w '%{http_code}' "$API/$path" 2>/dev/null)
+		-o "$out.tmp" -w '%{http_code}' "$API/$path" 2>/dev/null)
 	rc=$?
 	[ $rc = 0 ] || { echo "error $(curl_err $rc)"; return 1; }
 	case $code in
-	200) mv -f "$DIR/release.tmp" "$DIR/release.json" && return 0 ;;
+	200) mv -f "$out.tmp" "$out" && return 0 ;;
 	404) echo "error notfound No release found" ;;
 	*) echo "error http HTTP $code" ;;
 	esac
-	rm -f "$DIR/release.tmp"
+	rm -f "$out.tmp"
 	return 1
 }
 
@@ -417,6 +421,56 @@ do_start() {
 	echo started
 }
 
+# This board's package URL in a release record, or nothing.
+release_url() {
+	grep -o "\"browser_download_url\": *\"[^\"]*-$BOARD\.tar\.gz\"" "$1" |
+		head -n 1 | sed 's/.*: *"//; s/"$//'
+}
+
+# Its version, from the asset name mabur-ground-<version>-<board>.tar.gz.
+release_version() {
+	url=$(release_url "$1")
+	[ -n "$url" ] || return 0
+	v=${url##*/mabur-ground-}
+	echo "${v%-"$BOARD".tar.gz}"
+}
+
+# vnewer <cur> <new>: both vX.Y.Z and new is higher, field by field.
+vnewer() {
+	echo "$1 $2" | awk '{
+		if ($1 !~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ || $2 !~ /^v[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+		split(substr($1, 2), a, "."); split(substr($2, 2), b, ".")
+		for (i = 1; i <= 3; i++) if (a[i] + 0 != b[i] + 0) exit !(b[i] + 0 > a[i] + 0)
+		exit 1
+	}'
+}
+
+# Once per boot (S42upgradenotify): retry until one fetch of the channel the
+# running version follows succeeds, then leave the newer version in
+# $DIR/available for the menu, or remove it. A release follows stable; a
+# snapshot follows snapshot, which only moves forward, so any other snapshot
+# is newer. Other builds (pr, local) have nothing to compare against.
+do_notify() {
+	cur=$(osr VERSION)
+	if echo "$cur" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then ch=stable
+	elif echo "$cur" | grep -Eq '^snapshot-[0-9a-f]+$'; then ch=snapshot
+	else exit 0
+	fi
+	mkdir -p "$DIR"
+	until do_check $ch "$DIR/notify.json" >/dev/null; do
+		sleep "${GS_UPGRADE_NOTIFY_SLEEP:-30}"
+	done
+	new=$(release_version "$DIR/notify.json")
+	rm -f "$DIR/notify.json"
+	if [ $ch = stable ] && vnewer "$cur" "$new" ||
+		{ [ $ch = snapshot ] && [ -n "$new" ] && [ "$new" != "$cur" ]; }; then
+		echo "$new" >"$DIR/available.tmp" && mv -f "$DIR/available.tmp" "$DIR/available"
+	else
+		rm -f "$DIR/available"
+	fi
+	exit 0
+}
+
 do_install() {
 	YES=0 online='' src=''
 	for a; do
@@ -434,11 +488,9 @@ do_install() {
 		return
 	fi
 	do_check "$src" || { drop_lock; exit 1; }
-	url=$(grep -o "\"browser_download_url\": *\"[^\"]*-$BOARD\.tar\.gz\"" "$DIR/release.json" |
-		head -n 1 | sed 's/.*: *"//; s/"$//')
+	url=$(release_url "$DIR/release.json")
 	[ -n "$url" ] || { drop_lock; echo "error No $BOARD package in this release"; exit 1; }
-	ver=${url##*/mabur-ground-}
-	ver=${ver%-"$BOARD".tar.gz}
+	ver=$(release_version "$DIR/release.json")
 	echo "Package ${url##*/}"
 	do_run tty online "$url" "$ver"
 }
@@ -454,6 +506,7 @@ esac
 case $1 in
 find) do_find ;;
 check) [ $# = 2 ] || usage; do_check "$2" ;;
+notify) do_notify ;;
 start) shift; do_start "$@" ;;
 install) shift; do_install "$@" ;;
 __run) shift; do_run "$@" ;;
