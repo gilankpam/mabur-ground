@@ -190,6 +190,11 @@ fi
 overlay_rootdir=/overlay/root
 overlay_workdir=/overlay/work
 mkdir -p $overlay_rootdir $overlay_workdir
+# An empty inittab in the overlay hides the image's, and init then runs no
+# init scripts. Older images' gadget script rewrote inittab every boot, and a
+# power cut before writeback left it empty: drop it so the image's applies.
+[ -f $overlay_rootdir/etc/inittab ] && [ ! -s $overlay_rootdir/etc/inittab ] &&
+	rm -f $overlay_rootdir/etc/inittab
 
 if ! mount -t overlay overlay -o lowerdir=/,upperdir=$overlay_rootdir,workdir=$overlay_workdir /mnt; then
 	# The EXIT trap below still execs /sbin/init, so the box boots -- on the
