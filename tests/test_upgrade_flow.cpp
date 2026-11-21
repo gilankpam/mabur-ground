@@ -95,7 +95,7 @@ TEST(release_pairing) {
   CHECK(f.page().pair == "pairs with drone v0.2.0" && !f.page().pair_warn);
   CHECK(f.page().title == "Update · Snapshot");
   f.key(K::kRight);
-  f.key(K::kRight);  // confirm then start
+  CHECK(f.page().confirm == "Install v0.2.0? The GS reboots. Keep the power on.");
 }
 
 TEST(online_start_carries_url_and_version) {
@@ -187,6 +187,43 @@ TEST(generation_moves) {
   g = f.generation();
   f.key(K::kUp);  // nothing to scroll: page unchanged
   CHECK(f.generation() == g);
+}
+
+TEST(keys_on_inactive_flow_are_noops) {
+  auto f = flow();
+  for (int pass = 0; pass < 2; ++pass) {
+    const auto g = f.generation();
+    for (K k : {K::kUp, K::kDown, K::kLeft, K::kRight}) CHECK(f.key(k).kind == UpgradeCmd::Kind::kNone);
+    CHECK(!f.active() && f.generation() == g);
+    f.show_packages({});
+  }
+}
+
+TEST(status_ignored_unless_running) {
+  auto f = flow();
+  f.show_packages({pkg("/a.tgz", "v0.2.0")});
+  UpgradeStatus st;
+  st.state = "error";
+  st.msg = "boom";
+  auto before = f.page();
+  auto g = f.generation();
+  f.on_status(st);
+  CHECK(f.page() == before && f.generation() == g);
+  f.key(K::kRight);
+  before = f.page();
+  g = f.generation();
+  f.on_status(st);
+  CHECK(f.page() == before && f.generation() == g);
+}
+
+TEST(stop_and_reboot_ignore_keys) {
+  for (const char* ph : {"stop", "reboot"}) {
+    auto f = running(ph);
+    const auto before = f.page();
+    const auto g = f.generation();
+    for (K k : {K::kUp, K::kDown, K::kLeft, K::kRight}) CHECK(f.key(k).kind == UpgradeCmd::Kind::kNone);
+    CHECK(f.page() == before && f.generation() == g);
+  }
 }
 
 MTEST_MAIN

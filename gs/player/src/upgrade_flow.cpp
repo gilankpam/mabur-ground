@@ -18,6 +18,24 @@ std::string phase_name(const std::string& p) {
 bool cancellable(const std::string& p) {
   return p.empty() || p == "download" || p == "unpack" || p == "verify";
 }
+// Header text for installing `next` over `cur`; warns when it is a downgrade or
+// a snapshot.
+void version_header(const std::string& cur, const std::string& next, std::string* header,
+                    bool* warn) {
+  *warn = false;
+  switch (version_rel(cur, next)) {
+    case VersionRel::kSame: *header = "already on " + next; break;
+    case VersionRel::kNewer: *header = cur + " → " + next; break;
+    case VersionRel::kOlder:
+      *header = cur + " → " + next + " · older";
+      *warn = true;
+      break;
+    case VersionRel::kDifferent:
+      *header = cur + " → " + next + " · snapshot";
+      *warn = true;
+      break;
+  }
+}
 }  // namespace
 
 UpgradeFlow::UpgradeFlow(std::string current_version, std::string board)
@@ -37,18 +55,7 @@ UpgradeFlow::Item UpgradeFlow::from_package(const FoundPackage& p) const {
   it.pair = p.ver->drone.empty() ? "pairs with no drone release yet"
                                  : "pairs with drone " + p.ver->drone;
   it.pair_warn = p.ver->drone.empty();
-  switch (version_rel(cur_, it.version)) {
-    case VersionRel::kSame: it.header = "already on " + it.version; break;
-    case VersionRel::kNewer: it.header = cur_ + " → " + it.version; break;
-    case VersionRel::kOlder:
-      it.header = cur_ + " → " + it.version + " · older";
-      it.header_warn = true;
-      break;
-    case VersionRel::kDifferent:
-      it.header = cur_ + " → " + it.version + " · snapshot";
-      it.header_warn = true;
-      break;
-  }
+  version_header(cur_, it.version, &it.header, &it.header_warn);
   return it;
 }
 
@@ -88,18 +95,7 @@ void UpgradeFlow::show_release(const ReleaseInfo& rel, const std::string& channe
   } else if (!rel.drone.empty()) {
     it.pair = "pairs with drone " + rel.drone;
   }
-  switch (version_rel(cur_, rel.version)) {
-    case VersionRel::kSame: it.header = "already on " + rel.version; break;
-    case VersionRel::kNewer: it.header = cur_ + " → " + rel.version; break;
-    case VersionRel::kOlder:
-      it.header = cur_ + " → " + rel.version + " · older";
-      it.header_warn = true;
-      break;
-    case VersionRel::kDifferent:
-      it.header = cur_ + " → " + rel.version + " · snapshot";
-      it.header_warn = true;
-      break;
-  }
+  version_header(cur_, rel.version, &it.header, &it.header_warn);
   items_ = {it};
   from_list_ = false;
   confirm_ = false;
@@ -124,8 +120,9 @@ UpgradeCmd UpgradeFlow::key(UpgradeKey k) {
 
 UpgradeCmd UpgradeFlow::key_impl(UpgradeKey k) {
   UpgradeCmd cmd;
+  if (view_ == View::kNone) return cmd;
   const int n = view_ == View::kList ? static_cast<int>(items_.size())
-                                     : static_cast<int>(items_[sel_ < 0 ? 0 : sel_].changelog.size());
+                                     : static_cast<int>(items_[sel_].changelog.size());
   switch (view_) {
     case View::kNone: break;
     case View::kList:
