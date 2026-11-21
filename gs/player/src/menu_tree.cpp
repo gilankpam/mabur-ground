@@ -1273,13 +1273,15 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
   version.kind = NodeKind::kInfo;
   version.value_text = [d] { return d->gs_version.empty() ? std::string("unknown") : d->gs_version; };
 
+  // "Checking…" while a find or check runs, else the row's own note.
+  auto checking_or = [d](std::string note) {
+    return [d, note] { return d->upgrade_busy && d->upgrade_busy() ? std::string("Checking…") : note; };
+  };
   MenuNode file;
   file.id = "sys.update.file";
   file.label = "Update from file";
   file.kind = NodeKind::kAction;
-  file.value_text = [d] {
-    return d->upgrade_busy && d->upgrade_busy() ? std::string("Checking…") : std::string();
-  };
+  file.value_text = checking_or("");
   file.action = [d] {
     if (d->upgrade_file) d->upgrade_file();
     return std::vector<SetStep>{};
@@ -1295,17 +1297,18 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
     };
   };
   MenuNode online = group("sys.update.online", "Check online",
-                          "Needs the GS on a network (wifi.toml client mode).", [online_action] {
+                          "Needs the GS on a network (wifi.toml client mode).", [online_action, checking_or] {
     MenuNode stable;
     stable.id = "sys.update.stable";
     stable.label = "Stable";
     stable.kind = NodeKind::kAction;
-    stable.value_text = [] { return std::string("releases"); };
+    stable.value_text = checking_or("releases");
     stable.action = online_action("stable");
     MenuNode snap;
     snap.id = "sys.update.snapshot";
     snap.label = "Snapshot";
     snap.kind = NodeKind::kAction;
+    snap.value_text = checking_or("");
     snap.warn = [] { return std::string("latest master build, untested"); };
     snap.action = online_action("snapshot");
     return std::vector<MenuNode>{stable, snap};

@@ -1,5 +1,7 @@
 // UpgradeRunner against a fake gs-upgrade: the process and file side of the
 // upgrade flow.
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -163,6 +165,23 @@ TEST(ui_ready_is_wanted_at_stop_until_marked) {
   r.mark_ui_ready(&why);  // mlockall may be refused without privilege
   CHECK(::access((d + "/ui-ready").c_str(), F_OK) == 0);
   CHECK(!r.wants_ui_ready());
+}
+
+TEST(run_alive_reads_the_pid_in_the_lock) {
+  clear_env();
+  std::string d = fresh_dir();
+  UpgradeRunner r(fake(), d);
+  CHECK(r.run_alive());  // no lock: a run between its lock drop and final status
+  REQUIRE(::mkdir((d + "/lock").c_str(), 0755) == 0);
+  CHECK(r.run_alive());  // a lock not yet named
+  put(d + "/lock/pid", std::to_string(::getpid()) + "\n");
+  CHECK(r.run_alive());
+  pid_t dead = ::fork();
+  if (dead == 0) ::_exit(0);
+  REQUIRE(dead > 0);
+  ::waitpid(dead, nullptr, 0);
+  put(d + "/lock/pid", std::to_string(dead) + "\n");
+  CHECK(!r.run_alive());
 }
 
 MTEST_MAIN

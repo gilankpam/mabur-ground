@@ -2489,6 +2489,9 @@ int main(int argc, char** argv) {
   constexpr uint64_t kUpgradeStatusMs = 250;
   uint64_t upgrade_status_ms = 0;
   bool upgrade_ui_ready = false;  // marked for the run now in its stop phase
+  // Set once ui-ready is marked; while the page still shows that run, the
+  // record button and SIGUSR1 start no recording on the rootfs being written.
+  bool upgrade_rec_held = false;
 
   // MABUR_MENU_DEBUG's "key" verb queues here; drained into the exact same
   // per-tick loop that consumes bank.poll() below, so an injected event
@@ -2535,7 +2538,9 @@ int main(int argc, char** argv) {
     // One ioctl per iteration (~500/s, microseconds each) -- far under the
     // ~1.5 ms budget tools/bench/gs_osd_bench.cpp polices for this loop.
     if ((rec_button.is_open() && rec_button.poll(mono_ms())) || g_rec_toggle.exchange(false)) {
-      if (rec_on) {
+      if (upgrade_rec_held && upgrade_flow->page().running) {
+        std::fprintf(stderr, "maburplay: upgrade: record toggle ignored\n");
+      } else if (rec_on) {
         rec_stop();
         follow_live_rec();  // a dvr.* set during the recording takes over now
       } else {
@@ -2587,7 +2592,13 @@ int main(int argc, char** argv) {
       if (now_ms - upgrade_status_ms >= kUpgradeStatusMs) {
         upgrade_status_ms = now_ms;
         if (upgrade_flow->active()) {
-          if (const std::optional<maburplay::UpgradeStatus> st = upgrader->status()) {
+          if (std::optional<maburplay::UpgradeStatus> st = upgrader->status()) {
+            // A run killed before its final status would hold the page (and
+            // every key) forever. A write-phase error reads "Write failed".
+            if (st->state == "running" && upgrade_flow->page().running && !upgrader->run_alive()) {
+              st->state = "error";
+              st->msg = "The update stopped \xe2\x80\x94 nothing was changed";
+            }
             const std::string at = st->state + " " + st->phase;
             if (at != upgrade_logged) {
               upgrade_logged = at;
@@ -2607,6 +2618,7 @@ int main(int argc, char** argv) {
         const bool wants = upgrader->wants_ui_ready();
         if (wants && !upgrade_ui_ready) {
           upgrade_ui_ready = true;
+          upgrade_rec_held = true;
           if (rec_on) {
             rec_stop();
             follow_live_rec();
@@ -2619,6 +2631,7 @@ int main(int argc, char** argv) {
                          why.c_str());
         }
         if (!wants) upgrade_ui_ready = false;
+        if (!upgrade_flow->page().running) upgrade_rec_held = false;
       }
       // Holds maburgs' measuring lease for exactly as long as the Channel
       // picker is open on the model, including a whole-menu close with

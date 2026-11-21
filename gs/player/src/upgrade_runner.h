@@ -43,6 +43,10 @@ class UpgradeRunner {
   bool wants_ui_ready() const;  // state=running phase=stop and no ui-ready file yet
   // Locks memory, then touches ui-ready even if the lock failed (false, *why).
   bool mark_ui_ready(std::string* why);
+  // False only when gs-upgrade's lock names a pid that is gone: a run killed
+  // before it wrote a final status. No lock or no pid yet reads as alive, as
+  // a run drops its lock just before its final status.
+  bool run_alive() const;
 
  private:
   struct Child {

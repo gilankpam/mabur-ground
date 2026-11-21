@@ -135,7 +135,7 @@ real values.
 | `sys.debug` "Debug log" | gs | `debug_log.enable` | On/off. |
 | `sys.version` "Software" | — | — | Read-only: the image's `VERSION` from `/etc/os-release`, "unknown" without one. |
 | `sys.update.file` "Update from file" | — | — | ▶ runs `gs-upgrade find` and opens the update page for what it finds; reads "Checking…" while a find or check runs ("Updating the GS" below). |
-| `sys.update.online` "Check online" ▸ `sys.update.stable` "Stable" / `sys.update.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release. Snapshot warns "latest master build, untested". |
+| `sys.update.online` "Check online" ▸ `sys.update.stable` "Stable" / `sys.update.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release; both read "Checking…" while a find or check runs. Snapshot warns "latest master build, untested". |
 
 **Not covered yet:** a `Calibration` group.
 
@@ -366,7 +366,10 @@ was.
   "Don't power off" on every running page. ◀ cancels during download,
   unpack and verify only: from the stop phase on there is no cancel. A
   failure or a cancel ends on a page with the reason (a failed write reads
-  "Write failed — reflash from SD card"); ◀ or ▶ closes it.
+  "Write failed — reflash from SD card"); ◀ or ▶ closes it. A run that
+  dies without a final status (its pid in the lock is gone while the
+  status still reads running) ends the same way: "The update stopped —
+  nothing was changed" before the write, the write failure from it on.
 
 The page is drawn even with the menu closed (the menu's view is forced
 open while it is shown). Left/Right take a tap, Right also a hold, Sel a
@@ -378,15 +381,18 @@ respawn loop, so the progress keeps drawing, and waits up to 5 s for the
 player's `ui-ready` mark. The player answers once: it stops a running
 recording through the record button's own path, calls `mlockall` so
 nothing it runs later pages in from the rootfs being overwritten, then
-creates the mark — even if the lock failed. The flash itself runs in
+creates the mark — even if the lock failed. From the mark until the page
+leaves that run, the record button (and `SIGUSR1`) starts and stops no
+recording. The flash itself runs in
 `gs-upgrade`, detached from maburplay: it carries on to the reboot if the
 player dies.
 
 Log lines (stderr): `maburplay: upgrade: find`, `check <channel>`,
 `start <version>` (`start failed: <why>` when the tool refuses),
 `cancel`, `status <phase> <done>/<total>` once per phase (with the state
-and message appended when the state is not `running`), and
-`ui ready (mlockall ok)` / `ui ready (mlockall failed: <why>)`.
+and message appended when the state is not `running`),
+`ui ready (mlockall ok)` / `ui ready (mlockall failed: <why>)`, and
+`record toggle ignored`.
 
 ## Before the first video frame
 

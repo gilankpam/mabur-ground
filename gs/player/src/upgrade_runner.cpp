@@ -270,4 +270,12 @@ bool UpgradeRunner::mark_ui_ready(std::string* why) {
   return ok;
 }
 
+bool UpgradeRunner::run_alive() const {
+  const std::string pid = slurp(dir_ + "/lock/pid");
+  char* end = nullptr;
+  const long p = std::strtol(pid.c_str(), &end, 10);
+  if (p <= 0 || end == pid.c_str()) return true;
+  return ::kill(static_cast<pid_t>(p), 0) == 0 || errno == EPERM;
+}
+
 }  // namespace maburplay

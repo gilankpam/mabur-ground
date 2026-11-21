@@ -1455,6 +1455,16 @@ TEST(update_online_children_call_the_dep_stable_first) {
   CHECK((f.online_calls == std::vector<std::string>{"stable", "snapshot"}));
 }
 
+TEST(update_online_children_read_checking_while_busy) {
+  Fx f;
+  CHECK(f.node("sys.update.stable").value_text() == "releases");
+  CHECK(f.node("sys.update.snapshot").value_text().empty());
+  f.upgrade_busy = true;
+  CHECK(f.node("sys.update.stable").value_text() == "Checking…");
+  CHECK(f.node("sys.update.snapshot").value_text() == "Checking…");
+  CHECK(f.node("sys.update.snapshot").warn() == "latest master build, untested");
+}
+
 TEST(update_rows_survive_null_deps) {
   Fx f;
   MenuTreeDeps d = f.deps();
@@ -1466,6 +1476,9 @@ TEST(update_rows_survive_null_deps) {
   const auto rows = sys.children();
   CHECK(rows[4].action().empty());
   CHECK(rows[4].value_text().empty());
-  for (const MenuNode& k : rows[5].children()) CHECK(k.action().empty());
+  for (const MenuNode& k : rows[5].children()) {
+    CHECK(k.action().empty());
+    CHECK(k.value_text() != "Checking…");
+  }
 }
 MTEST_MAIN
