@@ -35,7 +35,9 @@ Files, where `<version>` is the tag, `snapshot-<sha8>` or `pr<N>-<sha8>`:
   the previous release) as its first two members, then the rootfs, plus
   U-Boot on the RK3566 boards. CI stamps the first two in
   (`firmware/scripts/stamp-package.sh`); the other members keep their names,
-  so an older image's `sysupgrade` still installs it.
+  so an older image's `sysupgrade` still installs it. Only the publish job
+  stamps: a PR test build's package (`pr<N>-<sha8>`) has neither, and the
+  menu shows it as "version unknown".
 
 A release also carries every file under its unversioned name
 (`<board>.tar.gz`, `<board>_sdcard.img`, …): older images' `sysupgrade` URL
