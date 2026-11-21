@@ -1266,7 +1266,51 @@ std::vector<MenuNode> sys_rows(const Deps& d) {
   debug.choices = on_off;
   debug.current = [d] { return bool_text(d->gs->debug_log); };
   debug.help = text("Writes a per-session debug log to the GS DVR card.");
-  return {adv, size, debug};
+
+  MenuNode version;
+  version.id = "sys.version";
+  version.label = "Software";
+  version.kind = NodeKind::kInfo;
+  version.value_text = [d] { return d->gs_version.empty() ? std::string("unknown") : d->gs_version; };
+
+  MenuNode file;
+  file.id = "sys.update.file";
+  file.label = "Update from file";
+  file.kind = NodeKind::kAction;
+  file.value_text = [d] {
+    return d->upgrade_busy && d->upgrade_busy() ? std::string("Checking…") : std::string();
+  };
+  file.action = [d] {
+    if (d->upgrade_file) d->upgrade_file();
+    return std::vector<SetStep>{};
+  };
+  file.help = text("Installs a package from the SD card or DVR partition. Shows what's in it first.");
+
+  // A group rather than a choice: the model ignores picking a choice's
+  // current value.
+  auto online_action = [d](const char* channel) {
+    return [d, channel] {
+      if (d->upgrade_online) d->upgrade_online(channel);
+      return std::vector<SetStep>{};
+    };
+  };
+  MenuNode online = group("sys.update.online", "Check online",
+                          "Needs the GS on a network (wifi.toml client mode).", [online_action] {
+    MenuNode stable;
+    stable.id = "sys.update.stable";
+    stable.label = "Stable";
+    stable.kind = NodeKind::kAction;
+    stable.value_text = [] { return std::string("releases"); };
+    stable.action = online_action("stable");
+    MenuNode snap;
+    snap.id = "sys.update.snapshot";
+    snap.label = "Snapshot";
+    snap.kind = NodeKind::kAction;
+    snap.warn = [] { return std::string("latest master build, untested"); };
+    snap.action = online_action("snapshot");
+    return std::vector<MenuNode>{stable, snap};
+  });
+  return {adv, size, debug, version, file, online};
 }
 
 // --- Unread GS values ----------------------------------------------------

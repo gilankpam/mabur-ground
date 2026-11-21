@@ -100,6 +100,10 @@ struct Fx {
   std::function<bool()> refresh_sync_available;
   std::string observe;   // ChannelObserve::state(): "" while the picker is closed
   bool stale = false;    // the sideport's staleness read (MenuTreeDeps::snap_stale)
+  std::string version = "v0.1.0";
+  int file_calls = 0;
+  std::vector<std::string> online_calls;
+  bool upgrade_busy = false;
 
   // Fills snap.vtx (creating it linked, list "complete") with one row,
   // updating it in place when `id` is already there.
@@ -136,6 +140,10 @@ struct Fx {
     d.refresh_sync_available = refresh_sync_available;
     d.observe_state = [this] { return observe; };
     d.snap_stale = [this] { return stale; };
+    d.gs_version = version;
+    d.upgrade_file = [this] { ++file_calls; };
+    d.upgrade_online = [this](const std::string& c) { online_calls.push_back(c); };
+    d.upgrade_busy = [this] { return upgrade_busy; };
     return d;
   }
   std::vector<MenuNode> tree() { return build_menu_tree(deps()); }
@@ -1405,4 +1413,59 @@ TEST(every_step_key_is_a_live_key_of_its_owner) {
   CHECK(checked > 40);
 }
 
+
+TEST(system_group_lists_the_update_rows_after_debug) {
+  Fx f;
+  std::vector<std::string> ids;
+  for (const MenuNode& n : f.node("sys").children()) ids.push_back(n.id);
+  CHECK((ids == std::vector<std::string>{"sys.adv", "sys.size", "sys.debug", "sys.version",
+                                         "sys.update.file", "sys.update.online"}));
+}
+
+TEST(system_version_reads_the_version_or_unknown) {
+  Fx f;
+  CHECK(f.node("sys.version").value_text() == "v0.1.0");
+  f.version = "";
+  CHECK(f.node("sys.version").value_text() == "unknown");
+  // Player-side rows are never dashed before maburgs' first get.
+  f.gs = GsLiveView{};
+  CHECK(f.node("sys.version").value_text() == "unknown");
+}
+
+TEST(update_from_file_calls_the_dep_and_sends_nothing) {
+  Fx f;
+  const MenuNode n = f.node("sys.update.file");
+  CHECK(n.action().empty());
+  CHECK(f.file_calls == 1);
+  CHECK(!n.value_text || n.value_text().empty());
+  f.upgrade_busy = true;
+  CHECK(f.node("sys.update.file").value_text() == "Checking…");
+}
+
+TEST(update_online_children_call_the_dep_stable_first) {
+  Fx f;
+  const MenuNode g = f.node("sys.update.online");
+  REQUIRE(g.kind == NodeKind::kGroup);
+  const auto kids = g.children();
+  REQUIRE(kids.size() == 2);
+  CHECK(kids[0].id == "sys.update.stable");
+  CHECK(kids[1].id == "sys.update.snapshot");
+  CHECK(kids[0].action().empty());
+  CHECK(kids[1].action().empty());
+  CHECK((f.online_calls == std::vector<std::string>{"stable", "snapshot"}));
+}
+
+TEST(update_rows_survive_null_deps) {
+  Fx f;
+  MenuTreeDeps d = f.deps();
+  d.upgrade_file = nullptr;
+  d.upgrade_online = nullptr;
+  d.upgrade_busy = nullptr;
+  const auto t = build_menu_tree(d);
+  const MenuNode& sys = t.back();
+  const auto rows = sys.children();
+  CHECK(rows[4].action().empty());
+  CHECK(rows[4].value_text().empty());
+  for (const MenuNode& k : rows[5].children()) CHECK(k.action().empty());
+}
 MTEST_MAIN

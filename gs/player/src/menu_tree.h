@@ -46,6 +46,12 @@ struct MenuTreeDeps {
   // sideport). Null = fresh. The Channel row draws a stale snapshot as no
   // link and no measurement.
   std::function<bool()> snap_stale;
+  std::string gs_version;  // "" = unknown
+  // The System update rows' hooks. All null-safe: null busy = false, null
+  // file/online = do nothing.
+  std::function<void()> upgrade_file;
+  std::function<void(const std::string& channel)> upgrade_online;  // "stable" | "snapshot"
+  std::function<bool()> upgrade_busy;
 };
 
 // Five-bar clean-air level for a foreign-busy percentage: 5 under 5%, 4
