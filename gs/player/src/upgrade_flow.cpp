@@ -111,6 +111,26 @@ void UpgradeFlow::open_item(int i) {
   view_ = View::kInfo;
 }
 
+std::optional<UpgradeKey> upgrade_key(const KeyEvent& e) {
+  switch (e.button) {
+    case Button::kUp:
+    case Button::kDown:
+      if (e.kind == KeyKind::kHold) break;
+      return e.button == Button::kUp ? UpgradeKey::kUp : UpgradeKey::kDown;
+    case Button::kLeft:
+      if (e.kind == KeyKind::kTap) return UpgradeKey::kLeft;
+      break;
+    case Button::kRight:
+      if (e.kind != KeyKind::kRepeat) return UpgradeKey::kRight;
+      break;
+    case Button::kSel:
+      if (e.kind == KeyKind::kTap) return UpgradeKey::kRight;
+      break;
+    case Button::kCount: break;
+  }
+  return std::nullopt;
+}
+
 UpgradeCmd UpgradeFlow::key(UpgradeKey k) {
   const UpgradePage before = page();
   UpgradeCmd c = key_impl(k);

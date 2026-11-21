@@ -9,11 +9,16 @@
 #include <string>
 #include <vector>
 
+#include "key_timer.h"
 #include "upgrade_info.h"
 
 namespace maburplay {
 
 enum class UpgradeKey { kUp, kDown, kLeft, kRight };
+
+// A pad event as a page key: Up/Down on tap or repeat, Left on tap, Right on
+// tap or hold, Sel on tap; nullopt for the rest (a Left hold does not close).
+std::optional<UpgradeKey> upgrade_key(const KeyEvent& e);
 
 struct FoundPackage {
   std::string path;
@@ -38,7 +43,7 @@ struct UpgradePage {
   int cursor = -1;                 // package list only
   std::string confirm;             // non-empty: confirm prompt over the page
   int pct = -1;                    // -1: no bar
-  bool running = false;             // an install under way: the GS must stay powered
+  bool running = false;            // an install under way: the GS must stay powered
   std::string phase_text, error, keys;
   bool operator==(const UpgradePage&) const = default;
 };

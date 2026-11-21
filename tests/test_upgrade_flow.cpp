@@ -252,4 +252,15 @@ TEST(stop_and_reboot_ignore_keys) {
   }
 }
 
+TEST(pad_events_map_to_page_keys) {
+  using B = Button;
+  using KK = KeyKind;
+  auto k = [](B b, KK kind) { return upgrade_key(KeyEvent{b, kind}); };
+  CHECK(k(B::kUp, KK::kTap) == K::kUp && k(B::kUp, KK::kRepeat) == K::kUp);
+  CHECK(k(B::kDown, KK::kTap) == K::kDown && k(B::kDown, KK::kRepeat) == K::kDown);
+  CHECK(k(B::kLeft, KK::kTap) == K::kLeft && !k(B::kLeft, KK::kHold));
+  CHECK(k(B::kRight, KK::kTap) == K::kRight && k(B::kRight, KK::kHold) == K::kRight);
+  CHECK(k(B::kSel, KK::kTap) == K::kRight && !k(B::kSel, KK::kHold));
+}
+
 MTEST_MAIN

@@ -133,6 +133,9 @@ real values.
 | `sys.adv` "Show advanced settings" | player | `menu.show_advanced` | On/off; shows the rows marked (advanced) above in every group. |
 | `sys.size` "Menu size" | player | `menu.scale` | Normal / Large / Larger (×1, ×1.25, ×1.5). Previews live: while its picker is open the whole menu is drawn at the size under the cursor (`MenuModel::preview`), nothing written; ◀ or a held ◀ drops back to the saved size, ▶ saves it — and the menu stays at the picked size while that set runs, so it never flicks back to the old size before the save lands. |
 | `sys.debug` "Debug log" | gs | `debug_log.enable` | On/off. |
+| `sys.version` "Software" | — | — | Read-only: the image's `VERSION` from `/etc/os-release`, "unknown" without one. |
+| `sys.update.file` "Update from file" | — | — | ▶ runs `gs-upgrade find` and opens the update page for what it finds; reads "Checking…" while a find or check runs ("Updating the GS" below). |
+| `sys.update.online` "Check online" ▸ `sys.update.stable` "Stable" / `sys.update.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release. Snapshot warns "latest master build, untested". |
 
 **Not covered yet:** a `Calibration` group.
 
@@ -335,12 +338,63 @@ banner box (`menu_layer.h`/`.cpp`) is drawn centred, 12 % down the screen,
 with the menu closed; while the menu is open it moves below the panel
 and picker instead, so it never covers either.
 
+## Updating the GS
+
+The two update rows hand the work to the image's `gs-upgrade` tool
+(`docs/gs-image.md` "Upgrading"); the menu only finds, shows, confirms
+and draws progress. The update page takes the panel's rows' place, and
+while it is up every button event (a real one or a debug `key`) goes to
+it instead of the menu; closing it gives the keys back to the menu as it
+was.
+
+- **Update from file:** no package for this board toasts "Put
+  `<board>.tar.gz` on the SD card or DVR partition"; one opens its page
+  straight away; several open a list (▲▼ choose, ▶ open, ◀ close).
+- **Check online:** a refusal toasts ("Clock not synced yet — try again
+  in a minute", "No snapshot right now — try again in a few minutes", no
+  network, …); a release opens its page.
+- **The package's page:** a header with the running version and the new
+  one ("already on `<version>`" when they are equal; "· older" and
+  "· snapshot" warned), the drone release it pairs with ("pairs with no
+  drone release yet" warned), and its changelog (▲▼ scroll). ▶ asks
+  "Install `<version>`? The GS reboots. Keep the power on."; ▶ again
+  starts it, ◀ backs out. Another board's package reads "Built for
+  `<board>`" and has no ▶; one with no readable `VERSION` reads "version
+  unknown" and installs as it is.
+- **Running:** the phase (Downloading, Unpacking, Checking, Stopping
+  services, Writing, Rebooting), a bar where the phase has a size, and
+  "Don't power off" on every running page. ◀ cancels during download,
+  unpack and verify only: from the stop phase on there is no cancel. A
+  failure or a cancel ends on a page with the reason (a failed write reads
+  "Write failed — reflash from SD card"); ◀ or ▶ closes it.
+
+The page is drawn even with the menu closed (the menu's view is forced
+open while it is shown). Left/Right take a tap, Right also a hold, Sel a
+tap as ▶; Up/Down a tap or an auto-repeat tick. The player reads
+`gs-upgrade`'s status file at most every 250 ms.
+
+In its stop phase `gs-upgrade` stops maburgs but only holds maburplay's
+respawn loop, so the progress keeps drawing, and waits up to 5 s for the
+player's `ui-ready` mark. The player answers once: it stops a running
+recording through the record button's own path, calls `mlockall` so
+nothing it runs later pages in from the rootfs being overwritten, then
+creates the mark — even if the lock failed. The flash itself runs in
+`gs-upgrade`, detached from maburplay: it carries on to the reboot if the
+player dies.
+
+Log lines (stderr): `maburplay: upgrade: find`, `check <channel>`,
+`start <version>` (`start failed: <why>` when the tool refuses),
+`cancel`, `status <phase> <done>/<total>` once per phase (with the state
+and message appended when the state is not `running`), and
+`ui ready (mlockall ok)` / `ui ready (mlockall failed: <why>)`.
+
 ## Before the first video frame
 
 `maburplay` puts a startup splash on screen until the first decoded frame
 (`drm_presenter.h`'s splash); with no drone linked that can be forever,
 and the menu has to work the whole time, not just once video is flowing.
-Opening the menu while the splash is still up takes its plane: on the
+Opening the menu (or an update page, "Updating the GS" above) while the
+splash is still up takes its plane: on the
 common hardware, where the OSD and the splash share the primary plane,
 the menu replaces the splash outright and shows over black; where the
 OSD has a plane of its own above the splash, the menu simply draws on
@@ -498,7 +552,13 @@ lines and their gesture timing. `gs_live_view.h`/`.cpp` — parses maburgs'
 `get` dump. `display_follow.h` — the display-follows-camera rule,
 including `follow_camera_hz`'s reported-mode-first pick. `menu_view_feed.h`
 — paces `MenuModel::view()` for the presentation loop. `menu_debug.h`/
-`.cpp` — the `MABUR_MENU_DEBUG` verbs. `splash_menu.h` — the
+`.cpp` — the `MABUR_MENU_DEBUG` verbs. `upgrade_info.h`/`.cpp` — parses
+`gs-upgrade`'s package `VERSION`, status file and GitHub release record,
+and compares versions. `upgrade_flow.h`/`.cpp` — `UpgradeFlow`, the update
+pages as a pure state machine (keys and status in, a page and start/cancel
+commands out), and `upgrade_key`, the pad-to-page key mapping.
+`upgrade_runner.h`/`.cpp` — `UpgradeRunner`, which runs `gs-upgrade`'s
+verbs without blocking the main loop and writes the `ui-ready` mark. `splash_menu.h` — the
 menu-before-any-video decision rule (`SplashMenuGate`, "Before the first
 video frame" above); `DrmPresenter::set_osd_over_splash()`/
 `commit_osd_if_pending()` (`drm_presenter.h`/`.cpp`) act on it. Wiring

@@ -91,10 +91,12 @@ needs 2.5 times the package in free RAM), checks the md5 sums and that the
 package's `VERSION`, when it has one, names this board, then stops maburgs,
 cron and the syslogs (and maburplay from ssh; from the menu only its
 respawn loop, so it keeps drawing), writes, and reboots. The package file is
-kept.
+kept. From the menu the write waits up to 5 s for maburplay to finish any
+recording and lock itself in memory (its `ui-ready` mark), then goes ahead
+either way; once started it does not depend on maburplay.
 
 - A failure before the write leaves the GS running as it was. From the
-  menu, ◀ cancels until then.
+  menu, ◀ cancels until services start to stop (download, unpack, verify).
 - If maburgs fails to stop, the upgrade gives up and starts again what it
   stopped; from the menu, maburplay gets its respawn loop back. crond or a
   syslog daemon failing to stop (it was already gone) does not block it.
