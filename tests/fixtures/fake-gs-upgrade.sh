@@ -5,7 +5,8 @@
 #   FAKE_FIND_N       packages to report (each with VERSION and CHANGELOG)
 #   FAKE_CHECK_ERR    "<code> <text>": check fails with that error line
 #   FAKE_RELEASE      file copied to release.json on a good check
-#   FAKE_START_ERR    "<code> <text>": start fails with that error line
+#   FAKE_START_ERR    "<code> <text>": start fails with that error line;
+#                     ECHO_DIR: the error text is the GS_UPGRADE_DIR it was given
 D=$GS_UPGRADE_DIR
 mkdir -p "$D"
 [ -z "$FAKE_SLEEP" ] || sleep "$FAKE_SLEEP"
@@ -23,6 +24,7 @@ check)
 	if [ -n "$FAKE_CHECK_ERR" ]; then echo "error $FAKE_CHECK_ERR"; exit 1; fi
 	cp "$FAKE_RELEASE" "$D/release.json" ;;
 start)
+	if [ "$FAKE_START_ERR" = ECHO_DIR ]; then echo "error busy $GS_UPGRADE_DIR"; exit 1; fi
 	if [ -n "$FAKE_START_ERR" ]; then echo "error $FAKE_START_ERR"; exit 1; fi
 	printf 'state=running\nphase=unpack\ndone=0\ntotal=0\nmsg=\n' >"$D/status"
 	echo started ;;

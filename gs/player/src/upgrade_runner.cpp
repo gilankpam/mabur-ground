@@ -72,6 +72,15 @@ bool UpgradeRunner::spawn(const std::vector<std::string>& args, Child* c) {
   std::vector<char*> argv;
   for (auto& a : argv_s) argv.push_back(a.data());
   argv.push_back(nullptr);
+  // Built before the fork: setenv is not async-signal-safe in a threaded parent.
+  std::vector<std::string> env_s;
+  for (char** e = environ; e && *e; ++e) {
+    if (std::strncmp(*e, "GS_UPGRADE_DIR=", 15) != 0) env_s.push_back(*e);
+  }
+  env_s.push_back("GS_UPGRADE_DIR=" + dir_);
+  std::vector<char*> envp;
+  for (auto& e : env_s) envp.push_back(e.data());
+  envp.push_back(nullptr);
   pid_t pid = ::fork();
   if (pid < 0) {
     ::close(p[0]);
@@ -85,9 +94,8 @@ bool UpgradeRunner::spawn(const std::vector<std::string>& args, Child* c) {
       ::dup2(nul, 0);
       ::dup2(nul, 2);
     }
-    ::setenv("GS_UPGRADE_DIR", dir_.c_str(), 1);
     close_inherited_fds();
-    ::execv(argv[0], argv.data());
+    ::execve(argv[0], argv.data(), envp.data());
     ::_exit(127);
   }
   ::close(p[1]);
@@ -108,7 +116,9 @@ bool UpgradeRunner::reap(Child* c, int* status) {
     }
     break;
   }
-  if (::waitpid(c->pid, status, WNOHANG) != c->pid) return false;
+  pid_t w = ::waitpid(c->pid, status, WNOHANG);
+  if (w == 0) return false;
+  if (w < 0) *status = -1;  // already reaped elsewhere: exited, status unknown
   // Exited: whatever it wrote is in the pipe now.
   for (ssize_t n; (n = ::read(c->fd, b, sizeof(b))) > 0;) c->out.append(b, static_cast<size_t>(n));
   ::close(c->fd);
@@ -189,7 +199,7 @@ std::optional<UpgradeRunner::CheckResult> UpgradeRunner::poll_check(const std::s
     } else if (code == "notfound" && snapshot_) {
       r.error = "No snapshot right now \xe2\x80\x94 try again in a few minutes";
     } else {
-      r.error = text;
+      r.error = text.empty() ? "Check failed" : text;
     }
     return r;
   }
@@ -220,7 +230,7 @@ bool UpgradeRunner::start(const UpgradeCmd& c, std::string* why) {
   }
   std::string code, text;
   if (error_line(out, &code, &text)) {
-    if (why) *why = text;
+    if (why) *why = text.empty() ? "gs-upgrade refused to start" : text;
     return false;
   }
   if (out.rfind("started", 0) != 0) {

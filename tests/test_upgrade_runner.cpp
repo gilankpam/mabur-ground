@@ -124,6 +124,21 @@ TEST(start_reports_started_or_the_busy_text) {
   CHECK(why == "An update is already running");
 }
 
+TEST(child_sees_the_runners_dir_in_its_environment) {
+  clear_env();
+  ::setenv("GS_UPGRADE_DIR", "/wrong", 1);
+  ::setenv("FAKE_START_ERR", "ECHO_DIR", 1);
+  std::string d = fresh_dir();
+  UpgradeRunner r(fake(), d);
+  UpgradeCmd c;
+  c.kind = UpgradeCmd::Kind::kStartFile;
+  c.arg = "/x";
+  std::string why;
+  CHECK(!r.start(c, &why));
+  CHECK(why == d);
+  ::unsetenv("GS_UPGRADE_DIR");
+}
+
 TEST(cancel_runs_the_verb) {
   clear_env();
   std::string d = fresh_dir();
