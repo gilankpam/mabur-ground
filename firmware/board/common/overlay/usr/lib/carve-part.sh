@@ -13,7 +13,7 @@ part_nums() {
 # "the last partition" instead is what used to format the wrong one: on a disk
 # laid out by an image without a CONFIG partition, DVR already fills the disk,
 # mkpart fails, and the last partition IS the DVR -- renamed and mkfs'd on
-# every boot, recordings and all. A sysupgrade keeps the old partition table,
+# every boot, recordings and all. An upgrade keeps the old partition table,
 # so such disks are the normal case after an upgrade, not a corner.
 carve_part() {
   name=$1

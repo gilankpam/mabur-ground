@@ -4,10 +4,9 @@ eval $(grep BR2_DEFCONFIG ${O}/.config)
 echo "BUILD_CONFIG=$(basename $(basename $BR2_DEFCONFIG) _defconfig)" >> $TARGET_DIR/etc/os-release
 
 # The version comes from firmware/build.sh (the release tag, snapshot-<sha8>,
-# pr<N>-<sha8>, or the local sha); the online upgrade always takes the latest
-# release's package for this board.
+# pr<N>-<sha8>, or the local sha). BUILD_EPOCH lets the upgrade tool refuse an
+# online check while the clock still reads earlier than this build.
 : "${MABUR_GS_VERSION:?post-build: MABUR_GS_VERSION is not set (build through firmware/build.sh)}"
-DOWNLOAD_URL="https://github.com/gilankpam/mabur-ground/releases/latest/download/$(basename $(basename $BR2_DEFCONFIG) _defconfig).tar.gz"
 
 cat <<EOF >$TARGET_DIR/etc/os-release
 PRETTY_NAME="mabur GS"
@@ -15,8 +14,8 @@ NAME="mabur GS"
 HOME_URL="https://github.com/gilankpam/mabur-ground"
 BUG_REPORT_URL="https://github.com/gilankpam/mabur-ground/issues"
 BUILD_CONFIG=$(basename $(basename $BR2_DEFCONFIG) _defconfig)
-UPGRADE=$DOWNLOAD_URL
 BUILD_DATE="$(date)"
+BUILD_EPOCH=$(date +%s)
 VERSION="$MABUR_GS_VERSION"
 EOF
 

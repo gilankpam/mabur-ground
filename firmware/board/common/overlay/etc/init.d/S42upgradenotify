@@ -1,0 +1,21 @@
+#!/bin/sh
+# Looks once per boot for a newer GS image (`gs-upgrade notify`), so the
+# goggles menu can mark Firmware. Detached: without a network (hotspot mode)
+# it waits for one until power-off, and boot must not wait with it. It exits
+# after its first successful check.
+
+PIDFILE=/var/run/upgradenotify.pid
+
+case "$1" in
+	start)
+		gs-upgrade notify </dev/null >/dev/null 2>&1 &
+		echo $! >"$PIDFILE"
+		;;
+	stop)
+		[ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+		rm -f "$PIDFILE"
+		true
+		;;
+	restart) "$0" stop; "$0" start ;;
+	*) echo "usage: $0 {start|stop|restart}" >&2; exit 1 ;;
+esac

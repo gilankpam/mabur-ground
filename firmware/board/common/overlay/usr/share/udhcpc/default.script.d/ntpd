@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run by udhcpc's default.script with the action: (re)start ntpd once there
+# is a network to reach the pool through.
+case "$1" in
+	bound|renew) /etc/init.d/S41ntpd restart ;;
+esac

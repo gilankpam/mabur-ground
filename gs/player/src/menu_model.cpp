@@ -98,7 +98,7 @@ bool MenuView::operator==(const MenuView& o) const {
     return std::tie(v.open, v.crumb, v.linked, v.header, v.pill_mark, v.rows, v.help,
                     v.help_is_error, v.keys, v.picker, v.choices, v.picker_cursor,
                     v.picker_current, v.number_text, v.number_range, v.confirm_text, v.toast,
-                    v.banner);
+                    v.banner, v.upgrade);
   };
   return tie(*this) == tie(o);
 }

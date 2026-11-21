@@ -65,7 +65,7 @@ O="$FW/output/$BOARD"
 mkdir -p "$O"
 
 # The defconfig's file name must stay <board>_defconfig: post-build-script.sh
-# derives BUILD_CONFIG (and the sysupgrade asset name) from it.
+# derives BUILD_CONFIG (and the upgrade package name) from it.
 DEFCONFIG="$O/${BOARD}_defconfig"
 if [ -f "$FW/configs/${BOARD}_defconfig" ]; then
     cp "$FW/configs/${BOARD}_defconfig" "$DEFCONFIG"

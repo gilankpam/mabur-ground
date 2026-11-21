@@ -30,14 +30,22 @@ Files, where `<version>` is the tag, `snapshot-<sha8>` or `pr<N>-<sha8>`:
 - `mabur-ground-<version>-<board>_u-boot.bin`: the bootloader.
 - `mabur-ground-<version>-<board>_emmc_bootloader.img`: the bootloader as an
   eMMC image, for Maskrom flashing (RK3566 boards only).
-- `mabur-ground-<version>-<board>.tar.gz`: the `sysupgrade` package (rootfs,
-  plus U-Boot on the RK3566 boards).
+- `mabur-ground-<version>-<board>.tar.gz`: the upgrade package: `VERSION` (the
+  release, board and paired drone release) and `CHANGELOG` (the changes since
+  the previous release) as its first two members, then the rootfs, plus
+  U-Boot on the RK3566 boards. CI stamps the first two in
+  (`firmware/scripts/stamp-package.sh`); the other members keep their names,
+  so an older image's `sysupgrade` still installs it. Only the publish job
+  stamps: a PR test build's package (`pr<N>-<sha8>`) has neither, and the
+  menu shows it as "version unknown".
 
 A release also carries every file under its unversioned name
-(`<board>.tar.gz`, `<board>_sdcard.img`, …): an image's `sysupgrade` URL is
-`https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`.
-Snapshots are pre-releases and never Latest, so an online upgrade only ever
-takes a release.
+(`<board>.tar.gz`, `<board>_sdcard.img`, …): older images' `sysupgrade` URL
+is `https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`.
+Snapshots are pre-releases and never Latest, so `gs-upgrade`'s Stable channel
+(`releases/latest`) only ever takes a release; its Snapshot channel reads the
+`snapshot` release by tag and takes the versioned package
+([`gs-image.md`](gs-image.md)).
 
 ## Version rule
 
@@ -92,7 +100,8 @@ If the check fails on GitHub: `git push origin :refs/tags/v0.4.0`, delete
 the local tag, and fix what it names (usually: tag mabur first).
 
 The notes come from `tools/release.py notes`: the drone release the pin's
-contract pairs with, the mabur-ground and mabur commits, per board the
+contract pairs with, the mabur-ground and mabur commits, a `Changes`
+section (the mabur-ground commits since the previous release), per board the
 devourer commit, Buildroot version, kernel source and its sha256, and each
 file's md5.
 

@@ -129,6 +129,12 @@ real values.
 | **Power & FC** | | | |
 | `power.lowpwr` "Low power when disarmed" | drone | `LOWPWR_ENABLE` (+ `MSP_ENABLE`) | On/off. Turning it on while `MSP_ENABLE == "0"` sends `MSP_ENABLE=1` first (confirm "Also turns the FC link on.") — low power needs the FC link for arm state. |
 | `power.msp` "FC link (MSP)" | drone | `MSP_ENABLE` (+ `LOWPWR_ENABLE`) | On/off. Turning it off while `LOWPWR_ENABLE == "1"` sends `LOWPWR_ENABLE=0` first (confirm "Also turns Low power off.") — low power depends on this link. |
+| **Firmware** | | | |
+| `fw` "Firmware" | — | — | A group; warns `update` while this boot's `gs-upgrade notify` has found a newer image (`/tmp/gs-upgrade/available`, [`gs-image.md`](gs-image.md)). |
+| `fw.gs` "Ground station" | — | — | A group; its value is the running version, `v0.1.1 → v0.1.2` with an update, which also warns `update`. One subgroup per device, so the drone's updates can sit beside it. |
+| `fw.gs.version` "Version" | — | — | Read-only: the image's `VERSION` from `/etc/os-release`, "unknown" without one. |
+| `fw.gs.file` "Update from file" | — | — | ▶ runs `gs-upgrade find` and opens the update page for what it finds; reads "Checking…" while a find or check runs ("Updating the GS" below). |
+| `fw.gs.online` "Check online" ▸ `fw.gs.stable` "Stable" / `fw.gs.snapshot` "Snapshot" | — | — | ▶ on either runs `gs-upgrade check stable`/`snapshot` and opens the update page for that release; both read "Checking…" while a find or check runs. Snapshot warns "latest master build, untested". With an update, the row of the channel it came from (Snapshot on a snapshot build, else Stable) reads the new version and warns `update`. |
 | **System** | | | |
 | `sys.adv` "Show advanced settings" | player | `menu.show_advanced` | On/off; shows the rows marked (advanced) above in every group. |
 | `sys.size` "Menu size" | player | `menu.scale` | Normal / Large / Larger (×1, ×1.25, ×1.5). Previews live: while its picker is open the whole menu is drawn at the size under the cursor (`MenuModel::preview`), nothing written; ◀ or a held ◀ drops back to the saved size, ▶ saves it — and the menu stays at the picked size while that set runs, so it never flicks back to the old size before the save lands. |
@@ -335,12 +341,73 @@ banner box (`menu_layer.h`/`.cpp`) is drawn centred, 12 % down the screen,
 with the menu closed; while the menu is open it moves below the panel
 and picker instead, so it never covers either.
 
+## Updating the GS
+
+A newer image found by the boot check (`gs-upgrade notify`,
+[`gs-image.md`](gs-image.md)) marks Firmware and its rows (above); the mark
+goes with the reboot into the new image.
+
+The two update rows hand the work to the image's `gs-upgrade` tool
+(`docs/gs-image.md` "Upgrading"); the menu only finds, shows, confirms
+and draws progress. The update page takes the panel's rows' place, and
+while it is up every button event (a real one or a debug `key`) goes to
+it instead of the menu; closing it gives the keys back to the menu as it
+was.
+
+- **Update from file:** no package for this board toasts "Put
+  `<board>.tar.gz` on the SD card or DVR partition"; one opens its page
+  straight away; several open a list (▲▼ choose, ▶ open, ◀ close).
+- **Check online:** a refusal toasts ("Clock not synced yet — try again
+  in a minute", "No snapshot right now — try again in a few minutes", no
+  network, …); a release opens its page.
+- **The package's page:** a header with the running version and the new
+  one ("already on `<version>`" when they are equal; "· older" and
+  "· snapshot" warned), the drone release it pairs with ("pairs with no
+  drone release yet" warned), and its changelog (▲▼ scroll). ▶ asks
+  "Install `<version>`? The GS reboots. Keep the power on."; ▶ again
+  starts it, ◀ backs out. Another board's package reads "Built for
+  `<board>`" and has no ▶; one with no readable `VERSION` reads "version
+  unknown", is named by its file name in the prompt, and installs as it is.
+- **Running:** the phase (Downloading, Unpacking, Checking, Stopping
+  services, Writing, Rebooting), a bar where the phase has a size, and
+  "Don't power off" on every running page. ◀ cancels during download,
+  unpack and verify only: from the stop phase on there is no cancel. A
+  failure or a cancel ends on a page with the reason (a failed write reads
+  "Write failed — reflash from SD card"); ◀ or ▶ closes it. A run that
+  dies without a final status (its pid in the lock is gone while the
+  status still reads running) ends the same way: "The update stopped —
+  nothing was changed" before the write, the write failure from it on.
+
+The page is drawn even with the menu closed (the menu's view is forced
+open while it is shown). Left/Right take a tap, Right also a hold, Sel a
+tap as ▶; ▲▼ scroll one line per press (no auto-repeat). The player reads
+`gs-upgrade`'s status file at most every 250 ms.
+
+In its stop phase `gs-upgrade` stops maburgs but only holds maburplay's
+respawn loop, so the progress keeps drawing, and waits up to 5 s for the
+player's `ui-ready` mark. The player answers once: it stops a running
+recording through the record button's own path, calls `mlockall` so
+nothing it runs later pages in from the rootfs being overwritten, then
+creates the mark — even if the lock failed. From the mark until the page
+leaves that run, the record button (and `SIGUSR1`) starts and stops no
+recording. The flash itself runs in
+`gs-upgrade`, detached from maburplay: it carries on to the reboot if the
+player dies.
+
+Log lines (stderr): `maburplay: upgrade: find`, `check <channel>`,
+`start <version>` (`start failed: <why>` when the tool refuses),
+`cancel`, `status <phase> <done>/<total>` once per phase (with the state
+and message appended when the state is not `running`),
+`ui ready (mlockall ok)` / `ui ready (mlockall failed: <why>)`, and
+`record toggle ignored`.
+
 ## Before the first video frame
 
 `maburplay` puts a startup splash on screen until the first decoded frame
 (`drm_presenter.h`'s splash); with no drone linked that can be forever,
 and the menu has to work the whole time, not just once video is flowing.
-Opening the menu while the splash is still up takes its plane: on the
+Opening the menu (or an update page, "Updating the GS" above) while the
+splash is still up takes its plane: on the
 common hardware, where the OSD and the splash share the primary plane,
 the menu replaces the splash outright and shows over black; where the
 OSD has a plane of its own above the splash, the menu simply draws on
@@ -375,12 +442,13 @@ Each takes `pin` (the header pin number, required), `active_low` (default
 wired; the five menu buttons are per-unit wiring and have no sensible
 shared default, so the shipped bundle leaves all five commented out.
 A GS image whose board has its own buttons wires them in its default
-(`firmware/board/common/maburplay-defaults.sh`): the RunCam WiFiLink's
-up/down/left/right are header pins 16/18/13/38, active-high
-(`active_low = false`, `bias = "pull-down"`), with no `sel`. The defaults
-reach `/config/maburplay.toml` only on a first boot or after the file is
-deleted, so a WiFiLink set up before this keeps its menu off until its
-file gets the four tables.
+(`firmware/board/common/maburplay-defaults.sh`), active-high
+(`active_low = false`, `bias = "pull-down"`), with no `sel`: the RunCam
+WiFiLink's up/down/left/right are header pins 16/18/13/38, and the Radxa
+ZERO 3's are 16/18/13/11. The defaults reach `/config/maburplay.toml`
+only on a first boot or after the file is deleted, so a unit set up
+before its image gained the tables keeps its menu off until its file
+gets the four tables.
 
 `[menu]` has two keys, both persisted across a boot and both reaching the
 running menu on its next tick when set live on 8403 — no presenter
@@ -497,7 +565,13 @@ lines and their gesture timing. `gs_live_view.h`/`.cpp` — parses maburgs'
 `get` dump. `display_follow.h` — the display-follows-camera rule,
 including `follow_camera_hz`'s reported-mode-first pick. `menu_view_feed.h`
 — paces `MenuModel::view()` for the presentation loop. `menu_debug.h`/
-`.cpp` — the `MABUR_MENU_DEBUG` verbs. `splash_menu.h` — the
+`.cpp` — the `MABUR_MENU_DEBUG` verbs. `upgrade_info.h`/`.cpp` — parses
+`gs-upgrade`'s package `VERSION`, status file and GitHub release record,
+and compares versions. `upgrade_flow.h`/`.cpp` — `UpgradeFlow`, the update
+pages as a pure state machine (keys and status in, a page and start/cancel
+commands out), and `upgrade_key`, the pad-to-page key mapping.
+`upgrade_runner.h`/`.cpp` — `UpgradeRunner`, which runs `gs-upgrade`'s
+verbs without blocking the main loop and writes the `ui-ready` mark. `splash_menu.h` — the
 menu-before-any-video decision rule (`SplashMenuGate`, "Before the first
 video frame" above); `DrmPresenter::set_osd_over_splash()`/
 `commit_osd_if_pending()` (`drm_presenter.h`/`.cpp`) act on it. Wiring

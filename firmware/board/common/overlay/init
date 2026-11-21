@@ -7,24 +7,6 @@ on_exit() {
 
 trap on_exit EXIT
 
-sysupg() {
-    dev=$1
-    mount -t vfat "$dev" /mnt
-    if [ -f "/mnt/${BUILD_CONFIG}.tar.gz" ]; then
-        echo "<0>autoupdate: Starting sysupgrade with ${BUILD_CONFIG}.tar.gz" > /dev/kmsg
-        sysupgrade --archive="/mnt/${BUILD_CONFIG}.tar.gz" --no_reboot 2>&1 | while IFS= read -r line; do
-            echo "<0>autoupdate: $line" > /dev/kmsg
-        done
-        echo "<0>autoupdate: Upgrade process completed" > /dev/kmsg
-        umount "$dev"
-        echo "<0>autoupdate: Please reboot" > /dev/kmsg
-        sleep infinity
-    else
-        echo "<1>autoupdate: Update file ${BUILD_CONFIG}.tar.gz not found on $dev" > /dev/kmsg
-        umount "$dev"
-    fi
-}
-
 . /usr/lib/carve-part.sh
 
 mount -t proc proc /proc || exit 1
@@ -111,7 +93,7 @@ then
     mkfs.vfat -F 32 "${BOOT_DISK}p${PART_NUM}" -n CONFIG
   else
     # The disk keeps the layout of an image that had no CONFIG partition
-    # (a sysupgrade never repartitions), so DVR already fills it. S00config
+    # (an upgrade never repartitions), so DVR already fills it. S00config
     # falls back to /config on the overlay; a full-image flash gets the
     # partition.
     echo '<1>config: no room for a CONFIG partition -- /config stays on the overlay' > /dev/kmsg
@@ -128,13 +110,6 @@ then
     mkfs.vfat "${BOOT_DISK}p${PART_NUM}" -n DVR
   fi
   dvr_dev=$(blkid  | grep 'LABEL="DVR"'| cut -d : -f 1)
-fi
-
-# Sysupgrade
-. /etc/os-release
-sysupg "$dvr_dev"
-if [ -b /dev/mmcblk1p1 ] && file -s /dev/mmcblk1p1 | grep -q 'FAT'; then
-    sysupg "/dev/mmcblk1p1"
 fi
 
 . /etc/default/br-config 2> /dev/null

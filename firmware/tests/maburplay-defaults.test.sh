@@ -48,9 +48,17 @@ grep -q '^\[input\.sel\]' "$T/out.toml" && bad "input.sel was enabled; the WiFiL
 [ "$(key input.rec pin)" = "32" ] || bad "input.rec was changed"
 [ "$fail" -eq 0 ] && ok
 
-name="radxa_zero3 ships the bundle untouched"
+name="radxa_zero3 wires the menu buttons, right on PIN_11"
 run radxa_zero3 || bad "script failed: $(cat "$T/log")"
-cmp -s "$BUNDLE" "$T/out.toml" && ok || bad "file differs from the bundle"
+for b in up:16 down:18 left:13 right:11; do
+	n=${b%%:*}
+	p=${b##*:}
+	[ "$(key "input.$n" pin)" = "$p" ] || bad "input.$n pin is '$(key "input.$n" pin)', want $p"
+	[ "$(key "input.$n" active_low)" = "false" ] || bad "input.$n active_low is not false"
+	[ "$(key "input.$n" bias)" = '"pull-down"' ] || bad "input.$n bias is not pull-down"
+done
+grep -q '^\[input\.sel\]' "$T/out.toml" && bad "input.sel was enabled; the Radxa has no select button"
+[ "$fail" -eq 0 ] && ok
 
 name="emax_wyvern-link strips the record button, menu stays off"
 before=$fail
