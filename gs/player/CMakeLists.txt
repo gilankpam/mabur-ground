@@ -6,6 +6,7 @@ add_library(mabur_player_core STATIC
   src/button_bank.cpp
   src/menu_model.cpp
   src/upgrade_info.cpp
+  src/upgrade_flow.cpp
   src/menu_apply.cpp
   src/menu_session.cpp
   src/channel_observe.cpp
