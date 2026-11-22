@@ -50,7 +50,11 @@ class VrxRendezvous {
   VrxAction tick(double now_ms);
   // An unflagged ack is adopted only if tag_ok (the caller holds the key and
   // verified it) and its seq echoes a DISC sent within kAckWindowMs.
+  // A DISC built to send: counts toward the stranger rule.
   mabur::rc::Disc beacon(double now_ms);
+  // A DISC recorded as sent without being sent (replay, tests): opens the
+  // ack window but is not a beacon the stranger rule may count.
+  mabur::rc::Disc stamp(double now_ms);
   bool feed_disc_ack(const mabur::rc::DiscAck& ack, bool tag_ok, double now_ms,
                      bool* adopted_new);
   // The drone's RC_VERSION while VERSION_MISMATCH, else empty.

@@ -361,9 +361,7 @@ bool ChannelCore::may_send(int card) const {
 }
 
 std::vector<uint8_t> ChannelCore::disc_for_card(const std::vector<uint8_t>& frame, int card) const {
-  // A DISC proposes the channel it is sent on.
-  const uint8_t ch = cards_[static_cast<size_t>(card)]->channel();
-  if (plan_.member(ch)) return disc_for_channel(frame, ch, cfg_.key);
+  (void)card;  // a DISC carries no channel: every card sends it unchanged
   return frame;
 }
 

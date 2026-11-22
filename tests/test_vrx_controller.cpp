@@ -3,7 +3,9 @@
 #include "vrx_controller.h"
 #include "ladder_controller.h"
 #include "mabur/profile.h"
+#include "mabur/crc16.h"
 #include "mabur/rc_proto.h"
+#include "mabur/siphash.h"
 using namespace maburgs;
 
 static LadderCfg default_ladder() {
@@ -20,6 +22,21 @@ static VrxController make(LadderCfg lcfg = default_ladder()) {
   VrxCfg cfg;
   cfg.ladder = std::move(lcfg);
   return VrxController(cfg);
+}
+
+// Rewrite an ack's version byte and re-tag it: the tag covers the version,
+// SipHash(key, bytes[0..16) | 12 zero bytes), then the CRC.
+static std::vector<uint8_t> retag_at_version(std::vector<uint8_t> b, uint8_t ver,
+                                             const mabur::LinkKey& key) {
+  b[2] = ver;
+  std::vector<uint8_t> in(b.begin(), b.begin() + 16);
+  in.insert(in.end(), 12, 0);
+  const uint64_t tag = mabur::siphash24(key, in.data(), in.size());
+  for (int i = 0; i < 8; ++i) b[16 + i] = static_cast<uint8_t>(tag >> (8 * i));
+  const uint16_t crc = mabur::crc16_ccitt(b.data(), 24);
+  b[24] = static_cast<uint8_t>(crc);
+  b[25] = static_cast<uint8_t>(crc >> 8);
+  return b;
 }
 
 // A healthy sample: valid, no pre-FEC or residual loss, not starved.
@@ -212,21 +229,69 @@ TEST(disc_ack_feeds_rendezvous) {
   CHECK(vrx.link_state() == VrxState::SESSION);
 }
 
-// peer_caps() surfaces the most recently accepted DiscAck's chip_caps (0
-// before any accept), so main.cpp's core loop can gate the frame-wire tail
-// on the peer's advertised CAP_FRAME_WIRE bit.
-TEST(peer_caps_captured_from_disc_ack) {
+// Caps and width come from Telem, not the ack: 0 after an ack, the Telem's
+// values after note_telem.
+TEST(caps_and_width_come_from_telem) {
   auto vrx = make();
+  CHECK(vrx.peer_caps() == 0 && vrx.peer_width() == 0);
+  vrx.step(1500, no_data());
+  link(vrx, 1600);
+  CHECK(vrx.link_state() == VrxState::SESSION);
   CHECK(vrx.peer_caps() == 0);
-  vrx.step(1500, no_data());          // silence -> BEACONING
+  CHECK(vrx.peer_width() == 0);
+  mabur::rc::Telem t;
+  t.chip_caps = 0x000F;
+  t.width = 40;
+  vrx.note_telem(t);
+  CHECK(vrx.peer_caps() == 0x000F);
+  CHECK(vrx.peer_width() == 40);
+}
+
+// A verified ack from a drone at another RC_VERSION: DISCs only, version
+// reported, no RCF.
+TEST(other_version_verified_ack_no_rcf_version_reported) {
+  auto vrx = make();
+  vrx.step(1500, no_data());
   mabur::rc::DiscAck ack;
-  ack.vrx_nonce = vrx.rz_nonce();
-  ack.vtx_nonce = 1;
-  ack.seq = vrx.stamp_disc(1600);
+  ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 7; ack.seq = vrx.stamp_disc(1600);
+  const auto wire = retag_at_version(mabur::rc::pack_disc_ack(ack), 18, mabur::kDefaultLinkKey);
+  vrx.on_rc_frame(wire.data(), wire.size(), 1600);
+  CHECK(vrx.version_mismatch());
+  REQUIRE(vrx.drone_rc_version().has_value());
+  CHECK(*vrx.drone_rc_version() == 18);
+  for (double now = 1610; now < 5000; now += 10) {
+    vrx.on_video(now);
+    if (auto out = vrx.step(now, healthy())) CHECK(out->is_disc);
+  }
+}
+
+TEST(forged_ack_bad_tag_is_ignored) {
+  auto vrx = make();
+  vrx.step(1500, no_data());
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 7; ack.seq = vrx.stamp_disc(1600);
+  auto wire = mabur::rc::pack_disc_ack(ack);
+  wire[16] ^= 0x01;
+  const uint16_t crc = mabur::crc16_ccitt(wire.data(), 24);
+  wire[24] = static_cast<uint8_t>(crc); wire[25] = static_cast<uint8_t>(crc >> 8);
+  vrx.on_rc_frame(wire.data(), wire.size(), 1600);
+  CHECK(!vrx.peer_acked());
+  CHECK(vrx.link_state() == VrxState::BEACONING);
+}
+
+// A stamped DISC opens the ack window but is not a beacon for the stranger
+// rule: flagged acks plus stamps alone never reach KEY_MISMATCH.
+TEST(stamp_does_not_count_for_stranger_rule) {
+  auto vrx = make();
+  vrx.step(1500, no_data());
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = vrx.rz_nonce(); ack.flags = mabur::rc::kAckKeyMismatch;
+  ack.seq = 1;
   auto wire = mabur::rc::pack_disc_ack(ack);
   vrx.on_rc_frame(wire.data(), wire.size(), 1600);
-  CHECK(vrx.link_state() == VrxState::SESSION);
-  CHECK(vrx.peer_caps() & mabur::rc::CAP_FRAME_WIRE);  // TASK 6: caps come from Telem; fails until then
+  for (int i = 0; i < 5; ++i) vrx.stamp_disc(1700 + i);
+  vrx.on_rc_frame(wire.data(), wire.size(), 3000);
+  CHECK(!vrx.key_mismatch());
 }
 
 // peer_acked() separates "no DiscAck yet" from "peer advertised caps == 0".
@@ -338,7 +403,6 @@ TEST(controller_exposes_agreed_channel) {
   while (!out || !out->is_disc) { now += 10; out = vrx.step(now, no_data()); }   // no video -> BEACONING
   auto d = mabur::rc::parse_disc(out->frame.data(), out->frame.size());
   REQUIRE(d.has_value());
-  // TASK 6: a DISC no longer carries op_channel.
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 1;
   ack.channel = 149; ack.seq = vrx.stamp_disc(now);
@@ -392,7 +456,8 @@ TEST(move_edge_fires_on_linked_telem_or_after_five_rcfs) {
   CHECK(!vrx.take_move_edge());
   link(vrx, 100);
   CHECK(!vrx.take_move_edge());            // ack alone no longer moves the GS
-  vrx.note_drone_state(2);                  // RcAgent::State::LINKED
+  mabur::rc::Telem linked; linked.state = 2;  // RcAgent::State::LINKED
+  vrx.note_telem(linked);
   CHECK(vrx.take_move_edge());
   CHECK(!vrx.take_move_edge());
   auto vrx2 = make();
@@ -509,30 +574,6 @@ TEST(key_mismatch_sends_no_rcf_and_reports) {
   CHECK(vrx.key_mismatch());
   CHECK(vrx.link_state() == VrxState::KEY_MISMATCH);
   CHECK(!vrx.peer_acked());
-}
-
-// A DISC proposes the channel it is sent on.
-// The rewritten copy must still verify under the key (the drone drops an
-// untagged DISC as a wrong-key GS) and keep every other field.
-// Revert (send the op copy everywhere): the burst copy proposes 136.
-// TASK 6 (deletes disc_for_channel): the re-proposal assertions are dead; they fail until then.
-TEST(disc_for_channel_reproposes_and_retags) {
-  mabur::LinkKey key = mabur::kDefaultLinkKey;
-  key[0] ^= 0x5a;
-  mabur::rc::Disc d;
-  d.vrx_nonce = 0x1234;
-  d.seq = 7;
-  const auto op_copy = mabur::rc::pack_disc(d, key);
-  const auto x_copy = disc_for_channel(op_copy, 149, key);
-  auto px = mabur::rc::parse_disc(x_copy.data(), x_copy.size());
-  REQUIRE(px.has_value());
-  CHECK(false /*TASK 6: DISC has no channel*/ && px->vrx_nonce == 0x1234 && px->seq == 7);
-  CHECK(mabur::rc::verify_control(x_copy.data(), x_copy.size(), key, mabur::rc::TagCtx{}));
-  CHECK(disc_for_channel(op_copy, 136, key) == op_copy);   // already proposes it
-  CHECK(disc_for_channel(op_copy, 0, key) == op_copy);     // unknown channel: untouched
-  mabur::rc::Rcf r;
-  const auto rcf = mabur::rc::pack_rcf(r, key, mabur::rc::TagCtx{1, 2, 3});
-  CHECK(disc_for_channel(rcf, 149, key) == rcf);           // not a DISC
 }
 
 MTEST_MAIN

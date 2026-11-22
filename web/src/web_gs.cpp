@@ -226,6 +226,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
           reset_video_();
         // RTT pairs telem echoes with our own sends: Gs only.
         if (vrx_) {
+          vrx_->note_telem(*t);
           rtt_.on_telem(t->rcf_seq_echo, (t->flags & 0x08) != 0, t->rcf_age_ms,
                         t->pts_at_build, us);
           uplink_.on_telem(t->tlm_seq, t->rcf_rx, t->state, us / 1000);

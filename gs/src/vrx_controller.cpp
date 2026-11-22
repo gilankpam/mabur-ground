@@ -16,13 +16,6 @@ OpPoint op_from_rung(const Rung& r) {
 }
 }  // namespace
 
-std::vector<uint8_t> disc_for_channel(const std::vector<uint8_t>& disc, uint8_t ch,
-                                      const mabur::LinkKey& key) {
-  if (ch == 0 || mabur::rc::frame_type(disc.data(), disc.size()) != mabur::rc::T_DISC) return disc;
-  (void)key;  // a DISC no longer carries a channel; nothing to re-propose
-  return disc;
-}
-
 VrxController::VrxController(VrxCfg cfg)
     : cfg_(cfg),
       ctrl_(cfg.ladder),
@@ -31,7 +24,7 @@ VrxController::VrxController(VrxCfg cfg)
       // BEACONING after video loss only delays re-rendezvous. The removed
       // link.video_silence_ms key claimed to tune the 1000 but never did.
       // nonce 0 = random per process: a restarted GS is a new session.
-      rz_(VrxRzConfig{1000, 20, cfg.op_channel, cfg.rz_nonce}),
+      rz_(VrxRzConfig{1000, 20, cfg.op_channel, cfg.rz_nonce, cfg.beacon_keepalive_ms}),
       cur_op_(op_from_rung(ctrl_.op())) {}
 
 void VrxController::sync_op_() { cur_op_ = op_from_rung(ctrl_.op()); }
@@ -39,16 +32,20 @@ void VrxController::sync_op_() { cur_op_ = op_from_rung(ctrl_.op()); }
 void VrxController::on_video(double now_ms) { rz_.feed_video(now_ms); }
 
 void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
-  if (mabur::rc::frame_type(buf, len) != mabur::rc::T_DISC_ACK) return;
+  if (mabur::rc::frozen_type(buf, len) != mabur::rc::T_DISC_ACK) return;
   auto ack = mabur::rc::parse_disc_ack(buf, len);
   if (!ack) return;
+  // A key-mismatch-flagged ack carries an all-zero tag; the rendezvous never
+  // consults tag_ok for it.
+  const bool tag_ok = mabur::rc::verify_control(buf, len, cfg_.key, mabur::rc::TagCtx{});
   bool adopted_new = false;
-  if (!rz_.feed_disc_ack(*ack, /*tag_ok=*/true, now_ms, &adopted_new)) return;
+  if (!rz_.feed_disc_ack(*ack, tag_ok, now_ms, &adopted_new)) return;
   if (ack->flags & mabur::rc::kAckKeyMismatch) return;   // nothing learned about the peer
   agreed_channel_ = ack->channel;
-  peer_caps_ = 0;  // caps now arrive in Telem
   peer_acked_ = true;
   if (adopted_new) {
+    peer_caps_ = 0;  // caps and width arrive in Telem
+    peer_width_ = 0;
     seq32_ = 0;
     rcfs_since_adopt_ = 0;
     move_armed_ = true;
@@ -56,8 +53,10 @@ void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
   }
 }
 
-void VrxController::note_drone_state(uint8_t telem_state) {
-  if (telem_state == 2 && move_armed_) {
+void VrxController::note_telem(const mabur::rc::Telem& t) {
+  peer_caps_ = t.chip_caps;
+  peer_width_ = t.width;
+  if (t.state == 2 && move_armed_) {
     move_edge_ = true;
     move_armed_ = false;
   }

@@ -39,17 +39,6 @@ struct VrxCfg {
   uint32_t rz_nonce = 0;
 };
 
-// A DISC proposes the channel it is sent on: the GS builds one DISC per tick proposing op and fans it to
-// every target card, but a search-burst copy leaves on the scout card's
-// member X -- proposing op there made the drone ack "agreed op" and retune
-// itself to op on promotion while the GS linked on X. This rewrites
-// Disc.op_channel to `ch` (the sending card's channel) and re-packs/re-tags
-// the frame under `key`. Returned unchanged when it does not parse as a
-// DISC, ch is 0 (unknown) or it already proposes ch. DISC is not
-// RTT-matchable: the slotter needs nothing else.
-std::vector<uint8_t> disc_for_channel(const std::vector<uint8_t>& disc, uint8_t ch,
-                                      const mabur::LinkKey& key);
-
 // The index of the rung with this {mcs, bw} in `ladder`, else 0: where a
 // re-entry lands when the operating point it keeps is not on the ladder.
 int rung_index(const LadderCfg& ladder, int mcs, int bw);
@@ -88,8 +77,9 @@ class VrxController {
   uint32_t rcf_seq32() const { return seq32_; }
   // The probe byte the last built RCF carried (kNoProbeProfile when none).
   uint8_t probe_profile() const { return last_cmd_probe_profile_; }
-  // chip_caps from the most recently accepted DiscAck; 0 before any accept.
-  // Gates GS main's video tail on mabur::rc::CAP_FRAME_WIRE.
+  // chip_caps from the latest Telem of the current session; 0 until one
+  // arrives (and again after a new session is adopted). Gates GS main's
+  // video tail on mabur::rc::CAP_FRAME_WIRE.
   uint16_t peer_caps() const { return peer_caps_; }
   // Whether any DiscAck has ever been accepted. peer_caps() == 0 is ambiguous
   // on its own — a peer may genuinely advertise no caps — so callers that
@@ -97,6 +87,11 @@ class VrxController {
   // be true or they complain about a peer they have not heard from yet. A
   // key_mismatch-flagged ack does not count.
   bool peer_acked() const { return peer_acked_; }
+  // The drone's radio width from the latest Telem; 0 = no Telem yet.
+  uint8_t peer_width() const { return peer_width_; }
+  // A verified ack came from a drone at another RC_VERSION: no session.
+  bool version_mismatch() const { return rz_.state() == VrxState::VERSION_MISMATCH; }
+  std::optional<uint8_t> drone_rc_version() const { return rz_.drone_rc_version(); }
   // In-flight channel hop. set_hop() is carried in
   // every RCF built from now on (build_rcf() stamps r.hop_ch/r.hop_epoch);
   // restore_rung()/blank_store() forward straight to the ladder controller
@@ -136,7 +131,7 @@ class VrxController {
   // Record a DISC as sent at now_ms without emitting it and return its seq:
   // lets a caller with no drone to answer (replay, tests) build an ack that
   // passes the rendezvous seq window.
-  uint16_t stamp_disc(double now_ms) { return rz_.beacon(now_ms).seq; }
+  uint16_t stamp_disc(double now_ms) { return rz_.stamp(now_ms).seq; }
   // Hold the SESSION keep-alive DISC (a hop order is in flight): its proposal
   // is the old op by construction, and a drone that has already followed the
   // order's RCF would otherwise process the DISC it received on the old
@@ -166,8 +161,9 @@ class VrxController {
   bool take_move_edge() { const bool e = move_edge_; move_edge_ = false; return e; }
   // Test seam: arm the move edge as a LINKED Telem under a fresh vtx_nonce would.
   void test_set_move_edge() { move_edge_ = true; }
-  // Telem.state from the drone (2 == RcAgent::State::LINKED).
-  void note_drone_state(uint8_t telem_state);
+  // A parsed Telem: records its caps and width, and fires the move edge on
+  // state LINKED (2 == RcAgent::State::LINKED).
+  void note_telem(const mabur::rc::Telem& t);
   // The drone answers our DISCs with key_mismatch: our key differs from its.
   // No RCF/cal goes out; beacons continue.
   bool key_mismatch() const { return rz_.state() == VrxState::KEY_MISMATCH; }
@@ -191,6 +187,7 @@ class VrxController {
   uint32_t seq32_ = 0;
   OpPoint cur_op_;
   uint16_t peer_caps_ = 0;
+  uint8_t peer_width_ = 0;
   bool peer_acked_ = false;
   bool keepalive_hold_ = false;
   uint8_t last_cmd_probe_profile_ = mabur::rc::kNoProbeProfile;

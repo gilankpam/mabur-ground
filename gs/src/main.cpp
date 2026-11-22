@@ -1073,7 +1073,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         latest_telem.rx_ms = us / 1000;
         // LINKED telem = our first RCF verified and the drone is moving:
         // fires the controller's move edge.
-        vrx.note_drone_state(t->state);
+        vrx.note_telem(*t);
         // link-rtt: every telem is a sync sample. `us` is the radio
         // frontend's steady_clock stamp — same base as the mono_us() send
         // stamps below, so the subtraction is one clock throughout.

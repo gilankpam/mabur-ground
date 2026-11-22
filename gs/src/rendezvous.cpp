@@ -39,9 +39,13 @@ VrxAction VrxRendezvous::tick(double now_ms) {
 }
 
 mabur::rc::Disc VrxRendezvous::beacon(double now_ms) {
+  if (first_flagged_ms_) ++beacons_since_flagged_;
+  return stamp(now_ms);
+}
+
+mabur::rc::Disc VrxRendezvous::stamp(double now_ms) {
   seq_ = static_cast<uint16_t>(seq_ + 1);
   sent_[seq_ % sent_.size()] = {seq_, now_ms};
-  if (first_flagged_ms_) ++beacons_since_flagged_;
   mabur::rc::Disc d;
   d.vrx_nonce = nonce_;
   d.seq = seq_;
