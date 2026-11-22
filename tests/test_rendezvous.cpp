@@ -265,4 +265,18 @@ TEST(key_mismatch_outranks_version_mismatch) {
   CHECK(!rz.drone_rc_version().has_value());
 }
 
+TEST(version_mismatch_then_key_mismatch_clears_the_drone_version) {
+  VrxRendezvous rz(cfg());
+  bool adopted = false;
+  DiscAck a = ok(rz, 5, 0); a.version = 18;
+  rz.feed_disc_ack(a, true, 10, &adopted);
+  REQUIRE(rz.state() == VrxState::VERSION_MISMATCH);
+  DiscAck f = ack_for(rz, 0, kAckKeyMismatch); f.version = 18;
+  rz.feed_disc_ack(f, false, 100, &adopted);
+  for (int i = 0; i < 3; ++i) rz.beacon(500);
+  rz.feed_disc_ack(f, false, 1200, &adopted);
+  CHECK(rz.state() == VrxState::KEY_MISMATCH);
+  CHECK(!rz.drone_rc_version().has_value());
+}
+
 MTEST_MAIN

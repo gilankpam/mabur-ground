@@ -61,8 +61,10 @@ bool VrxRendezvous::feed_disc_ack(const mabur::rc::DiscAck& ack, bool tag_ok, do
     // by an unflagged ack (rendezvous.h). vtx_nonce_ is kept: KEY_MISMATCH
     // sends no RCFs.
     if (now_ms - *first_flagged_ms_ >= kKeyMismatchMs &&
-        beacons_since_flagged_ >= kKeyMismatchBeacons)
+        beacons_since_flagged_ >= kKeyMismatchBeacons) {
       state_ = VrxState::KEY_MISMATCH;
+      drone_version_.reset();
+    }
     return true;
   }
   // Unflagged: it must carry a verified tag and answer a recent DISC of
