@@ -202,6 +202,20 @@ TEST(spotter_loss_row_reads_real_loss) {
   CHECK(*heavy.residual > 0.0);
 }
 
+// The replay's synthetic ack is tagged under the configured link key, so a
+// non-default key still opens SESSION.
+TEST(replay_ack_links_under_a_non_default_key) {
+  auto c = cfg();
+  c.link.key[0] ^= 0x5a;
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  WebGs g(c, Mode::Gs, 136, 40, {}, 0, io);
+  g.inject_disc_ack_for_replay(1'000'000);
+  REQUIRE(g.vrx() != nullptr);
+  CHECK(g.vrx()->link_state() == maburgs::VrxState::SESSION);
+}
+
 TEST(gs_beacons_then_rcf_after_ack) {
   std::vector<std::vector<uint8_t>> sent;
   Io io;

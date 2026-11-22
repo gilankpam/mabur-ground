@@ -89,6 +89,9 @@ class VrxController {
   bool peer_acked() const { return peer_acked_; }
   // The drone's radio width from the latest Telem; 0 = no Telem yet.
   uint8_t peer_width() const { return peer_width_; }
+  // A Telem has arrived since the last session adoption: caps/width are real
+  // (0 caps before this is "not heard yet", not "none").
+  bool peer_caps_known() const { return peer_caps_known_; }
   // A verified ack came from a drone at another RC_VERSION: no session.
   bool version_mismatch() const { return rz_.state() == VrxState::VERSION_MISMATCH; }
   std::optional<uint8_t> drone_rc_version() const { return rz_.drone_rc_version(); }
@@ -188,6 +191,7 @@ class VrxController {
   OpPoint cur_op_;
   uint16_t peer_caps_ = 0;
   uint8_t peer_width_ = 0;
+  bool peer_caps_known_ = false;
   bool peer_acked_ = false;
   bool keepalive_hold_ = false;
   uint8_t last_cmd_probe_profile_ = mabur::rc::kNoProbeProfile;

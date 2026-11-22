@@ -139,6 +139,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
   // Telem.
   spotter_op_.bw = width;
   key_fp_ = mabur::key_fingerprint(cfg.link.key);
+  key_ = cfg.link.key;
   if (mode_ == Mode::Gs) {
     if (!io_.send && cards_.empty())
       throw std::invalid_argument("webgs: Gs mode needs Io::send or a card");
@@ -172,7 +173,6 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
       nack_ = std::make_unique<mabur::NackTracker>(cfg.link.nack);
       nack_lookback_ = static_cast<uint32_t>(cfg.link.nack.lookback);
       nack_down_util_ = cfg.link.ladder_cfg.down_util;
-      key_ = cfg.link.key;
     }
     if (!cards_.empty()) {
       sink_ = std::make_unique<Sink>(this);
@@ -546,7 +546,7 @@ void WebGs::inject_disc_ack_for_replay(uint64_t now_us) {
   ack.vtx_nonce = 1;  // replay has no drone: any held vtx_nonce opens SESSION
   ack.channel = vrx_->proposal();
   ack.seq = vrx_->stamp_disc(static_cast<double>(now_us) / 1000.0);
-  const auto wire = mabur::rc::pack_disc_ack(ack);
+  const auto wire = mabur::rc::pack_disc_ack(ack, key_);
   vrx_->on_rc_frame(wire.data(), wire.size(), static_cast<double>(now_us) / 1000.0);
 }
 

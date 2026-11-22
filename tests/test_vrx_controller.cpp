@@ -247,6 +247,27 @@ TEST(caps_and_width_come_from_telem) {
   CHECK(vrx.peer_width() == 40);
 }
 
+// peer_caps_known(): a Telem has arrived since the last adoption. A new
+// vtx_nonce (maybe a re-flashed drone) resets caps, width and the flag.
+TEST(peer_caps_known_tracks_telem_since_adoption) {
+  auto vrx = make();
+  CHECK(!vrx.peer_caps_known());
+  link(vrx, 100);
+  CHECK(vrx.peer_caps() == 0 && vrx.peer_width() == 0);
+  CHECK(!vrx.peer_caps_known());
+  mabur::rc::Telem t;
+  t.chip_caps = 0x000F;
+  t.width = 40;
+  vrx.note_telem(t);
+  CHECK(vrx.peer_caps_known());
+  CHECK(vrx.peer_caps() == 0x000F && vrx.peer_width() == 40);
+  link(vrx, 200, 0xBEEF0001);             // same vtx_nonce: nothing reset
+  CHECK(vrx.peer_caps_known() && vrx.peer_caps() == 0x000F);
+  link(vrx, 300, 0xBEEF0002);             // new vtx_nonce: reset
+  CHECK(!vrx.peer_caps_known());
+  CHECK(vrx.peer_caps() == 0 && vrx.peer_width() == 0);
+}
+
 // A verified ack from a drone at another RC_VERSION: DISCs only, version
 // reported, no RCF.
 TEST(other_version_verified_ack_no_rcf_version_reported) {

@@ -46,6 +46,7 @@ void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
   if (adopted_new) {
     peer_caps_ = 0;  // caps and width arrive in Telem
     peer_width_ = 0;
+    peer_caps_known_ = false;
     seq32_ = 0;
     rcfs_since_adopt_ = 0;
     move_armed_ = true;
@@ -56,6 +57,7 @@ void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
 void VrxController::note_telem(const mabur::rc::Telem& t) {
   peer_caps_ = t.chip_caps;
   peer_width_ = t.width;
+  peer_caps_known_ = true;
   if (t.state == 2 && move_armed_) {
     move_edge_ = true;
     move_armed_ = false;

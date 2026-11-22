@@ -1494,7 +1494,9 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     // display-only: one line per session, nothing is gated on it.
     {
       const mabur::rc::TagCtx mav_ctx = mav_linked ? vrx.session_ctx() : mabur::rc::TagCtx{};
-      if (mav_ctx.vtx_nonce != 0 && mav_ctx.vtx_nonce != mav_vtx_seen) {
+      // Caps arrive in Telem after the ack: judge them only once heard.
+      if (mav_ctx.vtx_nonce != 0 && vrx.peer_caps_known() &&
+          mav_ctx.vtx_nonce != mav_vtx_seen) {
         mav_vtx_seen = mav_ctx.vtx_nonce;
         if (cfg.mavlink.enable && (vrx.peer_caps() & mabur::rc::CAP_MAVLINK) == 0)
           std::fprintf(stderr, "maburgs: mavlink: drone lacks CAP_MAVLINK\n");
