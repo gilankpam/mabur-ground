@@ -63,13 +63,18 @@ std::vector<uint8_t> mav_heartbeat_bytes(uint8_t sysid, uint8_t compid) {
   const uint16_t n = mavlink_msg_to_send_buffer(buf, &msg);
   return std::vector<uint8_t>(buf, buf + n);
 }
-// An untagged T_MAV frame (drone -> GS layout) carrying one packet.
+// The drone's frame: T_MAV_UP, always tagged now.
+static std::vector<uint8_t> pack_up(mabur::rc::Mav m) {
+  m.type = mabur::rc::T_MAV_UP;
+  return mabur::rc::pack_mav(m);
+}
+// A T_MAV_UP frame (drone -> GS) carrying one packet.
 mabur::node::RxBody mav_body(const std::vector<uint8_t>& payload, uint32_t counter,
                               uint64_t mono_us) {
   mabur::rc::Mav m;
   m.counter = counter;
   m.payload = payload;
-  return rc_body(mabur::rc::pack_mav(m, /*tagged=*/false), mono_us);
+  return rc_body(pack_up(m), mono_us);
 }
 // A PARAM_EXT_VALUE packet from the drone (1/191), as test_mav_tunnel.cpp's
 // param_ext_value_bytes but with a real id/count/index.
@@ -89,7 +94,7 @@ int count_param_list_requests(const std::vector<std::vector<uint8_t>>& sent) {
   int n = 0;
   for (auto& s : sent) {
     if (mabur::rc::frame_type(s.data(), s.size()) != mabur::rc::T_MAV) continue;
-    const auto m = mabur::rc::parse_mav(s.data(), s.size(), /*tagged=*/true);
+    const auto m = mabur::rc::parse_mav(s.data(), s.size());
     if (!m) continue;
     mavlink_reset_channel_status(MAVLINK_COMM_1);
     mavlink_message_t msg{};
@@ -755,9 +760,8 @@ TEST(vtx_nonce_change_while_linked_relists) {
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = g.vrx()->rz_nonce();
   ack.vtx_nonce = 2;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE;
-  ack.agreed_channel = g.vrx()->proposal();
-  ack.seq = 2;
+  ack.channel = g.vrx()->proposal();
+  ack.seq = g.vrx()->stamp_disc(static_cast<double>(t) / 1000.0);
   const auto wire2 = mabur::rc::pack_disc_ack(ack);
   g.vrx()->on_rc_frame(wire2.data(), wire2.size(), static_cast<double>(t) / 1000.0);
   REQUIRE(g.vrx()->link_state() == maburgs::VrxState::SESSION);   // no BEACONING edge
@@ -1427,10 +1431,10 @@ TEST(one_card_frames_pass_to_the_card_while_the_scout_beacons) {
     o.pass = core->may_send(0);
     o.ch = r.card.ch;
     mabur::rc::Disc d;
-    d.op_channel = 0;
     const auto wire = core->disc_for_card(mabur::rc::pack_disc(d, r.c.link.key), 0);
     const auto back = mabur::rc::parse_disc(wire.data(), wire.size());
-    o.proposes_ch = back && back->op_channel == o.ch;
+    o.proposes_ch = false;  // TASK 8: DISC has no channel to propose
+    (void)back;
     obs.push_back(o);
   };
   for (int i = 0; i < 800 && !r.has_log("one-card prelude ranking picks"); ++i) r.ticks(1);
@@ -1674,9 +1678,8 @@ void ack_with_nonce(WebGs& g, uint32_t vtx_nonce, uint64_t t_us) {
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = g.vrx()->rz_nonce();
   ack.vtx_nonce = vtx_nonce;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE;
-  ack.agreed_channel = g.vrx()->proposal();
-  ack.seq = 1;
+  ack.channel = g.vrx()->proposal();
+  ack.seq = g.vrx()->stamp_disc(static_cast<double>(t_us) / 1000.0);
   g.on_rx(rc_body(mabur::rc::pack_disc_ack(ack), t_us));
   g.tick(t_us);
 }

@@ -85,6 +85,12 @@ struct Rig {
               [this](const uint8_t* p, size_t n) { delivered.emplace_back(p, p + n); }};
 };
 
+// The drone's frame: T_MAV_UP, always tagged now.
+static std::vector<uint8_t> pack_up(mabur::rc::Mav m) {
+  m.type = mabur::rc::T_MAV_UP;
+  return mabur::rc::pack_mav(m);
+}
+
 TEST(outbound_dropped_until_linked) {
   std::vector<Bytes> sent;
   MavTunnel t(test_key(), [&](auto f) { sent.push_back(std::move(f)); }, [](auto, auto) {});
@@ -95,7 +101,7 @@ TEST(outbound_dropped_until_linked) {
   t.set_session(TagCtx{11, 22, 0});
   t.push_outbound(hb.data(), hb.size());
   CHECK(t.flush() == 1 && sent.size() == 1);
-  auto p = parse_mav(sent[0].data(), sent[0].size(), true);
+  auto p = parse_mav(sent[0].data(), sent[0].size());
   REQUIRE(p.has_value());
   CHECK(p->counter == 1 && p->payload == hb);
   CHECK(verify_control(sent[0].data(), sent[0].size(), test_key(), TagCtx{11, 22, 1}));
@@ -128,8 +134,8 @@ TEST(packets_batch_into_frames_of_at_most_600_bytes) {
   }
   CHECK(r.t.flush() == 2);
   REQUIRE(r.sent.size() == 2);
-  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
-  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size(), true);
+  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size());
+  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size());
   REQUIRE(f0.has_value() && f1.has_value());
   CHECK(f0->counter == 1 && f1->counter == 2);
   CHECK(f0->payload.size() == 483);
@@ -153,7 +159,7 @@ TEST(split_delivery_survives_a_byte_at_a_time_feed) {
   }
   CHECK(r.t.flush() == 1);
   REQUIRE(r.sent.size() == 1);
-  auto p = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
+  auto p = parse_mav(r.sent[0].data(), r.sent[0].size());
   REQUIRE(p.has_value());
   CHECK(p->payload == hb);
   CHECK(r.t.stats().tx_packets == 1);
@@ -169,7 +175,7 @@ TEST(outbound_packets_pass_through_byte_exact) {
   r.t.push_outbound(raw.data(), raw.size());
   CHECK(r.t.flush() == 1);
   REQUIRE(r.sent.size() == 1);
-  auto p = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
+  auto p = parse_mav(r.sent[0].data(), r.sent[0].size());
   REQUIRE(p.has_value());
   CHECK(p->payload == raw);
 }
@@ -189,7 +195,7 @@ TEST(counter_restarts_on_a_new_vtx_nonce) {
   auto send_one = [&]() -> uint32_t {
     r.t.push_outbound(hb.data(), hb.size());
     REQUIRE(r.t.flush() == 1);
-    auto p = parse_mav(r.sent.back().data(), r.sent.back().size(), true);
+    auto p = parse_mav(r.sent.back().data(), r.sent.back().size());
     REQUIRE(p.has_value());
     return p->counter;
   };
@@ -211,7 +217,7 @@ TEST(inbound_frame_splits_into_packets_and_drops_a_truncated_tail) {
   Mav m;
   m.counter = 5;
   m.payload = cat({hb, hb, Bytes(hb.begin(), hb.begin() + 10)});
-  auto f = pack_mav(m, false);
+  auto f = pack_up(m);
   r.t.on_rc_frame(f.data(), f.size());
   REQUIRE(r.delivered.size() == 2);
   CHECK(r.delivered[0] == hb && r.delivered[1] == hb);
@@ -222,7 +228,7 @@ TEST(inbound_frame_splits_into_packets_and_drops_a_truncated_tail) {
   Mav m2;
   m2.counter = 6;
   m2.payload = hb;
-  auto f2 = pack_mav(m2, false);
+  auto f2 = pack_up(m2);
   r.t.on_rc_frame(f2.data(), f2.size());
   REQUIRE(r.delivered.size() == 3);
   CHECK(r.delivered[2] == hb);
@@ -235,7 +241,7 @@ TEST(mavlink1_and_unknown_crc_extra_are_dropped) {
   Mav m;
   m.counter = 1;
   m.payload = cat({v1_heartbeat(), unknown_msgid_packet()});
-  auto f = pack_mav(m, false);
+  auto f = pack_up(m);
   r.t.on_rc_frame(f.data(), f.size());
   CHECK(r.delivered.empty());
   CHECK(r.t.stats().rx_frames == 1);
@@ -251,7 +257,7 @@ TEST(inbound_tagged_or_corrupt_frame_delivers_nothing) {
   m.payload = hb;
   // A tagged T_MAV is the GS's own uplink heard by its other card: counted
   // apart, never a reject.
-  auto tagged = pack_mav(m, true, test_key(), TagCtx{1, 2, 1});
+  auto tagged = pack_mav(m, test_key(), TagCtx{1, 2, 1});
   r.t.on_rc_frame(tagged.data(), tagged.size());
   CHECK(r.delivered.empty());
   CHECK(r.t.stats().rx_frames == 0);
@@ -262,7 +268,7 @@ TEST(inbound_tagged_or_corrupt_frame_delivers_nothing) {
   r.t.on_rc_frame(with_fcs.data(), with_fcs.size());
   CHECK(r.t.stats().rx_uplink_heard == 2);
   // A corrupt frame is a reject.
-  auto bad = pack_mav(m, false);
+  auto bad = pack_up(m);
   bad.back() ^= 0xFF;
   r.t.on_rc_frame(bad.data(), bad.size());
   CHECK(r.delivered.empty());
@@ -275,7 +281,7 @@ TEST(untagged_frame_with_fcs_is_not_taken_for_the_gs_own_uplink) {
   Mav m;
   m.counter = 3;
   m.payload = hb_bytes(1, 191);
-  Bytes f = cat({pack_mav(m, false), Bytes{0xAA, 0xBB, 0xCC, 0xDD}});
+  Bytes f = cat({pack_up(m), Bytes{0xAA, 0xBB, 0xCC, 0xDD}});
   r.t.on_rc_frame(f.data(), f.size());
   REQUIRE(r.delivered.size() == 1);
   CHECK(r.t.stats().rx_uplink_heard == 0);
@@ -289,7 +295,7 @@ TEST(second_card_copy_of_a_drone_frame_is_dropped) {
     Mav m;
     m.counter = counter;
     m.payload = hb;
-    return pack_mav(m, false);
+    return pack_up(m);
   };
   auto f7 = frame(7);
   r.t.on_rc_frame(f7.data(), f7.size());
@@ -320,7 +326,7 @@ TEST(first_drone_frame_after_a_new_vtx_nonce_delivers_even_with_the_old_counter)
   Mav m;
   m.counter = 0;
   m.payload = hb_bytes(1, 191);
-  auto f = pack_mav(m, false);
+  auto f = pack_up(m);
   r.t.on_rc_frame(f.data(), f.size());
   r.t.set_session(TagCtx{11, 33, 0});
   r.t.on_rc_frame(f.data(), f.size());
@@ -338,7 +344,7 @@ TEST(cal_lane_sends_while_unlinked) {
   r.t.push_cal(cal_pkt, TagCtx{11, 22, 0});
   CHECK(r.t.flush() == 1);
   REQUIRE(r.sent.size() == 1);
-  auto p = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
+  auto p = parse_mav(r.sent[0].data(), r.sent[0].size());
   REQUIRE(p.has_value());
   CHECK(p->counter == 1 && p->payload == cal_pkt);
   CHECK(verify_control(r.sent[0].data(), r.sent[0].size(), test_key(), TagCtx{11, 22, 1}));
@@ -359,7 +365,7 @@ TEST(cal_lane_counter_restarts_per_run_ctx) {
   r.t.push_cal(cal_pkt, TagCtx{11, 33, 0});
   CHECK(r.t.flush() == 1);
   CHECK(r.t.cal_counter() == 1);
-  auto p = parse_mav(r.sent.back().data(), r.sent.back().size(), true);
+  auto p = parse_mav(r.sent.back().data(), r.sent.back().size());
   REQUIRE(p.has_value());
   CHECK(verify_control(r.sent.back().data(), r.sent.back().size(), test_key(),
                        TagCtx{11, 33, 1}));
@@ -379,7 +385,7 @@ TEST(cal_lane_counter_continues_for_a_second_run_on_the_same_pair) {
   r.t.push_cal(cal_pkt, TagCtx{11, 22, 0});
   CHECK(r.t.flush() == 1);
   CHECK(r.t.cal_counter() == 3);
-  auto p = parse_mav(r.sent.back().data(), r.sent.back().size(), true);
+  auto p = parse_mav(r.sent.back().data(), r.sent.back().size());
   REQUIRE(p.has_value());
   CHECK(p->counter == 3);
   CHECK(verify_control(r.sent.back().data(), r.sent.back().size(), test_key(),
@@ -395,8 +401,8 @@ TEST(cal_frames_go_out_before_live_frames) {
   r.t.push_cal(cal_pkt, TagCtx{44, 55, 0});   // cal, a different pair entirely
   CHECK(r.t.flush() == 2);
   REQUIRE(r.sent.size() == 2);
-  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
-  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size(), true);
+  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size());
+  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size());
   REQUIRE(f0.has_value() && f1.has_value());
   CHECK(f0->payload == cal_pkt);
   CHECK(f1->payload == hb);
@@ -413,8 +419,8 @@ TEST(cal_frame_carries_only_its_packet) {
   r.t.push_cal(cal_pkt, TagCtx{11, 22, 0});   // same pair as the live session
   CHECK(r.t.flush() == 2);
   REQUIRE(r.sent.size() == 2);
-  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size(), true);
-  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size(), true);
+  auto f0 = parse_mav(r.sent[0].data(), r.sent[0].size());
+  auto f1 = parse_mav(r.sent[1].data(), r.sent[1].size());
   REQUIRE(f0.has_value() && f1.has_value());
   CHECK(f0->payload == cal_pkt);
   CHECK(f1->payload == hb);
@@ -457,8 +463,8 @@ TEST(cal_frames_go_to_the_cal_sender_when_one_is_given) {
   CHECK(t.flush() == 2);
   REQUIRE(calf.size() == 1);
   REQUIRE(live.size() == 1);
-  auto fc = parse_mav(calf[0].data(), calf[0].size(), true);
-  auto fl = parse_mav(live[0].data(), live[0].size(), true);
+  auto fc = parse_mav(calf[0].data(), calf[0].size());
+  auto fl = parse_mav(live[0].data(), live[0].size());
   REQUIRE(fc.has_value() && fl.has_value());
   CHECK(fc->payload == cal_pkt);
   CHECK(fl->payload == hb);

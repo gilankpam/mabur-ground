@@ -95,7 +95,7 @@ void Aggregator::on_rx_body(const mabur::node::RxBody& m) {
       m.crc_ok && (rc_t == mabur::rc::T_RCF || rc_t == mabur::rc::T_DISC ||
                    rc_t == mabur::rc::T_NACK ||
                    (rc_t == mabur::rc::T_MAV &&
-                    mabur::rc::parse_mav(m.body.data(), m.body.size(), /*tagged=*/true)));
+                    mabur::rc::parse_mav(m.body.data(), m.body.size())));
   if (is_self) {
     ++c.self_frames;
     static const bool gaplog_self = std::getenv("MABUR_GAPLOG") != nullptr;

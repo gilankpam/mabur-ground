@@ -1095,7 +1095,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_DISC_ACK) {
       if (const auto ack = mabur::rc::parse_disc_ack(f.data(), f.size())) {
         chan.on_session_opened(*ack, static_cast<double>(us) / 1000.0);
-        peer_agreed_width = ack->agreed_width;
+        peer_agreed_width = 0;  // the width now arrives in Telem
       }
     }
   });

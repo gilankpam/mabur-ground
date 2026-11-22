@@ -19,10 +19,8 @@ OpPoint op_from_rung(const Rung& r) {
 std::vector<uint8_t> disc_for_channel(const std::vector<uint8_t>& disc, uint8_t ch,
                                       const mabur::LinkKey& key) {
   if (ch == 0 || mabur::rc::frame_type(disc.data(), disc.size()) != mabur::rc::T_DISC) return disc;
-  auto d = mabur::rc::parse_disc(disc.data(), disc.size());
-  if (!d || d->op_channel == ch) return disc;
-  d->op_channel = ch;
-  return mabur::rc::pack_disc(*d, key);
+  (void)key;  // a DISC no longer carries a channel; nothing to re-propose
+  return disc;
 }
 
 VrxController::VrxController(VrxCfg cfg)
@@ -45,10 +43,10 @@ void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
   auto ack = mabur::rc::parse_disc_ack(buf, len);
   if (!ack) return;
   bool adopted_new = false;
-  if (!rz_.feed_disc_ack(*ack, now_ms, &adopted_new)) return;
+  if (!rz_.feed_disc_ack(*ack, /*tag_ok=*/true, now_ms, &adopted_new)) return;
   if (ack->flags & mabur::rc::kAckKeyMismatch) return;   // nothing learned about the peer
-  agreed_channel_ = ack->agreed_channel;
-  peer_caps_ = ack->chip_caps;
+  agreed_channel_ = ack->channel;
+  peer_caps_ = 0;  // caps now arrive in Telem
   peer_acked_ = true;
   if (adopted_new) {
     seq32_ = 0;
@@ -80,7 +78,7 @@ std::optional<VrxController::Out> VrxController::step(double now_ms,
   }
   const VrxAction act = rz_.tick(now_ms);
   if (act == VrxAction::Beacon)
-    return Out{mabur::rc::pack_disc(rz_.beacon(), cfg_.key), true};
+    return Out{mabur::rc::pack_disc(rz_.beacon(now_ms), cfg_.key), true};
   if (act != VrxAction::TxFeedback) return std::nullopt;
 
   // Fix (a): SESSION keep-alive DISC, replacing this tick's RCF slot.
@@ -89,7 +87,7 @@ std::optional<VrxController::Out> VrxController::step(double now_ms,
   // BEACONING at beacon_period_ms, which is the stale-caps re-teach.
   if (!keepalive_hold_ && now_ms - last_keepalive_ms_ >= cfg_.beacon_keepalive_ms) {
     last_keepalive_ms_ = now_ms;
-    return Out{mabur::rc::pack_disc(rz_.beacon(), cfg_.key), true};
+    return Out{mabur::rc::pack_disc(rz_.beacon(now_ms), cfg_.key), true};
   }
   if (now_ms - last_fb_ms_ < cfg_.feedback_ms) return std::nullopt;
   last_fb_ms_ = now_ms;

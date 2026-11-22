@@ -133,6 +133,10 @@ class VrxController {
   // Rendezvous nonce for test construction of acceptable DiscAcks.
   uint32_t rz_nonce() const { return rz_.nonce(); }
   void set_proposal(uint8_t ch) { rz_.set_proposal(ch); }
+  // Record a DISC as sent at now_ms without emitting it and return its seq:
+  // lets a caller with no drone to answer (replay, tests) build an ack that
+  // passes the rendezvous seq window.
+  uint16_t stamp_disc(double now_ms) { return rz_.beacon(now_ms).seq; }
   // Hold the SESSION keep-alive DISC (a hop order is in flight): its proposal
   // is the old op by construction, and a drone that has already followed the
   // order's RCF would otherwise process the DISC it received on the old

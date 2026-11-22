@@ -44,8 +44,7 @@ static std::vector<uint8_t> rcf_fixture_wire() {
 
 static std::vector<uint8_t> disc_ack_fixture_wire() {
   mabur::rc::DiscAck a;
-  a.vrx_nonce = 0xCAFE0001; a.chip_caps = 0x0003;
-  a.agreed_channel = 149; a.agreed_width = 20; a.seq = 1;
+  a.vrx_nonce = 0xCAFE0001; a.channel = 149; a.seq = 1;
   return mabur::rc::pack_disc_ack(a);
 }
 
@@ -70,6 +69,12 @@ static std::vector<std::vector<uint8_t>> encode_fixture_bodies() {
 static std::vector<uint8_t> video_body() {
   static auto bodies = encode_fixture_bodies();
   return bodies.empty() ? std::vector<uint8_t>() : bodies[0];
+}
+
+// The drone's frame: T_MAV_UP, always tagged now.
+static std::vector<uint8_t> pack_up(mabur::rc::Mav m) {
+  m.type = mabur::rc::T_MAV_UP;
+  return mabur::rc::pack_mav(m);
 }
 
 TEST(routes_video_to_decoder_and_rc_to_control) {
@@ -436,8 +441,8 @@ TEST(gs_tagged_mav_is_self_drone_mav_walks) {
   m.counter = 5; m.payload = {0xFD, 1, 2, 3};
   std::vector<uint8_t> junk(20, 0);
   agg.on_rx_body(msg(0, 10, true, junk));                                      // drone
-  agg.on_rx_body(msg(0, 1500, true, mabur::rc::pack_mav(m, /*tagged=*/true)));  // GS
-  agg.on_rx_body(msg(0, 11, true, mabur::rc::pack_mav(m, /*tagged=*/false))); // drone
+  agg.on_rx_body(msg(0, 1500, true, mabur::rc::pack_mav(m)));  // GS
+  agg.on_rx_body(msg(0, 11, true, pack_up(m))); // drone
   agg.on_rx_body(msg(0, 12, true, junk));                                      // drone
   const CardTrack& c = agg.card(0);
   CHECK(c.self_frames == 1);
