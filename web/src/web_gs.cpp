@@ -211,7 +211,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
                       {f.body_mono_us, f.q_ms, f.enc_us, f.air_ms, f.sw_seq, true, f.retx});
   });
   agg_.set_rc_sink([this](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (mav_ && mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_MAV) {
+    if (mav_ && mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_MAV_UP) {
       mav_->on_rc_frame(f.data(), f.size());
       return;
     }
@@ -460,12 +460,10 @@ void WebGs::tick(uint64_t now_us) {
     chan_->note_tx_card(0);
   }
   if (vrx_) {
-    // maburgs main.cpp: video tail only while in SESSION with a
-    // CAP_FRAME_WIRE peer; any change drops FRAG-seq continuity and
-    // half-assembled frames -- the new session's seqs/frame_ids are
-    // unrelated to the old one's.
-    const bool fw = vrx_->link_state() == maburgs::VrxState::SESSION &&
-                    (vrx_->peer_caps() & mabur::rc::CAP_FRAME_WIRE);
+    // Video tail only while in SESSION (as maburgs does); any change drops
+    // FRAG-seq continuity and half-assembled frames -- the new session's
+    // seqs/frame_ids are unrelated to the old one's.
+    const bool fw = vrx_->link_state() == maburgs::VrxState::SESSION;
     if (fw != frame_wire_) {
       frame_wire_ = fw;
       reset_video_();
@@ -589,6 +587,8 @@ Stats WebGs::stats() const {
     s.bw = vrx_->cur_op().bw;
     s.probe_state = maburgs::to_string(vrx_->ctl().probe_gate(now_ms).state);
     s.key_mismatch = vrx_->key_mismatch();
+    s.version_mismatch = vrx_->version_mismatch();
+    s.drone_rc_version = vrx_->drone_rc_version();
     if (nack_) {
       NackStatsOut n;
       n.cum = nack_->stats();
@@ -672,6 +672,9 @@ std::string stats_json(const Stats& s) {
   j["bw"] = s.bw;
   j["probe"] = s.probe_state;
   j["key_mismatch"] = s.key_mismatch;
+  j["version_mismatch"] = s.version_mismatch;
+  if (s.drone_rc_version) j["drone_rc_version"] = *s.drone_rc_version;
+  j["rc_version"] = mabur::rc::RC_VERSION;   // ours, for the page to say which side is older
   j["key_fp"] = s.key_fp;
   auto opt = [&](const char* k, const auto& v) {
     if (v)

@@ -144,6 +144,7 @@ export function debugGroups({ connected, mode, core, ausRate, hitches60, hitches
       ['rung', v(core?.rung >= 0 ? core.rung : D)], ['mcs', v(core?.mcs >= 0 ? core.mcs : D)],
       ['width', v(core?.bw ? core.bw + ' MHz' : D)], ['probe', v(core?.probe || 'off')],
       ['key', v(core?.key_fp)], ['key_mismatch', v(core?.key_mismatch ? 'yes' : 'no')],
+      ['version_mismatch', v(core?.version_mismatch ? 'yes' : 'no')],
     ]) },
     // Scan/hop state is GS-only (null in spotter); a spotter with a follower
     // shows its follow state; replay-shaped stats show just the channel.
@@ -237,6 +238,10 @@ export function statusText({ state, mode, ch, core, sinceStartMs, w, hiddenBanne
   const shownCh = has(core?.channel) ? core.channel : ch;
   if (mode === 'gs' && core?.key_mismatch) {
     primary = `Drone rejects our link key (${core.key_fp ?? '?'}) — load the same mabur.key on both ends`;
+  } else if (mode === 'gs' && core?.version_mismatch) {
+    const d = core.drone_rc_version, g = core.rc_version;
+    primary = `Drone runs RC ${d}, this ground station RC ${g} — ` +
+      (d < g ? 'update the drone' : 'update the ground station');
   } else {
     const noPeer = mode === 'gs' && core?.peer_acked !== true;
     if (noPeer && core && core.peer_acked === false && sinceStartMs >= 10000) {
@@ -255,5 +260,6 @@ export function linkTag({ state, mode, core }) {
   if (state !== 'live') return { label: 'Disconnected', on: false };
   if (mode === 'spotter') return { label: 'Spotter', on: true };
   if (core?.key_mismatch) return { label: 'Key mismatch', on: false };
+  if (core?.version_mismatch) return { label: 'Update needed', on: false };
   return { label: core?.session && core?.peer_acked ? 'Linked' : 'Searching', on: true };
 }

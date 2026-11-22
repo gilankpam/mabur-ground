@@ -100,7 +100,7 @@ test('debug groups carry the handoff keys verbatim + counters', () => {
   assert.deepEqual(g.map((x) => x.title), ['Link', 'Channel', 'Radio', 'Drone', 'Client',
     'Latency (ms; 1 s | 60 s windows)', 'Counters', 'NACK', 'Phase lock']);
   assert.deepEqual(g[0].rows.map((r) => r.k),
-    ['mode', 'session', 'peer_acked', 'rung', 'mcs', 'width', 'probe', 'key', 'key_mismatch']);
+    ['mode', 'session', 'peer_acked', 'rung', 'mcs', 'width', 'probe', 'key', 'key_mismatch', 'version_mismatch']);
   assert.deepEqual(g[2].rows.map((r) => r.k), ['pre-FEC loss', 'residual', 'SNR', 'RSSI', 'RTT', 'RCF heard %']);
   assert.equal(g[4].rows[1].v, '0 last 60s (total 18)');
   const sp = debugGroups({ connected: true, mode: 'spotter', core: { ...core, mode: 'spotter' }, 
@@ -242,8 +242,13 @@ test('debugGroups hides the USB-only rows (usb latency, txfail) over the relay r
   assert.ok(relayGroups.find((g) => g.title === 'Counters').rows.some((r) => r.k === 'qdrop'));
 });
 
-test('key mismatch: link tag and status text', () => {
+test('key and version mismatch: link tag and status text', () => {
   assert.deepEqual(linkTag({ state: 'live', mode: 'gs', core: { session: false, key_mismatch: true } }), { label: 'Key mismatch', on: false });
+  const vm = (d) => ({ state: 'live', mode: 'gs', ch: 136, w: 40, sinceStartMs: 0, hasPicture: false,
+    core: { peer_acked: false, version_mismatch: true, drone_rc_version: d, rc_version: 19 } });
+  assert.match(statusText(vm(18)), /RC 18.*RC 19.*update the drone/);
+  assert.match(statusText(vm(20)), /update the ground station/);
+  assert.deepEqual(linkTag(vm(18)), { label: 'Update needed', on: false });
   assert.match(statusText({ state: 'live', mode: 'gs', ch: 136, w: 40, core: { peer_acked: false, key_mismatch: true, key_fp: 'a1b2' }, sinceStartMs: 0, hasPicture: false }), /Drone rejects our link key \(a1b2\)/);
 });
 

@@ -8,8 +8,7 @@
 // Two modes:
 //  - Gs: drives the drone link (rendezvous DISC, ladder, slotted RCFs) via
 //    Io::send (required: the ctor throws std::invalid_argument without it).
-//    Video is decoded only while in SESSION with a peer that advertised
-//    CAP_FRAME_WIRE (maburgs main.cpp's `frame_wire`); either edge resets the
+//    Video is decoded only while in SESSION; either edge resets the
 //    decoder's continuity and the FrameStream.
 //  - Spotter: passive. There is no transmit path by construction: the send
 //    callback is dropped in the constructor and no VrxController/RcfSlotter
@@ -27,8 +26,8 @@
 //
 // Gs with a roster also runs maburgs's `ChannelCore` (gs/src/channel_core.h)
 // at the same six seams run_radio() does: card tick + core tick per tick(),
-// on_rc_body/on_session_opened in the rc sink, is_link_video/note_video in
-// on_rx, note_au_end at every AU end, disc_targets/may_send/disc_for_card/
+// on_rc_body in the rc sink, is_link_video/note_video in
+// on_rx, note_au_end at every AU end, disc_targets/may_send/
 // note_sent around every send, snapshot() for stats. The scout thread is the
 // core's own (a pthread in the browser). Without a roster
 // (replay/tests) Gs sends through Io::send and runs no core.
@@ -151,6 +150,9 @@ struct Stats {
   // answer told us our key doesn't match its, and the fingerprint of the
   // key this core is configured with (for the page to show beside it).
   bool key_mismatch = false;
+  // The drone answered at another RC version (verified ack); its version.
+  bool version_mismatch = false;
+  std::optional<uint8_t> drone_rc_version;
   std::string key_fp;
   int channel = 0;              // the card's live channel; start_ch with no roster (replay)
   std::optional<ChanStats> chan;   // Gs with a roster only
@@ -349,7 +351,7 @@ class WebGs {
   // Uplink delivery % + state: Gs only, fed with rtt_ (RCF sends and Telem)
   // on the same tick clock and thread.
   maburgs::UplinkDelivery uplink_;
-  // Gs: in SESSION && peer CAP_FRAME_WIRE (edge-reset). Spotter: always true.
+  // Gs: in SESSION (edge-reset). Spotter: always true.
   bool frame_wire_ = false;
   maburgs::DroneRestartDetector restart_;         // Spotter only
   maburgs::LinkHealth last_health_;
