@@ -996,7 +996,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
                  old_dir.c_str(), debug.dir().c_str());
   };
   // MAVLink tunnel (mav_tunnel.h): always built, the rc sink feeds it the
-  // drone's T_MAV frames whether or not the endpoint is open. Its live
+  // drone's T_MAV_UP frames (and T_MAV heard back) whether or not the endpoint is open. Its live
   // frames leave like an RCF: offered to the slotter, never during a
   // calibration sweep. Its cal-lane frames (the calibration session's
   // SweepCmd/ApplyCmd/Abort) go straight out, skipping the slotter: they
@@ -1009,7 +1009,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   // mav_tick_card are set to that tick's clock and TX card.
   uint64_t mav_tick_ms = 0;
   int mav_tick_card = 0;
-  uint64_t mav_rx_ms = 0;      // the clock of the T_MAV frame being delivered
+  uint64_t mav_rx_ms = 0;      // the clock of the MAV frame being delivered
   uint32_t mav_vtx_seen = 0;   // the session the CAP_MAVLINK check last ran for
   // Wired to the ParamHost below once it exists. The deliver lambda sits
   // inside mav_tunnel's own constructor call, textually ahead of that
@@ -1051,7 +1051,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     return params.handle_verb(v, r, mono_ms());
   };
   agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_MAV) {
+    if (maburgs::is_mav_frame(mabur::rc::frame_type(f.data(), f.size()))) {
       mav_rx_ms = us / 1000;
       mav_tunnel.on_rc_frame(f.data(), f.size());
       return;
@@ -1481,7 +1481,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
          cal_narrator.observe(cal_session.snapshot(), cal_session.sweeps()))
       std::fprintf(stderr, "maburgs: %s\n", line.c_str());
     // MAVLink: tag under the live session only (session_ctx() keeps the
-    // held nonce while BEACONING; the drone takes T_MAV only when LINKED),
+    // held nonce while BEACONING; the drone takes T_MAV only when LINKED and answers T_MAV_UP),
     // then endpoint datagrams -> tunnel -> T_MAV frames. CAP_MAVLINK is
     // display-only: one line per session, nothing is gated on it.
     {

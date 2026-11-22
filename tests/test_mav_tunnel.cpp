@@ -253,6 +253,15 @@ TEST(mavlink1_and_unknown_crc_extra_are_dropped) {
   CHECK(r.t.stats().drop_bad_packet == 2);
 }
 
+// The rc sink's routing in main.cpp: the drone's replies are T_MAV_UP, and a
+// sink that sent only T_MAV to the tunnel dropped every one of them.
+TEST(the_rc_sink_routes_t_mav_up_and_t_mav_to_the_tunnel) {
+  CHECK(maburgs::is_mav_frame(mabur::rc::T_MAV_UP));
+  CHECK(maburgs::is_mav_frame(mabur::rc::T_MAV));
+  CHECK(!maburgs::is_mav_frame(mabur::rc::T_TELEM));
+  CHECK(!maburgs::is_mav_frame(-1));
+}
+
 TEST(inbound_tagged_or_corrupt_frame_delivers_nothing) {
   Rig r;
   r.t.set_session(kPair);

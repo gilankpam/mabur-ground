@@ -69,6 +69,13 @@
 
 namespace maburgs {
 
+// Which rc frame types the rc sink hands the tunnel: the drone's T_MAV_UP
+// (the replies) and T_MAV (the GS's own uplink heard by another card, which
+// the tunnel counts apart).
+inline bool is_mav_frame(int rc_type) {
+  return rc_type == mabur::rc::T_MAV || rc_type == mabur::rc::T_MAV_UP;
+}
+
 struct MavTunnelStats {
   uint64_t tx_frames = 0, tx_packets = 0, rx_frames = 0, rx_packets = 0,
            drop_unlinked = 0,     // outbound packets with no session to tag them
