@@ -56,6 +56,10 @@ bool CalSession::start(uint32_t nonce, std::vector<cal::SweepSpec> sweeps, uint6
     return false;
   }
   if (!cal_capable_) {
+    if (err) *err = "refused: waiting for drone telemetry";
+    return false;
+  }
+  if (!*cal_capable_) {
     if (err) *err = "refused: peer does not advertise CAP_CALIBRATE";
     return false;
   }
@@ -249,7 +253,7 @@ void CalSession::abort(const char* why) {
   state_ = State::Idle;
 }
 
-void CalSession::set_peer(bool linked, bool cal_capable, mabur::rc::TagCtx ctx) {
+void CalSession::set_peer(bool linked, std::optional<bool> cal_capable, mabur::rc::TagCtx ctx) {
   linked_ = linked;
   cal_capable_ = cal_capable;
   peer_ctx_ = ctx;

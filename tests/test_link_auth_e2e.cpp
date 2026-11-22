@@ -5,8 +5,12 @@
 #include "mtest.h"
 #include "mabur/link_key.h"
 #include "mabur/rc_proto.h"
+#include "aggregator.h"
 #include "rc_agent.h"
+#include "rc_at_version.h"
 #include "vrx_controller.h"
+#include "mabur/node.h"
+#include "mabur/uep_encoder.h"
 using namespace mabur;
 
 struct LoopActuator : Actuator {
@@ -217,5 +221,54 @@ TEST(uplink_fade_past_failsafe_relinks_through_the_keepalive_disc) {
   CHECK(l.agent.current_session().vtx_nonce != old_vtx);
   CHECK(l.agent.current_session().vrx_nonce == l.vrx.rz_nonce());
   std::fprintf(stderr, "uplink fade: relinked %.0f ms after restore\n", relinked_at);
+}
+// A drone at another RC_VERSION, through the GS's real receive path (the
+// aggregator and its rc sink, as gs main wires them): its acks are rewritten
+// to RC 18, as an older drone sends them. The GS must read VERSION_MISMATCH
+// and send no RCF; once the drone is updated (its acks at our version again)
+// the next keep-alive links it without a GS restart.
+TEST(drone_at_another_version_is_a_version_mismatch_until_updated) {
+  Loop l(kDefaultLinkKey, kDefaultLinkKey);
+  std::array<UepLayerCfg, 2> layers{};
+  for (auto& lc : layers) lc = UepLayerCfg{SwConfig{64, 128, 1.0}, 4};
+  maburgs::Aggregator agg(layers, 512, 1);
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
+    l.vrx.on_rc_frame(f.data(), f.size(), static_cast<double>(us) / 1000.0);
+  });
+  bool old_drone = true;
+  uint16_t mac_seq = 0;
+  auto step = [&](double t) {
+    l.vrx.on_video(t);
+    if (auto out = l.vrx.step(t, healthy())) {
+      (out->is_disc ? l.discs : l.rcfs)++;
+      l.agent.on_rc_frame(out->frame.data(), out->frame.size(), static_cast<uint64_t>(t));
+    }
+    for (auto& c : l.act.controls) {
+      node::RxBody m;
+      m.mono_us = static_cast<uint64_t>(t * 1000);
+      m.mac_seq = mac_seq++;
+      m.crc_ok = true;
+      m.body = old_drone && rc::frozen_type(c.data(), c.size()) == rc::T_DISC_ACK
+                   ? rc_test::ack_at_version(c, 18, kDefaultLinkKey)
+                   : c;
+      agg.on_rx_body(m);
+    }
+    l.act.controls.clear();
+    if (static_cast<int>(t) % 100 == 0) l.agent.tick(static_cast<uint64_t>(t), RadioHealth{});
+  };
+  double t = 0;
+  for (; t < 2500; t += 10) step(t);
+  CHECK(l.vrx.version_mismatch());
+  REQUIRE(l.vrx.drone_rc_version().has_value());
+  CHECK(*l.vrx.drone_rc_version() == 18);
+  CHECK(l.rcfs == 0);
+  CHECK(l.agent.state() != RcAgent::State::LINKED);
+  CHECK(agg.card(0).video_bodies == 0);
+  old_drone = false;
+  const double updated = t;
+  for (; t < updated + 2500 && l.agent.state() != RcAgent::State::LINKED; t += 10) step(t);
+  CHECK(l.vrx.link_state() == maburgs::VrxState::SESSION);
+  CHECK(l.agent.state() == RcAgent::State::LINKED);
+  CHECK(!l.vrx.drone_rc_version().has_value());
 }
 MTEST_MAIN

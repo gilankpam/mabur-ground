@@ -634,7 +634,6 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   ccfg.radio = cfg.radio;
   ccfg.width_mhz = rx_width;
   ccfg.hop = cfg.hop;
-  ccfg.key = cfg.link.key;
   ccfg.start_ch = start_ch;
   ccfg.n_usb = n_usb;
   ccfg.leak_per_frame = 1.0;   // bench row 7 pins this (docs/channel-select.md)
@@ -1070,7 +1069,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         latest_telem.rx_ms = us / 1000;
         // LINKED telem = our first RCF verified and the drone is moving:
         // fires the controller's move edge.
-        vrx.note_telem(*t);
+        vrx.note_telem(*t, static_cast<double>(us) / 1000.0);
         // link-rtt: every telem is a sync sample. `us` is the radio
         // frontend's steady_clock stamp — same base as the mono_us() send
         // stamps below, so the subtraction is one clock throughout.
@@ -1292,45 +1291,27 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         continue;
       chan.on_rc_body(m.rx_channel);   // read by the rc sink inside on_rx_body()
       agg.on_rx_body(m);
-      // A drone at a different RC_VERSION is invisible to every RC path here:
-      // frame_type() returns -1 for it, which is this loop's affirmative "this
-      // is video" signal, so its T_TELEM/DISC_ACK is counted into the card
-      // totals AND fed to vrx.on_video() below, holding off the rendezvous
-      // video-silence fallback on traffic the decoder never sees. The
-      // visible end state is no video at all, indistinguishable from the
-      // stale-caps restart deadlock. Log it (rate-limited to 1/5s: a
-      // mismatched peer transmits continuously and /tmp is tmpfs) and change
-      // nothing else -- the frame is still handled exactly as before.
-      //
-      // Gated on crc_ok because RC_MAGIC is only two bytes: roughly 1 in 65536
-      // corrupt video bodies matches it by chance, and a corrupt frame must
-      // not raise a version-mismatch alarm.
+      // A frame of another RC_VERSION other than the frozen DISC_ACK (which
+      // the rc sink reads: VERSION_MISMATCH) reaches no RC path and is never
+      // video. Log it, rate-limited to 1/5s: a mismatched peer transmits
+      // continuously and /tmp is tmpfs. Gated on crc_ok because RC_MAGIC is
+      // only two bytes: roughly 1 in 65536 corrupt video bodies matches it.
       if (m.crc_ok &&
           mabur::rc::is_foreign_rc_version(m.body.data(), m.body.size()) &&
+          mabur::rc::frozen_type(m.body.data(), m.body.size()) != mabur::rc::T_DISC_ACK &&
           (!foreign_rc_logged || now_ms_u - last_foreign_rc_ms >= 5000)) {
         foreign_rc_logged = true;
         last_foreign_rc_ms = now_ms_u;
         std::fprintf(stderr,
                      "maburgs: heard an RC frame at RC_VERSION %u but this "
-                     "build speaks %u, so no RC path can read it and it is "
-                     "being miscounted as video (rate-limited to 1/5s). "
-                     "The pair finds and authenticates each other across "
-                     "versions, but runs no link: update the older end.\n",
+                     "build speaks %u, so no RC path can read it "
+                     "(rate-limited to 1/5s). The pair finds and "
+                     "authenticates each other across versions, but runs no "
+                     "link: update the older end.\n",
                      static_cast<unsigned>(m.body[2]),
                      static_cast<unsigned>(mabur::rc::RC_VERSION));
       }
-      // Exclude RC frames, MSP frames (SBI stream_id == kMspStreamId) AND
-      // probe frames (stream_id == kProbeStreamId), mirroring the
-      // aggregator's routing: only real video may refresh the rendezvous
-      // video-silence timer, or a link carrying nothing but MSP telemetry
-      // or probe canaries would never fall back to BEACONING. This keeps
-      // MSP and probe traffic invisible to the adaptive-link controller
-      // end-to-end.
-      const int sid_peek =
-          mabur::sbi_peek_stream_id(m.body.data(), m.body.size());
-      if (m.crc_ok &&
-          mabur::rc::frame_type(m.body.data(), m.body.size()) < 0 &&
-          sid_peek != mabur::kMspStreamId && sid_peek != mabur::kProbeStreamId) {
+      if (m.crc_ok && maburgs::is_video_body(m.body.data(), m.body.size())) {
         // Only video heard where the link lives refreshes the silence timer
         // (ChannelPlan::is_link_video): a scout dwell catching the drone on
         // another member must not hold the GS in SESSION (bench: 60 s).
@@ -1446,15 +1427,19 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     }
     // Calibration first, so a run's message goes out in this tick's flush.
     // set_peer before anything reads it: start() (via CalControl, below the
-    // operator's `maburcal start`) refuses on a down link or a peer
-    // without CAP_CALIBRATE, and the session freezes the pair's tag
+    // operator's `maburcal start`) refuses on a down link, on caps not yet
+    // known (no Telem since the ack) or a peer without CAP_CALIBRATE, and
+    // the session freezes the pair's tag
     // context when it first commands the drone. The narrower of the GS's
     // and the linked drone's width bounds both what a `start power40`/
     // `cap40` may ask for and what a bare `start` composes. Compiled into
     // every prod build, unlike loss_ctl above (cal_control.h).
     const bool mav_linked = vrx.link_state() == maburgs::VrxState::SESSION;
     cal_session.set_peer(
-        mav_linked, mav_linked && (vrx.peer_caps() & mabur::rc::CAP_CALIBRATE),
+        mav_linked,
+        mav_linked && !vrx.peer_caps_known()
+            ? std::nullopt
+            : std::optional<bool>(mav_linked && (vrx.peer_caps() & mabur::rc::CAP_CALIBRATE)),
         vrx.session_ctx());
     const uint8_t cal_width =
         maburgs::cal_effective_width(chan.width_mhz(), mav_linked, vrx.peer_width());

@@ -83,7 +83,7 @@ struct MavTunnelStats {
            drop_oversize = 0,     // an outbound packet larger than kMavMaxPayload
            rx_dup = 0,            // a verified reply already taken or older than the window (the other card's copy)
            drop_auth = 0,         // a T_MAV_UP verifying under neither the live nor the cal pair
-           rx_uplink_heard = 0,   // the GS's own tagged T_MAV, heard by its other card
+           rx_uplink_heard = 0,   // the GS's own T_MAV (type 8), heard by its other card
            tx_cal_frames = 0,     // cal-lane frames sent (never counted in tx_frames/tx_packets)
            drop_cal_oversize = 0; // a cal packet larger than kMavMaxPayload, never queued
 };
@@ -101,8 +101,9 @@ class MavTunnel {
 
   // The session the next frames are tagged under; ctx.seq32 is ignored
   // (the tunnel's counter fills it). vtx_nonce 0 = not linked: outbound is
-  // dropped. A change of vtx_nonce restarts the counter: the next frame is 1,
-  // and forgets the last inbound counter.
+  // dropped. A change of vtx_nonce restarts the counter: the next frame is 1.
+  // (The inbound window is per pair and resets on its own when the pair
+  // changes.)
   void set_session(const mabur::rc::TagCtx& ctx);
   // Bytes from a local MAVLink peer, cut at any boundary. Whole packets are
   // queued (or dropped and counted while unlinked).

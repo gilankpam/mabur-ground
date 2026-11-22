@@ -9,6 +9,7 @@
 #include "mabur/sbi.h"
 #include "mabur/probe_wire.h"
 #include "mabur/sw_wire.h"
+#include "rc_at_version.h"
 
 using namespace maburgs;
 
@@ -431,10 +432,11 @@ TEST(gs_nack_kept_out_of_the_seq_walk) {
   CHECK(rc_routed == 1);        // still routed to the sink
 }
 
-// T_MAV runs both ways: the GS's own (tagged) is a self frame, the drone's
-// (untagged) numbers on the drone's counter and walks like its other RC
-// frames. Revert (T_MAV not diverted): seq_expected == 3 and
-// self_frames == 0; over-broad (every T_MAV diverted): seq_received == 3.
+// The MAV envelope runs both ways, told apart by type: the GS's own T_MAV
+// is a self frame, the drone's T_MAV_UP numbers on the drone's counter and
+// walks like its other RC frames. Revert (T_MAV not diverted):
+// seq_expected == 3 and self_frames == 0; over-broad (T_MAV_UP diverted
+// too): seq_received == 3.
 TEST(gs_tagged_mav_is_self_drone_mav_walks) {
   Aggregator agg(vec_layers(), 512, 1);
   agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) {});
@@ -472,6 +474,36 @@ TEST(drone_mav_up_is_drone_traffic_and_own_disc_of_any_version_is_self) {
   agg.on_rx_body(msg(0, 12, true, disc));
   CHECK(agg.card(0).self_frames == 2);
   CHECK(agg.card(0).frames == 1);
+}
+
+// A drone at another RC_VERSION answers with a frozen DISC_ACK: it must
+// reach the rc sink (VERSION_MISMATCH is decided there), not the video path.
+TEST(other_version_disc_ack_reaches_the_rc_sink) {
+  Aggregator agg(vec_layers(), 512, 1);
+  int routed = 0;
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) { ++routed; });
+  const auto ack =
+      rc_test::ack_at_version(disc_ack_fixture_wire(), 18, mabur::kDefaultLinkKey);
+  agg.on_rx_body(msg(0, 10, true, ack));
+  CHECK(routed == 1);
+  CHECK(agg.card(0).rc_frames == 1);
+  CHECK(agg.card(0).video_bodies == 0);
+  CHECK(agg.card(0).self_frames == 0);
+}
+
+// Another version's Telem is neither control (no RC path reads it) nor
+// video: it never reaches the decoder or the video stamp.
+TEST(other_version_telem_is_never_video) {
+  Aggregator agg(vec_layers(), 512, 1);
+  int routed = 0;
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) { ++routed; });
+  mabur::rc::Telem t;
+  t.tlm_seq = 3;
+  agg.on_rx_body(msg(0, 10, true, rc_test::untagged_at_version(mabur::rc::pack_telem(t), 18)));
+  CHECK(routed == 0);
+  CHECK(agg.card(0).video_bodies == 0);
+  CHECK(agg.last_video_us() == 0);
+  CHECK(agg.card(0).frames == 1);   // still a received frame for the card totals
 }
 
 TEST(crc_fail_stays_out_of_classes) {

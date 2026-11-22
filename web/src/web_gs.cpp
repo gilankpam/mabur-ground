@@ -180,7 +180,6 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
       cc.radio = cfg.radio;
       cc.width_mhz = static_cast<uint8_t>(width);
       cc.hop = cfg.hop;
-      cc.key = cfg.link.key;
       cc.start_ch = start_ch;
       cc.n_usb = n_usb_;
       cc.leak_per_frame = 1.0;   // as maburgs (bench row 7, docs/channel-select.md)
@@ -226,7 +225,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
           reset_video_();
         // RTT pairs telem echoes with our own sends: Gs only.
         if (vrx_) {
-          vrx_->note_telem(*t);
+          vrx_->note_telem(*t, static_cast<double>(us) / 1000.0);
           rtt_.on_telem(t->rcf_seq_echo, (t->flags & 0x08) != 0, t->rcf_age_ms,
                         t->pts_at_build, us);
           uplink_.on_telem(t->tlm_seq, t->rcf_rx, t->state, us / 1000);
@@ -333,8 +332,7 @@ void WebGs::on_rx(const mabur::node::RxBody& m) {
   // on this body (legacy/VHT, or a relay frame without one), keep the last.
   if (sid == 0 && m.mcs != 255) air_mcs_ = m.mcs;
   if (!vrx_) return;
-  if (mabur::rc::frame_type(m.body.data(), m.body.size()) < 0 && sid != mabur::kMspStreamId &&
-      sid != mabur::kProbeStreamId) {
+  if (maburgs::is_video_body(m.body.data(), m.body.size())) {
     // Only real video heard where the link lives refreshes the rendezvous
     // silence timer (main.cpp, ChannelPlan::is_link_video).
     if (!chan_ || chan_->is_link_video(m.rx_channel))
@@ -453,6 +451,7 @@ void WebGs::tick(uint64_t now_us) {
     maburgs::ChannelTickIn cin;
     cin.now_ms = now_ms;
     cin.in_session = vrx_->link_state() == maburgs::VrxState::SESSION;
+    cin.version_mismatch = vrx_->version_mismatch();   // found: the search stops
     cin.cal_running = false;
     cin.tx_card = 0;
     cin.agg = &agg_;

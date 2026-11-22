@@ -54,7 +54,8 @@ void VrxController::on_rc_frame(const uint8_t* buf, size_t len, double now_ms) {
   }
 }
 
-void VrxController::note_telem(const mabur::rc::Telem& t) {
+void VrxController::note_telem(const mabur::rc::Telem& t, double now_ms) {
+  rz_.note_peer_alive(now_ms);
   peer_caps_ = t.chip_caps;
   peer_width_ = t.width;
   peer_caps_known_ = true;
@@ -82,10 +83,8 @@ std::optional<VrxController::Out> VrxController::step(double now_ms,
     return Out{mabur::rc::pack_disc(rz_.beacon(now_ms), cfg_.key), true};
   if (act != VrxAction::TxFeedback) return std::nullopt;
 
-  // Fix (a): SESSION keep-alive DISC, replacing this tick's RCF slot.
-  // SESSION needs an accepted DiscAck (link pairing),
-  // so the peer's caps are always known here; a GS that lacks them is still
-  // BEACONING at beacon_period_ms, which is the stale-caps re-teach.
+  // SESSION keep-alive DISC, in this tick's RCF slot: the drone re-pairs
+  // through it after a failsafe or a restart (docs/link-pairing.md in mabur).
   if (!keepalive_hold_ && now_ms - last_keepalive_ms_ >= cfg_.beacon_keepalive_ms) {
     last_keepalive_ms_ = now_ms;
     return Out{mabur::rc::pack_disc(rz_.beacon(now_ms), cfg_.key), true};

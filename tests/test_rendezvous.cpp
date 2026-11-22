@@ -279,4 +279,50 @@ TEST(version_mismatch_then_key_mismatch_clears_the_drone_version) {
   CHECK(!rz.drone_rc_version().has_value());
 }
 
+// The mismatched drone goes away: with no verified other-version ack for
+// three keep-alive periods the GS falls back to BEACONING (20 ms DISCs),
+// so the channel search can resume. Acks at the keep-alive rate hold it.
+TEST(version_mismatch_falls_back_to_beaconing_without_acks) {
+  VrxRendezvous rz(cfg());
+  DiscAck a = ok(rz, 5, 0); a.version = 18;
+  rz.feed_disc_ack(a, true, 10, nullptr);
+  REQUIRE(rz.state() == VrxState::VERSION_MISMATCH);
+  for (double t = 1000; t <= 5000; t += 1000) {
+    rz.tick(t);
+    DiscAck b = ok(rz, 5, t); b.version = 18;
+    rz.feed_disc_ack(b, true, t + 10, nullptr);
+    CHECK(rz.state() == VrxState::VERSION_MISMATCH);
+  }
+  rz.tick(8009);                                   // 2999 ms after the last ack
+  CHECK(rz.state() == VrxState::VERSION_MISMATCH);
+  rz.tick(8010);                                   // 3 keep-alives without one
+  CHECK(rz.state() == VrxState::BEACONING);
+  CHECK(!rz.drone_rc_version().has_value());
+  CHECK(rz.tick(8030) == VrxAction::Beacon);        // fast cadence again
+}
+
+// A verified other-version ack is acted on only when our own drone has gone
+// quiet: no same-version verified ack and no same-version Telem
+// (note_peer_alive) in the last kPeerAliveMs. A same-key spare drone at
+// another version must not take down a live session.
+TEST(other_version_ack_is_ignored_while_the_same_version_drone_is_alive) {
+  VrxRendezvous rz(cfg());
+  bool adopted = false;
+  REQUIRE(rz.feed_disc_ack(ok(rz, 7, 0), true, 10, &adopted));
+  REQUIRE(rz.state() == VrxState::SESSION);
+  DiscAck a = ok(rz, 9, 500); a.version = 18;
+  CHECK(!rz.feed_disc_ack(a, true, 510, &adopted));    // 500 ms after our ack
+  CHECK(rz.state() == VrxState::SESSION);
+  CHECK(rz.ignored_version_acks() == 1);
+  rz.note_peer_alive(1900);                            // a same-version Telem
+  a = ok(rz, 9, 3800); a.version = 18;
+  CHECK(!rz.feed_disc_ack(a, true, 3810, &adopted));   // 1910 ms after the Telem
+  CHECK(rz.state() == VrxState::SESSION);
+  CHECK(rz.ignored_version_acks() == 2);
+  a = ok(rz, 9, 3900); a.version = 18;
+  CHECK(rz.feed_disc_ack(a, true, 3910, &adopted));    // 2010 ms: our drone is gone
+  CHECK(rz.state() == VrxState::VERSION_MISMATCH);
+  CHECK(rz.ignored_version_acks() == 2);
+}
+
 MTEST_MAIN

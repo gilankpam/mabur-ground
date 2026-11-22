@@ -327,8 +327,11 @@ reach it.
 - **A version mismatch stops the search too.** A drone at another RC
   version is found the same way, and the plan counts it as linked
   (`ChannelTickIn::version_mismatch`), so the cards stay on its channel
-  instead of scanning on and the OSD's `UPD?` is steady. No RCFs go out
-  and no hop runs; the state ends on the first verified same-version ack.
+  instead of scanning on and the OSD's `UPD?` is steady (the web GS feeds
+  the same input). No RCFs go out and no hop runs; the state ends on the
+  first verified same-version ack, or falls back to BEACONING after three
+  keep-alive periods with no verified other-version ack, and the search
+  resumes `search_after_ms` later as after any loss.
 - **Then it is relocated.** `ChannelPlan::want()` is where the link
   *should* live: the pin in pinned mode, else the start channel, later the
   committed pick. While linked with `op ≠ want` (`relocate_due()`), the

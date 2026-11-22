@@ -23,6 +23,11 @@ void VrxRendezvous::feed_video(double now_ms) {
 }
 
 VrxAction VrxRendezvous::tick(double now_ms) {
+  if (state_ == VrxState::VERSION_MISMATCH &&
+      now_ms - last_mismatch_ack_ms_ >= kMismatchKeepalives * cfg_.keepalive_ms) {
+    state_ = VrxState::BEACONING;
+    drone_version_.reset();
+  }
   if (state_ == VrxState::SESSION) {
     if (now_ms - last_video_ms_ > cfg_.link_lost_ms)
       state_ = VrxState::BEACONING;
@@ -75,14 +80,20 @@ bool VrxRendezvous::feed_disc_ack(const mabur::rc::DiscAck& ack, bool tag_ok, do
   // ours, or a captured ack could be replayed to roll the session back.
   const Sent& s = sent_[ack.seq % sent_.size()];
   if (!tag_ok || s.seq != ack.seq || now_ms - s.ms > kAckWindowMs) return false;
+  if (ack.version != mabur::rc::RC_VERSION && now_ms - last_peer_alive_ms_ <= kPeerAliveMs) {
+    ++ignored_version_acks_;
+    return false;
+  }
   first_flagged_ms_.reset();
   beacons_since_flagged_ = 0;
   if (ack.version != mabur::rc::RC_VERSION) {
     // vtx_nonce_ stays held but unused; tick() sends no RCFs here.
     state_ = VrxState::VERSION_MISMATCH;
     drone_version_ = ack.version;
+    last_mismatch_ack_ms_ = now_ms;
     return true;
   }
+  last_peer_alive_ms_ = now_ms;
   drone_version_.reset();
   if (!vtx_nonce_ || *vtx_nonce_ != ack.vtx_nonce) {
     vtx_nonce_ = ack.vtx_nonce;

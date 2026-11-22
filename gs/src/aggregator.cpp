@@ -66,6 +66,13 @@ static void fold_rf(Track& t, double rssi, double snr, const uint8_t* rssi_ab,
 }
 }  // namespace
 
+bool is_video_body(const uint8_t* body, size_t len) {
+  if (mabur::rc::frame_type(body, len) >= 0 || mabur::rc::is_foreign_rc_version(body, len))
+    return false;
+  const int sid = mabur::sbi_peek_stream_id(body, len);
+  return sid != mabur::kMspStreamId && sid != mabur::kProbeStreamId;
+}
+
 Aggregator::Aggregator(const std::array<mabur::UepLayerCfg, 2>& layers,
                        uint32_t seq_horizon, int n_cards, uint32_t arrival_guard)
     : dec_(layers, seq_horizon, arrival_guard), cards_(static_cast<size_t>(n_cards)) {}
@@ -275,11 +282,18 @@ void Aggregator::on_rx_body(const mabur::node::RxBody& m) {
     }
   }
 
-  if (rc_t >= 0) {
+  // RC frames at our version, plus a DISC_ACK at any version: the frozen
+  // ack is how the rc sink learns a drone at another RC_VERSION is there.
+  if (rc_t >= 0 ||
+      mabur::rc::frozen_type(m.body.data(), m.body.size()) == mabur::rc::T_DISC_ACK) {
     ++c.rc_frames;
     if (rc_sink_) rc_sink_(m.card_id, m.body, m.mono_us);
     return;
   }
+  // Any other RC frame of another version (its Telem, its T_MAV_UP): no RC
+  // path reads it, and it is never video. crc_ok: the two-byte magic alone
+  // matches about one corrupt video body in 65536.
+  if (m.crc_ok && mabur::rc::is_foreign_rc_version(m.body.data(), m.body.size())) return;
   if (stream_id == mabur::kMspStreamId) {
     if (msp_sink_) msp_sink_(m.body.data(), m.body.size(), m.mono_us);
     return;

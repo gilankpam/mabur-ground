@@ -6,6 +6,7 @@
 #include "mabur/crc16.h"
 #include "mabur/rc_proto.h"
 #include "mabur/siphash.h"
+#include "rc_at_version.h"
 using namespace maburgs;
 
 static LadderCfg default_ladder() {
@@ -22,21 +23,6 @@ static VrxController make(LadderCfg lcfg = default_ladder()) {
   VrxCfg cfg;
   cfg.ladder = std::move(lcfg);
   return VrxController(cfg);
-}
-
-// Rewrite an ack's version byte and re-tag it: the tag covers the version,
-// SipHash(key, bytes[0..16) | 12 zero bytes), then the CRC.
-static std::vector<uint8_t> retag_at_version(std::vector<uint8_t> b, uint8_t ver,
-                                             const mabur::LinkKey& key) {
-  b[2] = ver;
-  std::vector<uint8_t> in(b.begin(), b.begin() + 16);
-  in.insert(in.end(), 12, 0);
-  const uint64_t tag = mabur::siphash24(key, in.data(), in.size());
-  for (int i = 0; i < 8; ++i) b[16 + i] = static_cast<uint8_t>(tag >> (8 * i));
-  const uint16_t crc = mabur::crc16_ccitt(b.data(), 24);
-  b[24] = static_cast<uint8_t>(crc);
-  b[25] = static_cast<uint8_t>(crc >> 8);
-  return b;
 }
 
 // A healthy sample: valid, no pre-FEC or residual loss, not starved.
@@ -242,7 +228,7 @@ TEST(caps_and_width_come_from_telem) {
   mabur::rc::Telem t;
   t.chip_caps = 0x000F;
   t.width = 40;
-  vrx.note_telem(t);
+  vrx.note_telem(t, 0);
   CHECK(vrx.peer_caps() == 0x000F);
   CHECK(vrx.peer_width() == 40);
 }
@@ -258,7 +244,7 @@ TEST(peer_caps_known_tracks_telem_since_adoption) {
   mabur::rc::Telem t;
   t.chip_caps = 0x000F;
   t.width = 40;
-  vrx.note_telem(t);
+  vrx.note_telem(t, 0);
   CHECK(vrx.peer_caps_known());
   CHECK(vrx.peer_caps() == 0x000F && vrx.peer_width() == 40);
   link(vrx, 200, 0xBEEF0001);             // same vtx_nonce: nothing reset
@@ -275,7 +261,7 @@ TEST(other_version_verified_ack_no_rcf_version_reported) {
   vrx.step(1500, no_data());
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 7; ack.seq = vrx.stamp_disc(1600);
-  const auto wire = retag_at_version(mabur::rc::pack_disc_ack(ack), 18, mabur::kDefaultLinkKey);
+  const auto wire = rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack), 18, mabur::kDefaultLinkKey);
   vrx.on_rc_frame(wire.data(), wire.size(), 1600);
   CHECK(vrx.version_mismatch());
   REQUIRE(vrx.drone_rc_version().has_value());
@@ -284,6 +270,27 @@ TEST(other_version_verified_ack_no_rcf_version_reported) {
     vrx.on_video(now);
     if (auto out = vrx.step(now, healthy())) CHECK(out->is_disc);
   }
+}
+
+// The controller reports same-version Telem to the rendezvous as liveness:
+// an other-version ack within kPeerAliveMs of one is ignored.
+TEST(same_version_telem_holds_off_an_other_version_ack) {
+  auto vrx = make();
+  link(vrx, 0);
+  REQUIRE(vrx.link_state() == VrxState::SESSION);
+  mabur::rc::Telem t;
+  vrx.note_telem(t, 1500);
+  auto other = [&](double now) {
+    mabur::rc::DiscAck ack;
+    ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 9; ack.seq = vrx.stamp_disc(now);
+    return rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack), 18, mabur::kDefaultLinkKey);
+  };
+  auto w = other(3000);
+  vrx.on_rc_frame(w.data(), w.size(), 3000);          // 1500 ms after the Telem
+  CHECK(!vrx.version_mismatch());
+  w = other(3600);
+  vrx.on_rc_frame(w.data(), w.size(), 3600);          // 2100 ms: nothing heard
+  CHECK(vrx.version_mismatch());
 }
 
 TEST(forged_ack_bad_tag_is_ignored) {
@@ -478,7 +485,7 @@ TEST(move_edge_fires_on_linked_telem_or_after_five_rcfs) {
   link(vrx, 100);
   CHECK(!vrx.take_move_edge());            // ack alone no longer moves the GS
   mabur::rc::Telem linked; linked.state = 2;  // RcAgent::State::LINKED
-  vrx.note_telem(linked);
+  vrx.note_telem(linked, 0);
   CHECK(vrx.take_move_edge());
   CHECK(!vrx.take_move_edge());
   auto vrx2 = make();

@@ -19,6 +19,7 @@
 #include "nhm_busy.h"
 #include "recording_sink.h"
 #include "vrx_cfg.h"
+#include "rc_at_version.h"
 using namespace maburgs;
 
 static Config bundle() {
@@ -75,7 +76,7 @@ struct Rig {
     }
     vrx = std::make_unique<VrxController>(vrx_cfg_from(cfg, start_ch));
     ChannelCoreCfg cc;
-    cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key;
+    cc.radio = cfg.radio; cc.hop = cfg.hop;
     cc.width_mhz = width;
     cc.start_ch = start_ch; cc.n_usb = n_usb; cc.threaded = false;
     cc.store_name = "the-store";
@@ -203,18 +204,51 @@ TEST(drone_found_off_the_set_or_on_op_or_unknown_is_ignored) {
 }
 
 // A version-mismatched drone is found like any other: the search must stop
-// on its channel, or the cards keep scanning and UPD? would flicker.
-TEST(version_mismatch_stops_the_search_on_the_found_channel) {
-  Rig g(2, 0);
-  g.core->on_drone_found(64, 1000.0);
-  for (int i = 0; i < 50; ++i) {
+// on its channel, or the cards keep scanning and UPD? would flicker. A
+// pinned rig (no boot pick) reads the search request straight off
+// lease_state(). The link was up once, so the search waits search_after_ms
+// after loss; run well past it with and without version_mismatch.
+static LeaseState lease_after_loss(bool version_mismatch) {
+  Rig g(2, 0, /*pinned=*/true, 40);
+  for (int i = 0; i < 10; ++i) g.tick(true);        // linked once
+  for (int i = 0; i < 700; ++i) {                   // 7 s > search_after_ms
     auto in = g.in(false);
-    in.version_mismatch = true;
+    in.version_mismatch = version_mismatch;
     g.core->tick(in);
     g.clk.ms += 10;
   }
-  CHECK(g.core->op() == 64);
-  CHECK(std::string(g.core->snapshot(0).scan_state) != "scouting");
+  return g.core->lease_state();
+}
+TEST(version_mismatch_stops_the_search_on_the_found_channel) {
+  CHECK(lease_after_loss(false) == LeaseState::Search);   // a lost link searches
+  CHECK(lease_after_loss(true) != LeaseState::Search);    // a mismatched drone is found
+}
+
+// VERSION_MISMATCH falls back to BEACONING three keep-alives after the
+// mismatched drone's last ack; the search then resumes search_after_ms later.
+TEST(version_mismatch_fallback_resumes_the_search) {
+  Rig g(2, 0, /*pinned=*/true, 40);
+  for (int i = 0; i < 10; ++i) g.tick(true);
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 7; ack.channel = 40;
+  ack.seq = g.vrx->stamp_disc(static_cast<double>(g.clk.ms));
+  auto w = rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack, g.cfg.link.key), 18,
+                                   g.cfg.link.key);
+  g.vrx->on_rc_frame(w.data(), w.size(), static_cast<double>(g.clk.ms));
+  REQUIRE(g.vrx->version_mismatch());
+  bool searched_in_mismatch = false;
+  for (int i = 0; i < 900; ++i) {                   // 9 s: 3 s hold + 5 s search_after_ms
+    g.vrx->step(static_cast<double>(g.clk.ms), LinkHealth{});
+    auto in = g.in(false);
+    in.version_mismatch = g.vrx->version_mismatch();
+    g.core->tick(in);
+    if (in.version_mismatch && g.core->lease_state() == LeaseState::Search)
+      searched_in_mismatch = true;
+    g.clk.ms += 10;
+  }
+  CHECK(!searched_in_mismatch);
+  CHECK(!g.vrx->version_mismatch());
+  CHECK(g.core->lease_state() == LeaseState::Search);
 }
 
 // Needs step_scout_inputs_ -- the search request goes false once the plan
@@ -1161,7 +1195,7 @@ TEST(shutdown_joins_threads_and_is_idempotent) {
   VrxController vrx(vrx_cfg_from(cfg, 40));
   RecordingSink sink;
   Aggregator agg(cfg.uep_layers(), 32, 2, 0);
-  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key; cc.start_ch = 40; cc.n_usb = 2;
+  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.start_ch = 40; cc.n_usb = 2;
   cc.width_mhz = 40;
   auto now_ms = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
   auto now_us = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
@@ -1213,7 +1247,7 @@ TEST(threaded_two_card_burst_runs_off_the_core_thread) {
   VrxController vrx(vrx_cfg_from(cfg, 40));
   RecordingSink sink;
   Aggregator agg(cfg.uep_layers(), 32, 2, 0);
-  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key; cc.start_ch = 40; cc.n_usb = 2;
+  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.start_ch = 40; cc.n_usb = 2;
   cc.width_mhz = 40;
   auto now_ms = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
   auto now_us = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
@@ -1411,7 +1445,7 @@ static void rebuild_with_set(Rig& g, std::vector<uint8_t> set, int n_usb = 0) {
   g.cfg.radio.channels = std::move(set);
   g.core.reset();
   g.vrx = std::make_unique<VrxController>(vrx_cfg_from(g.cfg, 40));
-  ChannelCoreCfg cc; cc.radio = g.cfg.radio; cc.hop = g.cfg.hop; cc.key = g.cfg.link.key;
+  ChannelCoreCfg cc; cc.radio = g.cfg.radio; cc.hop = g.cfg.hop;
   cc.width_mhz = g.width;
   cc.start_ch = 40; cc.n_usb = n_usb; cc.threaded = false; cc.store_name = "s";
   g.core = std::make_unique<ChannelCore>(cc, g.ptrs, *g.vrx, g.sink,

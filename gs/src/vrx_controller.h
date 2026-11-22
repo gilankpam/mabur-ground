@@ -78,14 +78,12 @@ class VrxController {
   // The probe byte the last built RCF carried (kNoProbeProfile when none).
   uint8_t probe_profile() const { return last_cmd_probe_profile_; }
   // chip_caps from the latest Telem of the current session; 0 until one
-  // arrives (and again after a new session is adopted). Gates GS main's
-  // video tail on mabur::rc::CAP_FRAME_WIRE.
+  // arrives (and again after a new session is adopted). Read for
+  // CAP_CALIBRATE and CAP_MAVLINK, only once peer_caps_known(): 0 before
+  // the first Telem is "not heard yet", not "no caps".
   uint16_t peer_caps() const { return peer_caps_; }
-  // Whether any DiscAck has ever been accepted. peer_caps() == 0 is ambiguous
-  // on its own — a peer may genuinely advertise no caps — so callers that
-  // want to complain about a peer's missing capability must wait for this to
-  // be true or they complain about a peer they have not heard from yet. A
-  // key_mismatch-flagged ack does not count.
+  // Whether any verified DiscAck has ever been accepted (the web GS state
+  // reports it). A key_mismatch-flagged ack does not count.
   bool peer_acked() const { return peer_acked_; }
   // The drone's radio width from the latest Telem; 0 = no Telem yet.
   uint8_t peer_width() const { return peer_width_; }
@@ -135,12 +133,10 @@ class VrxController {
   // lets a caller with no drone to answer (replay, tests) build an ack that
   // passes the rendezvous seq window.
   uint16_t stamp_disc(double now_ms) { return rz_.stamp(now_ms).seq; }
-  // Hold the SESSION keep-alive DISC (a hop order is in flight): its proposal
-  // is the old op by construction, and a drone that has already followed the
-  // order's RCF would otherwise process the DISC it received on the old
-  // channel and retune straight back (seen on the bench). RCFs are unaffected;
-  // the keep-alive is due at once when the hold lifts. Ignored until the
-  // peer has acked (the stale-caps fast cadence always runs).
+  // Hold the SESSION keep-alive DISC while a hop order is in flight: a
+  // keep-alive takes that tick's RCF slot, and every RCF of the hop carries
+  // the order. RCFs are unaffected; the keep-alive is due at once when the
+  // hold lifts. BEACONING's DISCs ignore it.
   void set_keepalive_hold(bool hold) { keepalive_hold_ = hold; }
   // VTX recorder wish for every RCF (RecControl::wire()).
   void set_rec_wish(uint8_t w) { rec_wish_ = w; }
@@ -164,9 +160,11 @@ class VrxController {
   bool take_move_edge() { const bool e = move_edge_; move_edge_ = false; return e; }
   // Test seam: arm the move edge as a LINKED Telem under a fresh vtx_nonce would.
   void test_set_move_edge() { move_edge_ = true; }
-  // A parsed Telem: records its caps and width, and fires the move edge on
-  // state LINKED (2 == RcAgent::State::LINKED).
-  void note_telem(const mabur::rc::Telem& t);
+  // A parsed Telem (our version: only those parse): records its caps and
+  // width, reports the drone alive to the rendezvous (an other-version ack
+  // is ignored while it is), and fires the move edge on state LINKED
+  // (2 == RcAgent::State::LINKED).
+  void note_telem(const mabur::rc::Telem& t, double now_ms);
   // The drone answers our DISCs with key_mismatch: our key differs from its.
   // No RCF/cal goes out; beacons continue.
   bool key_mismatch() const { return rz_.state() == VrxState::KEY_MISMATCH; }

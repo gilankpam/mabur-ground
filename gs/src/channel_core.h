@@ -138,7 +138,6 @@ inline const char* lease_state_name(LeaseState s) {
 struct ChannelCoreCfg {
   RadioCfg radio;              // channels, pin, scan knobs (the width is width_mhz)
   HopCfg hop;                  // [hop] + [hop.verdict]
-  mabur::LinkKey key;          // disc_for_channel re-tags per channel
   // The receiver width every card is opened at. The live value is
   // ChannelCore::width_mhz(); set_width moves it, the hop ranker and the
   // in-flight scout with it, and the boot scout once its card is retuned.
