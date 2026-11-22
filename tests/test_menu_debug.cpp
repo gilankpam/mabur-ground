@@ -137,6 +137,28 @@ TEST(view_text_prints_header_and_pill_mark_lines_only_when_set) {
   CHECK(with.find("pill_mark: no heartbeat\n") != std::string::npos);
 }
 
+TEST(view_text_prints_the_upgrade_page_only_when_shown) {
+  MenuView v;
+  v.open = true;
+  CHECK(menu_view_text(v).find("upgrade.") == std::string::npos);
+
+  v.upgrade.shown = true;
+  v.upgrade.header = "v0.4.0";
+  v.upgrade.pct = 25;
+  v.upgrade.running = true;
+  v.upgrade.phase_text = "Writing";
+  v.upgrade.error = "Write failed";
+  v.upgrade.confirm = "Install v0.4.0?";
+  const std::string t = menu_view_text(v);
+  CHECK(t.find("upgrade.shown 1\n") != std::string::npos);
+  CHECK(t.find("upgrade.header=v0.4.0\n") != std::string::npos);
+  CHECK(t.find("upgrade.pct=25\n") != std::string::npos);
+  CHECK(t.find("upgrade.running=1\n") != std::string::npos);
+  CHECK(t.find("upgrade.phase=Writing\n") != std::string::npos);
+  CHECK(t.find("upgrade.error=Write failed\n") != std::string::npos);
+  CHECK(t.find("upgrade.confirm=Install v0.4.0?\n") != std::string::npos);
+}
+
 TEST(pam_round_trips_straight_alpha_from_premultiplied) {
   std::vector<uint32_t> buf(4, 0u);
   buf[0] = premul(0xFFFFFF, 128);  // half-alpha white; the other 3 px stay transparent

@@ -582,4 +582,169 @@ TEST(choice_note_drawn_in_its_tone) {
   CHECK(colors[i] == tok::kStatusCritical);
 }
 
+namespace {
+
+// An update page over a menu that still has rows: the page replaces them.
+MenuView page_view(int n_lines) {
+  MenuView v = sample();
+  v.upgrade.shown = true;
+  v.upgrade.title = "Update from file";
+  v.upgrade.header = "v0.4.0 (this GS v0.3.2)";
+  v.upgrade.header_warn = true;
+  v.upgrade.pair = "pairs with drone v0.4.x";
+  for (int i = 1; i <= n_lines; ++i) v.upgrade.lines.push_back("line " + std::to_string(i));
+  v.upgrade.keys = "▲▼ scroll  ▶ install  ◀ back";
+  return v;
+}
+
+bool has(const std::vector<std::string>& v, const std::string& s) {
+  return std::find(v.begin(), v.end(), s) != v.end();
+}
+
+}  // namespace
+
+TEST(an_upgrade_page_draws_header_pair_and_eight_body_lines_from_first) {
+  Canvas c(1920, 1080);
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  MenuView v = page_view(12);
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  std::vector<std::string> want = {"Update from file", "● drone linked",
+                                   "v0.4.0 (this GS v0.3.2)", "pairs with drone v0.4.x"};
+  for (int i = 1; i <= 8; ++i) want.push_back("line " + std::to_string(i));
+  want.push_back("▲▼ scroll  ▶ install  ◀ back");
+  CHECK(m.debug_texts() == want);
+  const auto colors = m.debug_colors();
+  REQUIRE(colors.size() == want.size());
+  CHECK(colors[2] == tok::kStatusCaution);   // header_warn
+  CHECK(colors[3] == tok::kTextPrimary);     // pair, no warn
+
+  v.upgrade.first = 4;
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  std::vector<std::string> scrolled(want.begin(), want.begin() + 4);
+  for (int i = 5; i <= 12; ++i) scrolled.push_back("line " + std::to_string(i));
+  scrolled.push_back(want.back());
+  CHECK(m.debug_texts() == scrolled);
+}
+
+TEST(an_upgrade_page_cursor_line_is_selected) {
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  // The y of the first panel-edge pixel that differs between two cursors.
+  auto paint = [&](int cursor) {
+    Canvas c(1920, 1080);
+    MenuView v = page_view(3);
+    v.upgrade.cursor = cursor;
+    m.set_view(v);
+    m.invalidate();
+    m.paint(c.s, nullptr);
+    return c.px;
+  };
+  auto first_diff_y = [&](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) {
+    const DirtyRect p = m.debug_panel_box();
+    for (int y = p.y; y < p.y + p.h; ++y)
+      if (a[(size_t)y * 1920 + p.x + 2] != b[(size_t)y * 1920 + p.x + 2]) return y;
+    return -1;
+  };
+  const auto none = paint(-1), one = paint(1), zero = paint(0);
+  const int y1 = first_diff_y(none, one), y0 = first_diff_y(none, zero);
+  CHECK(y0 >= 0);
+  CHECK(y1 > y0);   // the second line's fill sits below the first's
+}
+
+TEST(an_upgrade_running_page_draws_a_bar_only_at_a_percent) {
+  Canvas c(1920, 1080);
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  MenuView v = page_view(0);
+  v.upgrade.running = true;
+  v.upgrade.phase_text = "Writing";
+  v.upgrade.pct = 25;
+  v.upgrade.keys = "";
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  auto t = m.debug_texts();
+  CHECK(has(t, "25 %"));
+  CHECK(has(t, "Writing"));
+  CHECK(std::count(t.begin(), t.end(), std::string("Don't power off")) == 1);
+  const int with_bar = m.debug_panel_box().h;
+
+  v.upgrade.pct = -1;
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  t = m.debug_texts();
+  CHECK(!has(t, "25 %"));
+  CHECK(has(t, "Writing"));
+  CHECK(has(t, "Don't power off"));
+  CHECK(m.debug_panel_box().h < with_bar);
+
+  // An ended page keeps its phase text but is not running: no warning line.
+  v.upgrade.running = false;
+  v.upgrade.phase_text = "Cancelled";
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  t = m.debug_texts();
+  CHECK(has(t, "Cancelled"));
+  CHECK(!has(t, "Don't power off"));
+}
+
+TEST(an_upgrade_page_error_is_drawn_in_the_error_token) {
+  Canvas c(1920, 1080);
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  MenuView v = page_view(0);
+  v.upgrade.error = "Write failed — reflash from SD card";
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  const auto t = m.debug_texts();
+  const auto colors = m.debug_colors();
+  auto it = std::find(t.begin(), t.end(), v.upgrade.error);
+  REQUIRE(it != t.end());
+  CHECK(colors[(size_t)(it - t.begin())] == tok::kStatusCritical);
+}
+
+TEST(an_upgrade_confirm_reuses_the_confirm_prompt) {
+  Canvas c(1920, 1080);
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  MenuView v = page_view(2);
+  v.upgrade.confirm = "Install v0.4.0?";
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  CHECK(m.debug_picker_box().w > 0);
+  const auto t = m.debug_texts();
+  CHECK(has(t, "Install v0.4.0?"));
+  CHECK(has(t, "▶ Go ahead"));
+  CHECK(has(t, "◀ Cancel"));
+
+  // A menu picker left open under the page is not drawn beside it.
+  v.upgrade.confirm = "";
+  v.picker = MenuView::Picker::kChoices;
+  v.choices = {{"60", "60 fps", "", true}};
+  m.set_view(v);
+  m.paint(c.s, nullptr);
+  CHECK(m.debug_picker_box().w == 0);
+}
+
+TEST(an_upgrade_page_with_no_rows_paints) {
+  Canvas c(1920, 1080);
+  MenuLayer m(font());
+  std::string err;
+  REQUIRE(m.layout(1920, 1080, &err));
+  MenuView v;
+  v.open = true;
+  v.upgrade.shown = true;
+  m.set_view(v);
+  std::vector<DirtyRect> out;
+  CHECK(m.paint(c.s, &out) > 0);
+  CHECK(!m.dirty());
+}
+
 MTEST_MAIN

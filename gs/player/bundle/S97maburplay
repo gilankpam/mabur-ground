@@ -8,30 +8,47 @@
 # decode watchdog's exit-for-respawn path (exit 1) also lands here.
 
 case "$1" in
-  stop)
+  stop|hold)
     # Kill the wrapper loop first so it cannot respawn, then the player.
     # Exclude $$ AND $PPID: `restart` runs stop as a child, and pidof
     # matches the restarting parent too -- killing it aborted the restart
     # before the new loop ever spawned (found by the acceptance test).
+    # `hold` stops at the loop: gs-upgrade keeps the player drawing its
+    # progress through the flash, and a player that dies then must not be
+    # respawned from the half-written rootfs.
     for pid in $(pidof S97maburplay); do
       [ "$pid" != "$$" ] && [ "$pid" != "$PPID" ] && kill "$pid" 2>/dev/null
     done
-    killall maburplay 2>/dev/null
+    [ "$1" = stop ] && killall maburplay 2>/dev/null
     exit 0
     ;;
   restart)
     "$0" stop
     sleep 1
     ;;
+  watch)
+    # Re-arm the loop around a player that is still running (gs-upgrade's
+    # way back from `hold` when it gives up before the write): wait for it
+    # to exit, then respawn as `start` does. Its exit code is not ours to
+    # read, so its exit always respawns. A loop already running wins.
+    for pid in $(pidof S97maburplay); do
+      [ "$pid" != "$$" ] && [ "$pid" != "$PPID" ] && exit 0
+    done
+    ;;
   start|"") ;;
-  *) echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+  *) echo "usage: $0 {start|stop|restart|hold|watch}"; exit 1 ;;
 esac
 
 # The GS image keeps its configs on the CONFIG partition; other hosts in /etc.
 CONF=/config/maburplay.toml
 [ -f "$CONF" ] || CONF=/etc/maburplay.toml
 
+# `watch` appends: the running player still writes to this log.
+[ "$1" = watch ] || : >/tmp/maburplay.log
 (
+  if [ "$1" = watch ]; then
+    while pidof maburplay >/dev/null; do sleep 1; done
+  fi
   while true; do
     /usr/local/bin/maburplay -c "$CONF"
     rc=$?
@@ -42,4 +59,4 @@ CONF=/config/maburplay.toml
     echo "maburplay exited: $rc, restart ...."
     sleep 1
   done
-) >/tmp/maburplay.log 2>&1 &
+) >>/tmp/maburplay.log 2>&1 &

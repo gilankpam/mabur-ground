@@ -11,8 +11,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -54,6 +57,8 @@
 #include "rec_control.h"  // maburgs::kRecControlPort
 #include "ring_client.h"
 #include "stream_feeder.h"
+#include "upgrade_flow.h"    // the update pages behind the Firmware rows
+#include "upgrade_runner.h"  // runs gs-upgrade for them
 #include "video_backend.h"
 #include "core_control_client.h"  // sends the button's VTX wish + refresh reports to maburgs
 #include "splash_image.h"  // startup splash asset + cover-fit painter
@@ -2401,6 +2406,48 @@ int main(int argc, char** argv) {
     return display_lock && display_lock->available() && !display_lock->refused();
   };
 #endif
+  // Updating the GS from the Firmware rows: built only with the menu, the one
+  // place its pages are drawn and its keys come from. The flash itself runs
+  // in gs-upgrade and does not depend on this process.
+  std::optional<maburplay::UpgradeRunner> upgrader;
+  std::optional<maburplay::UpgradeFlow> upgrade_flow;
+  std::string upgrade_board;
+  std::string upgrade_job;  // the find/check in flight: "find", "stable" or "snapshot"
+  std::string update_cached;  // the menu's update mark, see update_available
+  uint64_t update_read_ms = 0;
+  bool update_read = false;
+  if (menu_on) {
+    std::ifstream osr_file("/etc/os-release");
+    const std::string osr((std::istreambuf_iterator<char>(osr_file)),
+                          std::istreambuf_iterator<char>());
+    menu_deps.gs_version = maburplay::os_release_value(osr, "VERSION");
+    upgrade_board = maburplay::os_release_value(osr, "BUILD_CONFIG");
+    upgrader.emplace();
+    upgrade_flow.emplace(menu_deps.gs_version, upgrade_board);
+    menu_deps.upgrade_file = [&] {
+      if (!upgrader->find()) return;
+      upgrade_job = "find";
+      std::fprintf(stderr, "maburplay: upgrade: find\n");
+    };
+    menu_deps.upgrade_online = [&](const std::string& channel) {
+      if (!upgrader->check(channel)) return;
+      upgrade_job = channel;
+      std::fprintf(stderr, "maburplay: upgrade: check %s\n", channel.c_str());
+    };
+    menu_deps.upgrade_busy = [&] { return upgrader->busy(); };
+    // The rows read this on every view rebuild on the player loop: the file
+    // is re-read at most once a second. The cache lives out here because the
+    // tree copies its deps on every rebuild.
+    menu_deps.update_available = [&] {
+      const uint64_t now = mono_ms();
+      if (!update_read || now - update_read_ms >= 1000) {
+        update_read = true;
+        update_cached = upgrader->available();
+        update_read_ms = now;
+      }
+      return update_cached;
+    };
+  }
   // The tree is rebuilt on every model call, so its snapshot pointer follows
   // gs_src as it is now.
   maburplay::MenuModel menu_model([&] {
@@ -2420,8 +2467,46 @@ int main(int argc, char** argv) {
   maburplay::UdpGsViewSource gs_view_source(gs_client);
   maburplay::MenuSession menu(menu_model, menu_applier, gs_view_source, gs_view);
   menu.log = [](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); };
-  // The menu's view for the composer (menu_view_feed.h).
+  // The menu's view for the composer (menu_view_feed.h). An update page is
+  // drawn even with the menu closed: an install's progress must stay on screen.
   [[maybe_unused]] maburplay::MenuViewFeed menu_feed;
+  auto menu_view = [&](uint64_t t) {
+    maburplay::MenuView v = menu_model.view(t);
+    if (upgrade_flow) {
+      v.upgrade = upgrade_flow->page();
+      if (v.upgrade.shown) v.open = true;
+    }
+    return v;
+  };
+  // The update page's commands: start and cancel go to gs-upgrade.
+  std::string upgrade_logged;  // "<state> <phase>" of the last status line logged
+  auto upgrade_cmd = [&](const maburplay::UpgradeCmd& c) {
+    using Kind = maburplay::UpgradeCmd::Kind;
+    if (c.kind == Kind::kCancel) {
+      std::fprintf(stderr, "maburplay: upgrade: cancel\n");
+      upgrader->cancel();
+      return;
+    }
+    if (c.kind != Kind::kStartFile && c.kind != Kind::kStartOnline) return;
+    const std::string& what = c.version.empty() ? c.arg : c.version;
+    std::fprintf(stderr, "maburplay: upgrade: start %s\n", what.c_str());
+    upgrade_logged.clear();
+    std::string why;
+    if (upgrader->start(c, &why)) return;
+    std::fprintf(stderr, "maburplay: upgrade: start failed: %s\n", why.c_str());
+    maburplay::UpgradeStatus st;
+    st.state = "error";
+    st.msg = why;
+    upgrade_flow->on_status(st);
+  };
+  // gs-upgrade's status file (the page's progress, the ui-ready ask) is read
+  // at most this often.
+  constexpr uint64_t kUpgradeStatusMs = 250;
+  uint64_t upgrade_status_ms = 0;
+  bool upgrade_ui_ready = false;  // marked for the run now in its stop phase
+  // Set once ui-ready is marked; while the page still shows that run, the
+  // record button and SIGUSR1 start no recording on the rootfs being written.
+  bool upgrade_rec_held = false;
 
   // MABUR_MENU_DEBUG's "key" verb queues here; drained into the exact same
   // per-tick loop that consumes bank.poll() below, so an injected event
@@ -2435,7 +2520,7 @@ int main(int argc, char** argv) {
                              const std::string& rest) -> std::optional<std::string> {
       // Computed only when the menu is actually on: with it off there is
       // nothing to dump, and nothing here needs the cost of asking.
-      const maburplay::MenuView view = menu_on ? menu_model.view(mono_ms()) : maburplay::MenuView{};
+      const maburplay::MenuView view = menu_on ? menu_view(mono_ms()) : maburplay::MenuView{};
       std::optional<maburplay::KeyEvent> key;
       if (std::optional<std::string> reply =
               maburplay::handle_menu_debug_verb(verb, rest, menu_on, view, &key)) {
@@ -2468,7 +2553,9 @@ int main(int argc, char** argv) {
     // One ioctl per iteration (~500/s, microseconds each) -- far under the
     // ~1.5 ms budget tools/bench/gs_osd_bench.cpp polices for this loop.
     if ((rec_button.is_open() && rec_button.poll(mono_ms())) || g_rec_toggle.exchange(false)) {
-      if (rec_on) {
+      if (upgrade_rec_held && upgrade_flow->page().running) {
+        std::fprintf(stderr, "maburplay: upgrade: record toggle ignored\n");
+      } else if (rec_on) {
         rec_stop();
         follow_live_rec();  // a dvr.* set during the recording takes over now
       } else {
@@ -2487,9 +2574,80 @@ int main(int argc, char** argv) {
         events.insert(events.end(), menu_injected_keys.begin(), menu_injected_keys.end());
         menu_injected_keys.clear();
       }
-      for (const maburplay::KeyEvent& e : events)
+      for (const maburplay::KeyEvent& e : events) {
+        // An update page takes every key while it is up.
+        if (upgrade_flow->active()) {
+          if (const std::optional<maburplay::UpgradeKey> k = maburplay::upgrade_key(e))
+            upgrade_cmd(upgrade_flow->key(*k));
+          continue;
+        }
         if (const std::optional<bool> repeat = menu.key(e, now_ms)) bank.set_repeat(*repeat);
+      }
       menu.tick(now_ms);
+      if (upgrade_job == "find") {
+        if (std::optional<maburplay::UpgradeRunner::FindResult> r = upgrader->poll_find()) {
+          upgrade_job.clear();
+          if (r->pkgs.empty() && !r->error.empty()) {
+            menu_model.toast(r->error, now_ms);
+          } else {
+            upgrade_flow->show_packages(std::move(r->pkgs));
+            if (!upgrade_flow->toast().empty()) menu_model.toast(upgrade_flow->toast(), now_ms);
+          }
+        }
+      } else if (!upgrade_job.empty()) {
+        if (std::optional<maburplay::UpgradeRunner::CheckResult> r =
+                upgrader->poll_check(upgrade_board)) {
+          if (r->rel)
+            upgrade_flow->show_release(*r->rel, upgrade_job);
+          else
+            menu_model.toast(r->error, now_ms);
+          upgrade_job.clear();
+        }
+      }
+      if (now_ms - upgrade_status_ms >= kUpgradeStatusMs) {
+        upgrade_status_ms = now_ms;
+        if (upgrade_flow->active()) {
+          if (std::optional<maburplay::UpgradeStatus> st = upgrader->status()) {
+            // A run killed before its final status would hold the page (and
+            // every key) forever. A write-phase error reads "Write failed".
+            if (st->state == "running" && upgrade_flow->page().running && !upgrader->run_alive()) {
+              st->state = "error";
+              st->msg = "The update stopped \xe2\x80\x94 nothing was changed";
+            }
+            const std::string at = st->state + " " + st->phase;
+            if (at != upgrade_logged) {
+              upgrade_logged = at;
+              std::fprintf(stderr, "maburplay: upgrade: status %s %llu/%llu%s%s\n",
+                           st->phase.c_str(), static_cast<unsigned long long>(st->done),
+                           static_cast<unsigned long long>(st->total),
+                           st->state == "running" ? "" : (" " + st->state).c_str(),
+                           st->msg.empty() ? "" : (" " + st->msg).c_str());
+            }
+            upgrade_flow->on_status(*st);
+          }
+        }
+        // gs-upgrade waits in its stop phase for this: any recording is
+        // finished and the player is locked in memory before the rootfs it
+        // runs from is overwritten. Checked with no page up too, so a player
+        // restarted during a run still closes its recording.
+        const bool wants = upgrader->wants_ui_ready();
+        if (wants && !upgrade_ui_ready) {
+          upgrade_ui_ready = true;
+          upgrade_rec_held = true;
+          if (rec_on) {
+            rec_stop();
+            follow_live_rec();
+          }
+          std::string why;
+          if (upgrader->mark_ui_ready(&why))
+            std::fprintf(stderr, "maburplay: upgrade: ui ready (mlockall ok)\n");
+          else
+            std::fprintf(stderr, "maburplay: upgrade: ui ready (mlockall failed: %s)\n",
+                         why.c_str());
+        }
+        if (!wants) upgrade_ui_ready = false;
+        if (!upgrade_flow->page().running) upgrade_rec_held = false;
+      }
       // Holds maburgs' measuring lease for exactly as long as the Channel
       // picker is open on the model, including a whole-menu close with
       // the picker still open underneath it.
@@ -2520,7 +2678,7 @@ int main(int argc, char** argv) {
     // current decision on its very next present()/commit_osd_if_pending().
     if (menu_on && presenter) {
       const maburplay::SplashMenuGate::Decision d =
-          splash_menu_gate.tick(menu_model.is_open(), pump.have_frame());
+          splash_menu_gate.tick(menu_model.is_open() || upgrade_flow->active(), pump.have_frame());
       presenter->set_osd_over_splash(d.allow_over_splash);
       if (d.allow_over_splash != over_splash_logged) {
         over_splash_logged = d.allow_over_splash;
@@ -3088,8 +3246,7 @@ int main(int argc, char** argv) {
         const uint64_t now_ms = mono_ms();
         menu_model.set_banner(g_display_banner);
         composer.menu_tick(now_ms);
-        in.menu = menu_feed.next(now_ms, menu.generation(),
-                                 [&](uint64_t t) { return menu_model.view(t); });
+        in.menu = menu_feed.next(now_ms, menu.generation() + upgrade_flow->generation(), menu_view);
         in.menu_dirty = in.menu != nullptr;
       }
       const bool want = composer.wants(in);

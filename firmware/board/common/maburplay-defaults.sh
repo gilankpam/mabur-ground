@@ -26,6 +26,25 @@ BOARD=$1
 MABURPLAY_DEFAULTS=$2
 [ -f "$MABURPLAY_DEFAULTS" ] || { echo "maburplay-defaults: no file $2" >&2; exit 1; }
 
+# wire_menu <up> <down> <left> <right>: enable the four menu buttons by pin
+# number. The bundle ships them commented out, so the menu stays off until
+# a board wires them. They read high while pressed. No select button:
+# [input.sel] stays commented out (it is optional).
+wire_menu() {
+	for b in up:$1 down:$2 left:$3 right:$4; do
+		n=${b%%:*}
+		p=${b##*:}
+		if ! grep -q "^# \[input\.$n\]\$" $MABURPLAY_DEFAULTS; then
+			echo "post-build: no commented [input.$n] in $MABURPLAY_DEFAULTS -- did mabur change it?" >&2
+			exit 1
+		fi
+		# The header and its three commented keys become the live block.
+		sed -i "/^# \[input\.$n\]\$/{N;N;N;s/.*/[input.$n]\npin        = $p            # pin number on the 40-pin header\nactive_low = false         # the button reads high while pressed\nbias       = \"pull-down\"/}" $MABURPLAY_DEFAULTS
+		grep -q "^\[input\.$n\]\$" $MABURPLAY_DEFAULTS || {
+			echo "post-build: failed to enable [input.$n] in $MABURPLAY_DEFAULTS" >&2; exit 1; }
+	done
+}
+
 case "$BOARD" in
 emax_wyvern-link)
 	# Strip [input.rec]. Upstream puts the DVR record button on header pin 32,
@@ -79,23 +98,14 @@ orangepi_zero2w)
 		echo "post-build: [colortrans] enable is not true in $MABURPLAY_DEFAULTS" >&2; exit 1; }
 	;;
 runcam_wifilink)
-	# The WiFiLink's four navigation buttons, as the menu's up/down/left/right
-	# (the bundle ships them commented out, so the menu stays off). They read
-	# high while pressed. Right (PIN_38) is also BR2_FACTORY_RESET_GPIO_PIN_NAME
-	# and Left (PIN_13) BR2_GADGET_MODE_GPIO_PIN_NAME: those act only while
-	# held during boot, the menu only once maburplay runs, so they coexist.
-	# No select button: [input.sel] stays commented out (it is optional).
-	for b in up:16 down:18 left:13 right:38; do
-		n=${b%%:*}
-		p=${b##*:}
-		if ! grep -q "^# \[input\.$n\]\$" $MABURPLAY_DEFAULTS; then
-			echo "post-build: no commented [input.$n] in $MABURPLAY_DEFAULTS -- did mabur change it?" >&2
-			exit 1
-		fi
-		# The header and its three commented keys become the live block.
-		sed -i "/^# \[input\.$n\]\$/{N;N;N;s/.*/[input.$n]\npin        = $p            # pin number on the 40-pin header\nactive_low = false         # the button reads high while pressed\nbias       = \"pull-down\"/}" $MABURPLAY_DEFAULTS
-		grep -q "^\[input\.$n\]\$" $MABURPLAY_DEFAULTS || {
-			echo "post-build: failed to enable [input.$n] in $MABURPLAY_DEFAULTS" >&2; exit 1; }
-	done
+	# The WiFiLink's four navigation buttons. Right (PIN_38) is also
+	# BR2_FACTORY_RESET_GPIO_PIN_NAME and Left (PIN_13) BR2_GADGET_MODE_GPIO_PIN_NAME.
+	wire_menu 16 18 13 38
+	;;
+radxa_zero3)
+	# The Radxa ZERO 3's four navigation buttons. Right (PIN_11) is also the
+	# factory-reset pin and Left (PIN_13) the gadget pin; both act only while
+	# held during boot, so they coexist with the menu.
+	wire_menu 16 18 13 11
 	;;
 esac

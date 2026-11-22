@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "key_timer.h"
+#include "upgrade_flow.h"  // UpgradePage
 
 namespace maburplay {
 
@@ -107,6 +108,7 @@ struct MenuView {
   int picker_current = -1;
   std::string number_text, number_range, confirm_text;
   std::string toast, banner;
+  UpgradePage upgrade;               // shown: drawn in place of the rows
   bool operator==(const MenuView& o) const;   // field-wise; main composes only on a change
 };
 

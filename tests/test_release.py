@@ -142,16 +142,88 @@ class Notes(unittest.TestCase):
                              [{"board": "radxa_zero3", "devourer": "d" * 40,
                                "buildroot": "2025.08.1", "kernel": "k.tar.gz",
                                "kernel_sha256": "e" * 64}],
-                             {"x.img": "f" * 32})
+                             {"x.img": "f" * 32}, ["- fix: x"])
         self.assertIn("mabur-ground v0.1.0 (commit `bbbbbbbb`)", body)
         self.assertIn("Pairs with drone v0.1.0", body)
         self.assertIn("RC_VERSION 18", body)
         self.assertIn("radxa_zero3", body)
         self.assertIn("`x.img`", body)
 
+    def test_notes_changes_section(self):
+        body = release.notes("v0.1.0", "b" * 40, PIN, "v0.1.0", self.CONTRACT,
+                             [{"board": "radxa_zero3"}], {"x.img": "f" * 32}, ["- fix: x"])
+        self.assertIn("\n**Changes**\n- fix: x\n", body)
+        self.assertLess(body.index("radxa_zero3"), body.index("**Changes**"))
+        self.assertLess(body.index("**Changes**"), body.index("| file | md5 |"))
+
     def test_unpaired(self):
-        body = release.notes("snapshot-bbbbbbbb", "b" * 40, PIN, None, self.CONTRACT, [], {})
+        body = release.notes("snapshot-bbbbbbbb", "b" * 40, PIN, None, self.CONTRACT, [], {}, [])
         self.assertIn("matches no drone release yet", body)
+
+
+class Changelog(unittest.TestCase):
+    def setUp(self):
+        self.repo = tempfile.mkdtemp()
+        git(self.repo, "init", "-q", "-b", "master")
+        git(self.repo, "config", "user.email", "t@example.com")
+        git(self.repo, "config", "user.name", "t")
+        self.n = 0
+
+    def tearDown(self):
+        shutil.rmtree(self.repo)
+
+    def commit(self, msg):
+        self.n += 1
+        git(self.repo, "commit", "-q", "--allow-empty", "-m", msg)
+
+    def head(self):
+        return git(self.repo, "rev-parse", "HEAD")
+
+    def test_changelog_since_previous_tag(self):
+        self.commit("old")
+        git(self.repo, "tag", "v0.1.0")
+        self.commit("fix: x")
+        git(self.repo, "switch", "-q", "-c", "feat")
+        self.commit("inner")
+        git(self.repo, "switch", "-q", "master")
+        git(self.repo, "merge", "-q", "--no-ff", "feat", "-m",
+            "Merge pull request #5 from a/b", "-m", "Wire the buttons")
+        self.assertEqual(release.changelog(self.repo, self.head()),
+                         ["- Wire the buttons (#5)", "- fix: x"])
+
+    def test_changelog_excludes_own_tag(self):
+        self.commit("old")
+        git(self.repo, "tag", "v0.1.0")
+        self.commit("a")
+        self.commit("b")
+        git(self.repo, "tag", "v0.2.0")
+        self.assertEqual(release.changelog(self.repo, self.head()), ["- b", "- a"])
+
+    def test_changelog_empty(self):
+        # No real history yields an empty range (the walk starts at sha^), so
+        # stub git to return one.
+        class R:
+            returncode, stdout = 0, ""
+        orig = release._git
+        release._git = lambda *a, **k: R()
+        try:
+            self.assertEqual(release.changelog(self.repo, "HEAD"), ["- No changes"])
+        finally:
+            release._git = orig
+
+    def test_changelog_cap(self):
+        for i in range(60):
+            self.commit(f"c{i}")
+        out = release.changelog(self.repo, self.head())
+        self.assertEqual(len(out), 51)
+        self.assertEqual(out[-1], "- \u2026 and 10 more")
+
+
+class VersionFile(unittest.TestCase):
+    def test_version_file(self):
+        self.assertEqual(release.version_file("v0.2.0", "radxa_zero3", "v0.2.0"),
+                         "version=v0.2.0\nboard=radxa_zero3\ndrone=v0.2.0\n")
+        self.assertIn("\ndrone=\n", release.version_file("v0.2.0", "radxa_zero3", None))
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 #!/bin/sh
 # Host-side test for firmware/scripts/pack-images.sh: what goes into each
-# board's sysupgrade package <board>.tar.gz.
+# board's upgrade package <board>.tar.gz.
 #
 #   sh firmware/tests/pack-images.test.sh
 #
-# The RK3566 packages carry U-Boot; the Orange Pi's must not. sysupgrade
+# The RK3566 packages carry U-Boot; the Orange Pi's must not. An upgrader
 # writes u-boot.bin at the Rockchip offset (32 KiB); on the H618 that write
 # runs over the SPL at 256 KiB with a misplaced copy and the board no longer
 # boots.

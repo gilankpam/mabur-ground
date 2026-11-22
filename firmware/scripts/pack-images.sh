@@ -4,10 +4,10 @@
 # Turns what Buildroot left in <images_dir> into the files a release
 # carries: <board>_sdcard.img, <board>_boot.scr, <board>_u-boot.bin,
 # <board>_rootfs.squashfs, <board>_emmc_bootloader.img (when built), and the
-# sysupgrade package <board>.tar.gz.
+# upgrade package <board>.tar.gz.
 #
 # The package holds rootfs.squashfs and, on the RK3566 boards, u-boot.bin,
-# each with its .md5sum. The Orange Pi's holds no U-Boot: sysupgrade writes
+# each with its .md5sum. The Orange Pi's holds no U-Boot: an upgrader writes
 # u-boot.bin at the Rockchip offset (32 KiB), and on the H618 that write
 # runs over the SPL at 256 KiB. Its bootloader ships only as
 # orangepi_zero2w_u-boot.bin, for flashing on purpose.
