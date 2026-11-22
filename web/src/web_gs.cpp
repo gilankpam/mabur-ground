@@ -250,14 +250,15 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
           follow_->on_rcf(r->hop_ch, r->hop_epoch, rx_ch_cur_, static_cast<double>(us) / 1000.0);
       return;
     }
-    const bool was_session = vrx_->link_state() == maburgs::VrxState::SESSION;
+    const auto found = [&] {
+      const auto st = vrx_->link_state();
+      return st == maburgs::VrxState::SESSION || st == maburgs::VrxState::VERSION_MISMATCH;
+    };
+    const bool was_found = found();
     vrx_->on_rc_frame(f.data(), f.size(), static_cast<double>(us) / 1000.0);
-    // As in main.cpp: the ack that OPENED the session links
-    // where it was heard (on_rc_body() handed the core its rx channel).
-    if (chan_ && !was_session && vrx_->link_state() == maburgs::VrxState::SESSION &&
-        mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_DISC_ACK)
-      if (const auto ack = mabur::rc::parse_disc_ack(f.data(), f.size()))
-        chan_->on_session_opened(*ack, static_cast<double>(us) / 1000.0);
+    // As in main.cpp: the link forms on the channel the drone's ack named.
+    if (chan_ && !was_found && found())
+      chan_->on_drone_found(vrx_->agreed_channel(), static_cast<double>(us) / 1000.0);
   });
   agg_.set_probe_sink([this](uint8_t card, const mabur::node::RxBody& m) {
     if (slot_) slot_->on_probe_tail(now_us_ / 1000);
@@ -521,8 +522,6 @@ void WebGs::tick(uint64_t now_us) {
       for (size_t k = 0; k < targets.size(); ++k) {
         maburgs::SlotFrame sf{k + 1 == targets.size() ? std::move(out->frame) : out->frame,
                               vrx_->rcf_seq(), targets[k], !out->is_disc};
-        // A DISC proposes the channel it is sent on (main.cpp, C1 addendum A).
-        if (out->is_disc && chan_) sf.frame = chan_->disc_for_card(sf.frame, targets[k]);
         if (!slot_->offer(sf, now_ms_u, false) && send_(sf)) {
           sent_copy = sf.frame;
           sent = &sent_copy;

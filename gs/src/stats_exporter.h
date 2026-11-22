@@ -376,6 +376,8 @@ struct StatsInput {
   StatsVtxIn vtx;
   bool in_session = false;  // VrxState::SESSION
   bool key_mismatch = false;   // VrxState::KEY_MISMATCH
+  bool version_mismatch = false;   // VrxState::VERSION_MISMATCH
+  std::optional<uint8_t> drone_rc_version;   // the verified ack's version; null before one
   std::string key_fp;          // mabur::key_fingerprint(cfg.link.key)
   int tx_card = 0;
   OpPoint op;

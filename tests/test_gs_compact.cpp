@@ -248,6 +248,24 @@ TEST(auto_channel_select_marks_the_channel) {
         ic("ch:--(a) mcs:5/20 air:62% rssi:-70/-72 snr:22/20 temp:41 up:95%"));
 }
 
+// A drone at another RC version replaces the channel item with UPD?; a key
+// mismatch outranks it, and a stale snapshot never paints it.
+TEST(UPD_replaces_the_channel_item_on_version_mismatch) {
+  GsFont f;
+  std::string err;
+  REQUIRE(f.load(GSFONT_SCALED, &err));
+  GsCompactBar bar(f);
+  REQUIRE(bar.layout(1920, 1080, &err));
+  GsSnapshot s = nominal();
+  const GsPlayerState ps = player_nominal();
+  s.version_mismatch = true;
+  CHECK(bar.debug_field_text(s, false, ps, GsBarField::kCh) == "UPD?");
+  s.key_mismatch = true;
+  CHECK(bar.debug_field_text(s, false, ps, GsBarField::kCh) == "KEY?");
+  s.key_mismatch = false;
+  CHECK(bar.debug_field_text(s, true, ps, GsBarField::kCh) != "UPD?");
+}
+
 // In-flight channel hop: the channel carries an "(h)" suffix -- same slot as
 // "(a)", mutually exclusive with it -- so the pilot can tell the link is on a
 // channel the hop feature itself put it on, right now.

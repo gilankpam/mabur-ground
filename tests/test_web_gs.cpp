@@ -1445,7 +1445,7 @@ TEST(one_card_frames_pass_to_the_card_while_the_scout_beacons) {
     o.pass = core->may_send(0);
     o.ch = r.card.ch;
     mabur::rc::Disc d;
-    const auto wire = core->disc_for_card(mabur::rc::pack_disc(d, r.c.link.key), 0);
+    const auto wire = mabur::rc::pack_disc(d, r.c.link.key);
     const auto back = mabur::rc::parse_disc(wire.data(), wire.size());
     o.proposes_ch = false;  // TASK 8: DISC has no channel to propose
     (void)back;

@@ -152,22 +152,15 @@ channel set is recorded in [`docs/findings/2026-08-29-deploy-flag-days.md`](http
   InitWrite tunes there at `radio.width`. No scan, no search; the drone
   listens and sends `T_TELEM` at ~1 Hz in every state — that is its
   "shout".
-- **Follows members only.** A DISC proposing a member the drone is not on:
-  the drone acks agreement from its current channel; once the first
-  verifying RCF promotes that pair, the retune runs on the next `tick()`
-  (after main has sent one Telem saying LINKED on the current channel;
-  `act_.retune(ch, "disc")`), and the move is marked unconfirmed. The GS
-  never sends such a DISC — every copy proposes the channel it is sent on,
-  and the GS moves a linked drone only with hop orders ("Finding the
-  drone" below); the path stays for robustness. A DISC proposing a
-  **non-member**: the drone acks its own current channel instead (`maburgs`
-  logs `ack_override` on `ChannelPlan::on_ack`). An RCF `hop_ch` that is
+- **Follows hop orders only.** A DISC carries no channel: the drone never
+  moves on a discovery frame, it acks from the channel it is on, and that
+  channel travels in the ack (`DiscAck.channel`). An RCF `hop_ch` that is
   not a member is ignored for the retune, but the `(hop_epoch, hop_ch)`
   pair is still recorded as seen, so a repeated non-member order is not
   re-evaluated on every RCF.
 - **Unconfirmed move goes back.** After `move_confirm_ms` with nothing
   heard from the GS on the new channel: retune to `move_from_ch_` — the
-  channel the drone came from, DISC move or hop alike — and enter
+  channel the drone came from — and enter
   RENDEZVOUS there ("There is no home to fall through to",
   `drone/src/rc_agent.cpp`).
 - **Long loss: stay put.** FAILSAFE entry and the `rendezvous_ms` timeout
@@ -178,12 +171,11 @@ channel set is recorded in [`docs/findings/2026-08-29-deploy-flag-days.md`](http
 - **Retune mechanics**: TX-gate exclusive, 5 ms drain, `FastRetune`, TX
   power re-applied, calibration deferral (latched and replayed on the
   sweep's falling edge), stderr `maburd: retune A -> B (reason)`. Reasons:
-  `disc`, `hop`, `move_unconfirmed`.
-- **Wire.** `Disc.op_channel` / `DiscAck.agreed_channel` and
-  `Rcf.hop_ch` / `hop_epoch` carry members (`common/include/mabur/rc_proto.h`).
+  `hop`, `move_unconfirmed`.
+- **Wire.** `DiscAck.channel` and `Rcf.hop_ch` / `hop_epoch` carry members (`common/include/mabur/rc_proto.h`).
 
 Invariant: the drone is always on a member of its set, and only moves on
-a GS proposal, a GS order, or an unconfirmed move back to where it came
+a GS order, or an unconfirmed move back to where it came
 from.
 
 ## GS: search and measure (`ChannelScout`, `gs/src/channel_scout.{h,cpp}`)
@@ -321,20 +313,22 @@ pair ([`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/do
 member X ≠ `op` must be linked on X first — RCFs sent on `op` would never
 reach it.
 
-- **The DISC proposes the channel it is sent on.** One DISC is built per
-  tick proposing `op`; every copy fanned to a card on another member is
-  re-proposed and re-tagged for that card's channel
-  (`disc_for_channel()`, `gs/src/vrx_controller.h`). A search burst's DISC
-  on X therefore proposes X: the drone agrees to stay, and never retunes
-  itself on promotion.
-- **The link forms where the drone is.** When the ack that **opened** the
-  session (BEACONING → SESSION inside that `on_rc_frame` call; our nonce,
-  not key-mismatch flagged — a stranger's drone cannot drag the cards) was
-  heard on a member X ≠ `op` (that body's `rx_channel`),
-  `ChannelPlan::link_found()` moves `op` to X for **every** card (the TX
-  card too, via the mechanical retune), the scout parks there, and the
-  proposal follows. `M all <op> <X> link_found`; stderr `maburgs channel:
-  drone found on X (op Y): the link forms there`.
+- **A DISC proposes nothing.** It is the same frame on every card and
+  channel; the drone answers from wherever it is and the ack names that
+  channel (`DiscAck.channel`).
+- **The link forms where the drone is.** When a verified ack reveals the
+  drone (BEACONING → SESSION, or → VERSION_MISMATCH, inside that
+  `on_rc_frame` call; a stranger's drone with another key never gets here,
+  it is KEY MISMATCH) and `ack.channel` is a member X ≠ `op`,
+  `ChannelCore::on_drone_found(X)` calls `ChannelPlan::link_found()`, which
+  moves `op` to X for **every** card (the TX card too, via the mechanical
+  retune); the scout parks there. `M all <op> <X> link_found`; stderr
+  `maburgs channel: drone found on X (op Y): the link forms there`.
+- **A version mismatch stops the search too.** A drone at another RC
+  version is found the same way, and the plan counts it as linked
+  (`ChannelTickIn::version_mismatch`), so the cards stay on its channel
+  instead of scanning on and the OSD's `UPD?` is steady. No RCFs go out
+  and no hop runs; the state ends on the first verified same-version ack.
 - **Then it is relocated.** `ChannelPlan::want()` is where the link
   *should* live: the pin in pinned mode, else the start channel, later the
   committed pick. While linked with `op ≠ want` (`relocate_due()`), the

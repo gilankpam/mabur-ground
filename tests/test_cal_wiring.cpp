@@ -211,7 +211,7 @@ TEST(effective_width_is_the_narrower_of_the_gs_and_the_linked_drone) {
   CHECK(cal_effective_width(40, /*linked=*/true, /*peer_width=*/20) == 20);
   CHECK(cal_effective_width(40, true, 40) == 40);
   CHECK(cal_effective_width(20, true, 40) == 20);
-  // No DiscAck width yet, or no link: the GS's own width.
+  // No Telem width yet, or no link: the GS's own width.
   CHECK(cal_effective_width(40, true, 0) == 40);
   CHECK(cal_effective_width(40, false, 20) == 40);
 }

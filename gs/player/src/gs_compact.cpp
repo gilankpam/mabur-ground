@@ -385,6 +385,14 @@ GsCompactBar::FieldState GsCompactBar::state_of_(const GsSnapshot& snap,
         st.rgb = tok::kStatusCaution;
         break;
       }
+      // A drone at another RC version: the link cannot run, say so in the
+      // same slot. After the key check -- a stranger's drone is KEY?, never
+      // UPD? -- and stale-gated like it.
+      if (snap.version_mismatch && !stale) {
+        st.text = "UPD?";
+        st.rgb = tok::kStatusCaution;
+        break;
+      }
       st.text = tag(gs_icon::kCh) +
                 (snap.channel ? ascii_int(std::clamp(*snap.channel, 0, 999)) : "--");
       // In-flight channel hop takes priority over the boot-scan mark below --

@@ -29,7 +29,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 
 ### `link` — op point, ladder, loss
 
-- `channel`, `state` (`session` | `beaconing` | `key_mismatch`), `key_fp`,
+- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the verified ack's RC version, `null` before one), `key_fp`,
   `tx_card` — pairing is [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `width` — the live receiver width in MHz (20 or 40), `ChannelCore`'s own
   `width_mhz()`: what the link ladder (any 40 MHz rung) or the static pin
@@ -996,7 +996,7 @@ with the REC indicator alone in the top-right corner
 
 | icon | item | source |
 |---|---|---|
-| wifi | channel the RECEIVER is tuned to, `(a)` auto-selected / `(h)` hopped suffix; `KEY?` replaces the item on a link-key mismatch | `link.channel` |
+| wifi | channel the RECEIVER is tuned to, `(a)` auto-selected / `(h)` hopped suffix; `KEY?` replaces the item on a link-key mismatch, `UPD?` (below it) when the drone speaks another RC version; neither shows on a stale snapshot | `link.channel` |
 | tune-vertical | MCS / channel width (MHz) | `link.ctl.rung` (else `link.op`) |
 | chart-donut | airtime % | `link.air_pct` |
 | signal | RSSI per GS card, dBm | `cards[]` |

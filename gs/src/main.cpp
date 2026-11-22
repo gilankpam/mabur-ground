@@ -555,6 +555,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   struct { std::optional<mabur::rc::Telem> t; uint64_t rx_ms = 0; } latest_telem;
 
   bool last_key_mismatch = false;
+  bool last_version_mismatch = false;
 
   // Control-path RTT + pts-offset estimator (link-rtt). Fed
   // from the same core thread as latest_telem: RCF send stamps below,
@@ -659,9 +660,6 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   std::vector<mabur::cal::SweepSpec> cal_defaults =
       maburgs::default_sweeps(cal_defaults_width, vrx.ladder());
   maburgs::CalNarrator cal_narrator(cal_log_dir + "/cal.log");
-  // The drone's radio.width, from the DiscAck that opened the session
-  // (0 = none yet); cal_effective_width's input.
-  uint8_t peer_agreed_width = 0;
 
   // The one place a control frame leaves the GS (direct or via the RCF
   // slotter): card + RTT stamp travel with the frame (SlotFrame). The
@@ -862,7 +860,6 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   // header, and feeding them here would produce garbage video rather than an
   // obvious failure. Core-thread-owned, like everything else in this loop.
   bool frame_wire = false;
-  bool refused_peer = false;  // one loud line per run, not per tick
   // When the batch being processed left the RX queue (au.log t_drain).
   uint64_t batch_drain_us = 0;
 
@@ -1083,21 +1080,18 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       }
       return;
     }
-    const bool was_session = vrx.link_state() == maburgs::VrxState::SESSION;
+    const auto link_found = [&] {
+      const auto st = vrx.link_state();
+      return st == maburgs::VrxState::SESSION || st == maburgs::VrxState::VERSION_MISMATCH;
+    };
+    const bool was_found = link_found();
     vrx.on_rc_frame(f.data(), f.size(), static_cast<double>(us) / 1000.0);
-    // The link forms where the drone is found. Only the
-    // ack that OPENED the session inside this very call -- our nonce, not
-    // key-mismatch flagged, so a stranger's drone cannot drag the cards --
-    // and only on the rx_channel of this body (RxBody::rx_channel, handed
-    // to the core via on_rc_body(): the aggregator routes the card id, not
-    // the channel). ChannelCore::on_session_opened() does the rest.
-    if (!was_session && vrx.link_state() == maburgs::VrxState::SESSION &&
-        mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_DISC_ACK) {
-      if (const auto ack = mabur::rc::parse_disc_ack(f.data(), f.size())) {
-        chan.on_session_opened(*ack, static_cast<double>(us) / 1000.0);
-        peer_agreed_width = 0;  // the width now arrives in Telem
-      }
-    }
+    // The link forms where the drone is found: on the tick the verified ack
+    // opens a session or reveals another RC version, at the channel the ack
+    // named (VrxController::agreed_channel(): the drone's own word, so a
+    // stranger's drone cannot drag the cards).
+    if (!was_found && link_found())
+      chan.on_drone_found(vrx.agreed_channel(), static_cast<double>(us) / 1000.0);
   });
 
   // MSP OSD sink: built at boot when msp.enable, and built/dropped by the
@@ -1320,10 +1314,8 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
                      "maburgs: heard an RC frame at RC_VERSION %u but this "
                      "build speaks %u, so no RC path can read it and it is "
                      "being miscounted as video (rate-limited to 1/5s). "
-                     "The pair is half-deployed: no control link and, because "
-                     "DISC_ACK carries CAP_FRAME_WIRE, no video either. "
-                     "Finish the deploy on BOTH ends; restarting maburd will "
-                     "not help.\n",
+                     "The pair finds and authenticates each other across "
+                     "versions, but runs no link: update the older end.\n",
                      static_cast<unsigned>(m.body[2]),
                      static_cast<unsigned>(mabur::rc::RC_VERSION));
       }
@@ -1465,7 +1457,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         mav_linked, mav_linked && (vrx.peer_caps() & mabur::rc::CAP_CALIBRATE),
         vrx.session_ctx());
     const uint8_t cal_width =
-        maburgs::cal_effective_width(chan.width_mhz(), mav_linked, peer_agreed_width);
+        maburgs::cal_effective_width(chan.width_mhz(), mav_linked, vrx.peer_width());
     if (cal_width != cal_defaults_width) {
       cal_defaults_width = cal_width;
       cal_defaults = maburgs::default_sweeps(cal_width, vrx.ladder());
@@ -1526,16 +1518,13 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       refresh.request(*reason, drained_ms);
     }
 
-    // Session capability gate: the peer must be in an active SESSION (not
-    // beaconing/pre-rendezvous) AND have advertised CAP_FRAME_WIRE in its
-    // DiscAck before its video fragments are fed to the frame tail. A session
-    // without the bit is a pre-frame-shm drone whose frag header this build
-    // cannot parse: refuse its video loudly rather than render garbage. On any
-    // change, drop FRAG-seq continuity and half-assembled frames — the new
-    // session's seqs and frame_ids are unrelated to the old one's.
-    // KEY_MISMATCH is not a session (no RCFs go out in it).
+    // The video tail runs exactly while a session does: on any change, drop
+    // FRAG-seq continuity and half-assembled frames -- the new session's seqs
+    // and frame_ids are unrelated to the old one's. KEY_MISMATCH and
+    // VERSION_MISMATCH are not sessions (no RCFs go out in them).
     const bool in_session = vrx.link_state() == maburgs::VrxState::SESSION;
     const bool key_mismatch = vrx.key_mismatch();
+    const bool version_mismatch = vrx.version_mismatch();
     if (key_mismatch != last_key_mismatch) {
       std::fprintf(stderr, "maburgs: link %s (our key %s)\n",
                    key_mismatch ? "KEY MISMATCH -- the drone rejects our tag; both ends need "
@@ -1544,16 +1533,26 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
                    key_fp.c_str());
       last_key_mismatch = key_mismatch;
     }
+    if (version_mismatch != last_version_mismatch) {
+      last_version_mismatch = version_mismatch;
+      if (version_mismatch) {
+        const unsigned drone_v = vrx.drone_rc_version().value_or(0);
+        std::fprintf(stderr, "maburgs: VERSION MISMATCH -- drone RC %u, GS RC %u: update the %s\n",
+                     drone_v, static_cast<unsigned>(mabur::rc::RC_VERSION),
+                     drone_v < mabur::rc::RC_VERSION ? "drone" : "ground station");
+      }
+    }
 
     // ---- auto channel set + in-flight hop, per tick (gs/src/channel_core.h) ----
     maburgs::ChannelTickIn cin;
     cin.now_ms = now_ms;
     cin.in_session = in_session;
     cin.cal_running = cal_session.running();
+    cin.version_mismatch = version_mismatch;
     cin.tx_card = sel.selected();
     cin.agg = &agg;
     chan.tick(cin);
-    const bool fw = in_session && (vrx.peer_caps() & mabur::rc::CAP_FRAME_WIRE);
+    const bool fw = in_session;
     if (fw != frame_wire) {
       frame_wire = fw;
       agg.decoder().reset_continuity();
@@ -1567,20 +1566,6 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       lat_win.clear();
       std::fprintf(stderr, "maburgs: video tail -> %s\n",
                    fw ? "frame wire" : "off (no session)");
-    }
-    // Complain only about a peer we have actually heard a DiscAck from:
-    // peer_caps() == 0 also reads as "no DiscAck yet", and before link
-    // pairing the rendezvous started in SESSION, so gating on in_session
-    // alone printed this at every
-    // startup — telling the operator to upgrade a maburd that was fine, seconds
-    // before the tail came up anyway (caught on the rig).
-    if (vrx.peer_acked() && !fw && !refused_peer) {
-      refused_peer = true;  // once per run: this cannot fix itself mid-session
-      std::fprintf(stderr,
-                   "maburgs: REFUSING video: peer session did not advertise "
-                   "CAP_FRAME_WIRE (chip_caps=0x%04x). That drone predates the "
-                   "frame wire format; upgrade maburd.\n",
-                   vrx.peer_caps());
     }
     if (frame_wire) fstream.poll(drained_ms);
     if (au_on) au_bell.poll();
@@ -1682,12 +1667,6 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         maburgs::SlotFrame sf{
             k + 1 == targets.size() ? std::move(out->frame) : out->frame,
             vrx.rcf_seq(), targets[k], !out->is_disc};
-        // A DISC proposes the channel it is sent on: the TX card's copy
-        // proposes op, a search burst's copy
-        // on the scout card proposes the burst member -- so a drone found
-        // there agrees to stay, links there (on_session_opened) and is moved
-        // only by a relocate order, never by retuning itself on promotion.
-        if (out->is_disc) sf.frame = chan.disc_for_card(sf.frame, targets[k]);
         if (!rcf_slot.offer(sf, drained_ms, false) &&
             !cal_session.radio_silent(drained_ms))
           send_control_frame(sf);
@@ -1864,6 +1843,8 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       sin.scan_relocate_seq = chs.relocate_seq;
       sin.in_session = in_session;
       sin.key_mismatch = vrx.key_mismatch();
+      sin.version_mismatch = vrx.version_mismatch();
+      sin.drone_rc_version = vrx.drone_rc_version();
       sin.key_fp = key_fp;
       sin.tx_card = sel.selected();
       sin.op = vrx.cur_op();
