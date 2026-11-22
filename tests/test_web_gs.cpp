@@ -696,6 +696,41 @@ TEST(gs_lists_parameters_after_disc_ack) {
 
 // A drone PARAM_EXT_VALUE lands on the right row and shows up in the page's
 // params_json, keyed by its MAVLink id.
+// A T_MAV (the GS's own uplink heard on another card) tagged under the live
+// session is counted apart and never delivered; a T_MAV_UP forged under
+// another key is dropped as auth, not delivered.
+TEST(own_uplink_heard_and_forged_up_are_not_delivered) {
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  WebGs g(cfg(), Mode::Gs, 136, 40, {}, 0, io);
+  const uint64_t t = 1'000'000;
+  g.inject_disc_ack_for_replay(t);
+  g.tick(t);
+  REQUIRE(g.mav() != nullptr);
+  const auto hb = mav_heartbeat_bytes(1, 191);
+  mabur::rc::Mav m;
+  m.type = mabur::rc::T_MAV;
+  m.counter = 1;
+  m.payload = hb;
+  mabur::rc::TagCtx ctx = g.vrx()->session_ctx();
+  ctx.seq32 = 1;
+  g.on_rx(rc_body(mabur::rc::pack_mav(m, cfg().link.key, ctx), t));
+  g.tick(t);
+  CHECK(g.mav()->stats().rx_uplink_heard == 1);
+  uint8_t buf[256];
+  CHECK(g.mav_take_inbound(buf, sizeof buf) == 0);
+  m.type = mabur::rc::T_MAV_UP;
+  m.counter = 2;
+  ctx.seq32 = 2;
+  auto other = cfg().link.key;
+  other[0] ^= 0xff;
+  g.on_rx(rc_body(mabur::rc::pack_mav(m, other, ctx), t));
+  g.tick(t);
+  CHECK(g.mav()->stats().drop_auth == 1);
+  CHECK(g.mav_take_inbound(buf, sizeof buf) == 0);
+}
+
 TEST(drone_values_reach_the_client) {
   Io io;
   io.on_au = [](Au&&) {};

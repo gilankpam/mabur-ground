@@ -211,7 +211,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
                       {f.body_mono_us, f.q_ms, f.enc_us, f.air_ms, f.sw_seq, true, f.retx});
   });
   agg_.set_rc_sink([this](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (mav_ && mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_MAV_UP) {
+    if (mav_ && maburgs::is_mav_frame(mabur::rc::frame_type(f.data(), f.size()))) {
       mav_->on_rc_frame(f.data(), f.size());
       return;
     }
