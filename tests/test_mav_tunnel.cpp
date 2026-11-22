@@ -85,10 +85,12 @@ struct Rig {
               [this](const uint8_t* p, size_t n) { delivered.emplace_back(p, p + n); }};
 };
 
-// The drone's frame: T_MAV_UP, always tagged now.
-static std::vector<uint8_t> pack_up(mabur::rc::Mav m) {
+// The drone's frame: T_MAV_UP tagged under `pair` with seq32 = its counter.
+static const TagCtx kPair{11, 22, 0};
+static std::vector<uint8_t> pack_up(mabur::rc::Mav m, TagCtx pair = kPair) {
   m.type = mabur::rc::T_MAV_UP;
-  return mabur::rc::pack_mav(m);
+  pair.seq32 = m.counter;
+  return mabur::rc::pack_mav(m, test_key(), pair);
 }
 
 TEST(outbound_dropped_until_linked) {
@@ -111,7 +113,7 @@ TEST(outbound_dropped_until_linked) {
 
 TEST(packets_queued_before_the_link_drops_are_dropped_at_flush) {
   Rig r;
-  r.t.set_session(TagCtx{11, 22, 0});
+  r.t.set_session(kPair);
   auto hb = hb_bytes(255, 190);
   r.t.push_outbound(hb.data(), hb.size());
   r.t.push_outbound(hb.data(), hb.size());
@@ -151,7 +153,7 @@ TEST(packets_batch_into_frames_of_at_most_600_bytes) {
 
 TEST(split_delivery_survives_a_byte_at_a_time_feed) {
   Rig r;
-  r.t.set_session(TagCtx{11, 22, 0});
+  r.t.set_session(kPair);
   auto hb = hb_bytes(255, 190);
   for (size_t i = 0; i < hb.size(); ++i) {
     r.t.push_outbound(&hb[i], 1);
@@ -213,6 +215,7 @@ TEST(counter_restarts_on_a_new_vtx_nonce) {
 
 TEST(inbound_frame_splits_into_packets_and_drops_a_truncated_tail) {
   Rig r;
+  r.t.set_session(kPair);
   auto hb = hb_bytes(1, 191);
   Mav m;
   m.counter = 5;
@@ -238,6 +241,7 @@ TEST(inbound_frame_splits_into_packets_and_drops_a_truncated_tail) {
 
 TEST(mavlink1_and_unknown_crc_extra_are_dropped) {
   Rig r;
+  r.t.set_session(kPair);
   Mav m;
   m.counter = 1;
   m.payload = cat({v1_heartbeat(), unknown_msgid_packet()});
@@ -251,6 +255,7 @@ TEST(mavlink1_and_unknown_crc_extra_are_dropped) {
 
 TEST(inbound_tagged_or_corrupt_frame_delivers_nothing) {
   Rig r;
+  r.t.set_session(kPair);
   auto hb = hb_bytes(1, 191);
   Mav m;
   m.counter = 1;
@@ -274,10 +279,16 @@ TEST(inbound_tagged_or_corrupt_frame_delivers_nothing) {
   CHECK(r.delivered.empty());
   CHECK(r.t.stats().rx_uplink_heard == 2);
   CHECK(r.t.stats().drop_bad_packet == 1);
+  // A tagged T_MAV is never delivered, whatever pair it verifies under.
+  auto own = pack_mav(m, test_key(), TagCtx{11, 22, 1});
+  r.t.on_rc_frame(own.data(), own.size());
+  CHECK(r.delivered.empty());
+  CHECK(r.t.stats().rx_uplink_heard == 3);
 }
 
 TEST(untagged_frame_with_fcs_is_not_taken_for_the_gs_own_uplink) {
   Rig r;
+  r.t.set_session(kPair);
   Mav m;
   m.counter = 3;
   m.payload = hb_bytes(1, 191);
@@ -289,7 +300,7 @@ TEST(untagged_frame_with_fcs_is_not_taken_for_the_gs_own_uplink) {
 
 TEST(second_card_copy_of_a_drone_frame_is_dropped) {
   Rig r;
-  r.t.set_session(TagCtx{11, 22, 0});
+  r.t.set_session(kPair);
   auto hb = hb_bytes(1, 191);
   auto frame = [&](uint32_t counter) {
     Mav m;
@@ -311,7 +322,7 @@ TEST(second_card_copy_of_a_drone_frame_is_dropped) {
   CHECK(r.t.stats().rx_dup == 1);
   // A restarted drone (new vtx nonce) counts from 0 again.
   r.t.set_session(TagCtx{11, 33, 0});
-  auto f0 = frame(0);
+  auto f0 = pack_up([&] { Mav z; z.counter = 0; z.payload = hb; return z; }(), TagCtx{11, 33, 0});
   r.t.on_rc_frame(f0.data(), f0.size());
   CHECK(r.delivered.size() == 3);
   r.t.on_rc_frame(f0.data(), f0.size());
@@ -329,7 +340,112 @@ TEST(first_drone_frame_after_a_new_vtx_nonce_delivers_even_with_the_old_counter)
   auto f = pack_up(m);
   r.t.on_rc_frame(f.data(), f.size());
   r.t.set_session(TagCtx{11, 33, 0});
+  auto g = pack_up(m, TagCtx{11, 33, 0});
+  r.t.on_rc_frame(g.data(), g.size());
+  CHECK(r.delivered.size() == 2);
+  CHECK(r.t.stats().rx_dup == 0);
+}
+
+static Mav up_mav(uint32_t counter) {
+  Mav m;
+  m.counter = counter;
+  m.payload = hb_bytes(1, 191);
+  return m;
+}
+
+TEST(uplink_verifies_under_live_session) {
+  Rig r;
+  r.t.set_session(kPair);
+  auto f = pack_up(up_mav(4));
   r.t.on_rc_frame(f.data(), f.size());
+  CHECK(r.delivered.size() == 1);
+  CHECK(r.t.stats().drop_auth == 0);
+}
+
+// The live session lapses during every calibration sweep; the drone's cal
+// replies are tagged under the run's pair and must still verify.
+TEST(uplink_verifies_under_cal_run_pair_after_the_live_session_is_gone) {
+  Rig r;
+  const TagCtx run{51, 52, 0};
+  r.t.push_cal(hb_bytes(1, 191), run);
+  r.t.flush();
+  r.t.set_session(TagCtx{});   // live session gone
+  auto f = pack_up(up_mav(1), run);
+  r.t.on_rc_frame(f.data(), f.size());
+  CHECK(r.delivered.size() == 1);
+  CHECK(r.t.stats().drop_auth == 0);
+  // A pair that is neither live nor the cal run's still fails.
+  auto other = pack_up(up_mav(2), TagCtx{61, 62, 0});
+  r.t.on_rc_frame(other.data(), other.size());
+  CHECK(r.delivered.size() == 1);
+  CHECK(r.t.stats().drop_auth == 1);
+}
+
+TEST(forged_uplink_is_dropped_as_auth) {
+  Rig r;
+  r.t.set_session(kPair);
+  auto wrong_key = pack_mav(
+      [] { Mav m = up_mav(1); m.type = T_MAV_UP; return m; }(),
+      *parse_key_hex("00112233445566778899aabbccddeeff"), TagCtx{11, 22, 1});
+  r.t.on_rc_frame(wrong_key.data(), wrong_key.size());
+  Mav m2 = up_mav(2);
+  m2.type = T_MAV_UP;
+  auto wrong_ctr = pack_mav(m2, test_key(), TagCtx{11, 22, 3});   // tag over another counter
+  r.t.on_rc_frame(wrong_ctr.data(), wrong_ctr.size());
+  CHECK(r.delivered.empty());
+  CHECK(r.t.stats().drop_auth == 2);
+  CHECK(r.t.stats().rx_frames == 0);
+}
+
+TEST(repeat_counter_is_rx_dup) {
+  Rig r;
+  r.t.set_session(kPair);
+  auto f = pack_up(up_mav(9));
+  r.t.on_rc_frame(f.data(), f.size());
+  r.t.on_rc_frame(f.data(), f.size());
+  CHECK(r.delivered.size() == 1);
+  CHECK(r.t.stats().rx_dup == 1);
+}
+
+// Two drone threads share one counter and can air out of order: the window
+// takes each counter once, rejects what it has seen or what fell off it.
+TEST(uplink_window_takes_out_of_order_once_and_drops_old) {
+  Rig r;
+  r.t.set_session(kPair);
+  auto take = [&](uint32_t c) {
+    auto f = pack_up(up_mav(c));
+    r.t.on_rc_frame(f.data(), f.size());
+  };
+  take(100);
+  take(101);
+  take(99);    // late but inside the window
+  CHECK(r.delivered.size() == 3);
+  take(99);    // seen
+  take(101);   // seen
+  CHECK(r.delivered.size() == 3);
+  CHECK(r.t.stats().rx_dup == 2);
+  take(164);   // H = 164: 101 is exactly 63 back and still taken
+  take(100);   // already taken, in window
+  take(37);    // 127 back: too old
+  CHECK(r.delivered.size() == 4);
+  CHECK(r.t.stats().rx_dup == 4);
+  take(101);   // in window (63 back) but seen
+  take(102);   // in window, never seen: delivers
+  CHECK(r.delivered.size() == 5);
+  take(300);   // a jump past the window slides it right over everything
+  take(250);   // inside the new window, never seen
+  take(164);   // 136 back: too old now
+  CHECK(r.delivered.size() == 7);
+}
+
+TEST(uplink_window_resets_on_a_new_pair) {
+  Rig r;
+  r.t.set_session(kPair);
+  auto f = pack_up(up_mav(500));
+  r.t.on_rc_frame(f.data(), f.size());
+  r.t.set_session(TagCtx{11, 33, 0});
+  auto g = pack_up(up_mav(3), TagCtx{11, 33, 0});   // far below the old high mark
+  r.t.on_rc_frame(g.data(), g.size());
   CHECK(r.delivered.size() == 2);
   CHECK(r.t.stats().rx_dup == 0);
 }
@@ -394,7 +510,7 @@ TEST(cal_lane_counter_continues_for_a_second_run_on_the_same_pair) {
 
 TEST(cal_frames_go_out_before_live_frames) {
   Rig r;
-  r.t.set_session(TagCtx{11, 22, 0});
+  r.t.set_session(kPair);
   auto hb = hb_bytes(255, 190);
   r.t.push_outbound(hb.data(), hb.size());   // live
   auto cal_pkt = hb_bytes(1, 191);
@@ -412,7 +528,7 @@ TEST(cal_frames_go_out_before_live_frames) {
 
 TEST(cal_frame_carries_only_its_packet) {
   Rig r;
-  r.t.set_session(TagCtx{11, 22, 0});
+  r.t.set_session(kPair);
   auto hb = hb_bytes(255, 190);
   r.t.push_outbound(hb.data(), hb.size());   // live
   auto cal_pkt = hb_bytes(1, 191);

@@ -5,6 +5,7 @@
 #include "mabur/msp_source.h"
 #include "mabur/msp_dp.h"
 #include "mabur/rc_proto.h"
+#include "mabur/crc16.h"
 #include "mabur/sbi.h"
 #include "mabur/probe_wire.h"
 #include "mabur/sw_wire.h"
@@ -448,6 +449,29 @@ TEST(gs_tagged_mav_is_self_drone_mav_walks) {
   CHECK(c.self_frames == 1);
   CHECK(c.seq_received == 3);
   CHECK(c.seq_expected == 3);
+}
+
+// The drone's T_MAV_UP is drone traffic; the GS's own DISC is self at any
+// version (frozen), so a stale-version DISC heard back is still diverted.
+TEST(drone_mav_up_is_drone_traffic_and_own_disc_of_any_version_is_self) {
+  Aggregator agg(vec_layers(), 512, 1);
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) {});
+  mabur::rc::Mav m;
+  m.counter = 5; m.payload = {0xFD, 1, 2, 3};
+  agg.on_rx_body(msg(0, 10, true, pack_up(m)));
+  CHECK(agg.card(0).self_frames == 0);
+  CHECK(agg.card(0).frames == 1);
+  mabur::rc::Disc d;
+  d.vrx_nonce = 7;
+  auto disc = mabur::rc::pack_disc(d);
+  agg.on_rx_body(msg(0, 11, true, disc));
+  disc[2] = mabur::rc::RC_VERSION + 3;   // another version; crc fixed below
+  uint16_t crc = mabur::crc16_ccitt(disc.data(), disc.size() - 2);
+  disc[disc.size() - 2] = crc & 0xFF;
+  disc[disc.size() - 1] = crc >> 8;
+  agg.on_rx_body(msg(0, 12, true, disc));
+  CHECK(agg.card(0).self_frames == 2);
+  CHECK(agg.card(0).frames == 1);
 }
 
 TEST(crc_fail_stays_out_of_classes) {

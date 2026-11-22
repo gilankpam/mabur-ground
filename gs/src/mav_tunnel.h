@@ -17,12 +17,14 @@
 // (vtx_nonce 0) outbound packets are dropped and counted: a ground app's
 // heartbeats before link-up are noise, not something to replay later.
 //
-// Inbound (drone -> local peer): on_rc_frame takes an untagged T_MAV body,
-// splits its payload and delivers each whole packet's wire bytes. A frame
-// carrying the same drone counter as the last one taken is the other
-// card's copy and is dropped (rx_dup); the counter memory clears when the
-// session's vtx_nonce changes. A tagged T_MAV is the GS's own uplink heard
-// by its other card (rx_uplink_heard), never a reject. The RC
+// Inbound (drone -> local peer): on_rc_frame takes a T_MAV_UP body, which
+// must verify under the live session's pair or the last cal run's pair
+// (drop_auth otherwise), splits its payload and delivers each whole
+// packet's wire bytes. Each pair has a 64-wide anti-replay window over the
+// drone's counter: a counter already taken, or older than the window, is
+// dropped (rx_dup; this is the other card's copy), and the window resets
+// when its pair changes. A T_MAV is the GS's own uplink heard by its other
+// card (rx_uplink_heard), never delivered. The RC
 // CRC already vouches for the bytes; the MAVLink CRC is the second check
 // and is also what rejects a message id whose CRC_EXTRA the mabur dialect
 // does not know. A partial packet at the end of a frame is dropped and the
@@ -72,7 +74,8 @@ struct MavTunnelStats {
            drop_unlinked = 0,     // outbound packets with no session to tag them
            drop_bad_packet = 0,   // bad MAVLink CRC, v1, a partial or a T_MAV body that fails parse
            drop_oversize = 0,     // an outbound packet larger than kMavMaxPayload
-           rx_dup = 0,            // a drone frame repeating the last counter (the other card's copy)
+           rx_dup = 0,            // a verified reply already taken or older than the window (the other card's copy)
+           drop_auth = 0,         // a T_MAV_UP verifying under neither the live nor the cal pair
            rx_uplink_heard = 0,   // the GS's own tagged T_MAV, heard by its other card
            tx_cal_frames = 0,     // cal-lane frames sent (never counted in tx_frames/tx_packets)
            drop_cal_oversize = 0; // a cal packet larger than kMavMaxPayload, never queued
@@ -106,7 +109,7 @@ class MavTunnel {
   // as few T_MAV frames as fit kMavMaxPayload each, and calls send for
   // each -- cal frames first. Returns frames sent.
   int flush();
-  // A T_MAV frame body from the drone (the rc-sink hook). Splits it and
+  // A T_MAV_UP frame body from the drone (the rc-sink hook). Splits it and
   // delivers each packet, unless it is a duplicate or the GS's own uplink.
   void on_rc_frame(const uint8_t* body, size_t len);
 
@@ -122,8 +125,19 @@ class MavTunnel {
   mabur::rc::TagCtx ctx_{};
   uint32_t vtx_seen_ = 0;
   uint32_t counter_ = 0;
-  bool have_rx_ = false;   // rx_last_ holds a counter from this session
-  uint32_t rx_last_ = 0;   // the drone counter of the last inbound frame taken
+  // Anti-replay window per pair: the highest counter taken and a bitmap of
+  // the 64 counters ending there. The drone's two threads share one counter
+  // and may air out of order, so "greater than the last" would drop replies.
+  struct RxWindow {
+    bool valid = false;
+    mabur::rc::TagCtx pair{};   // seq32 unused; a different pair resets the window
+    uint32_t high = 0;
+    uint64_t bits = 0;
+    bool accept(const mabur::rc::TagCtx& p, uint32_t counter);
+  };
+  RxWindow win_live_, win_cal_;
+  mabur::rc::TagCtx cal_ctx_{};   // the pair of the last cal frame sent
+  bool have_cal_ = false;
   std::deque<std::vector<uint8_t>> queue_;
   uint32_t cal_vtx_seen_ = 0;   // the last cal frame's run_ctx.vtx_nonce, for the restart rule
   uint32_t cal_counter_ = 0;
