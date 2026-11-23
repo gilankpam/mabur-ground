@@ -216,6 +216,24 @@ wait_end
 [ "$(st msg)" = "Lost drone" ] || ko "$(st msg)"
 ok
 
+name=start_ftp_nak_text
+startup "error ftp nak 3"
+FAKE_MABURUP_RC=1
+export FAKE_MABURUP_RC
+gsu drone start "$URL" v0.4.2 >/dev/null
+wait_end
+[ "$(st msg)" = "Transfer refused by the drone (3)" ] || ko "$(st msg)"
+ok
+
+name=start_died_without_final
+startup "trial 10"
+FAKE_MABURUP_RC=1
+export FAKE_MABURUP_RC
+gsu drone start "$URL" v0.4.2 >/dev/null
+wait_end
+[ "$(st msg)" = "The drone update stopped" ] || ko "$(st msg)"
+ok
+
 name=start_bad_checksum
 startup committed
 echo 0000 >"$T/web/mabur-v0.4.2-b1-maburd.sha256"

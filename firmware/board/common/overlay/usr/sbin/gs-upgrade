@@ -644,11 +644,12 @@ do_drone_run() {
 	"refused bad_config") m="Refused: the drone's config does not load" ;;
 	"refused busy") m="Refused: the drone is busy" ;;
 	"refused no_file") m="Refused: the file did not arrive" ;;
+	"error ftp nak "*) m="Transfer refused by the drone (${fin#error ftp nak })" ;;
 	"error "*)
 		m=${fin#error }
 		m=$(echo "$m" | cut -c1 | tr a-z A-Z)$(echo "$m" | cut -c2-)
 		;;
-	*) m=$fin ;;
+	*) m="The drone update stopped" ;;
 	esac
 	abort error "${m:-Update failed}"
 }
