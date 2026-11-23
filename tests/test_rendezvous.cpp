@@ -325,4 +325,51 @@ TEST(other_version_ack_is_ignored_while_the_same_version_drone_is_alive) {
   CHECK(rz.ignored_version_acks() == 2);
 }
 
+static DiscAck other(VrxRendezvous& rz, uint32_t vtx, double t) {
+  DiscAck a = ok(rz, vtx, t); a.version = 18; return a;
+}
+
+TEST(mismatch_ack_keeps_update_pair) {
+  VrxRendezvous rz(cfg());
+  CHECK(!rz.update_vtx_nonce());
+  CHECK(rz.feed_disc_ack(other(rz, 0xABC, 0), true, 10, nullptr));
+  CHECK(rz.state() == VrxState::VERSION_MISMATCH);
+  CHECK(rz.update_vtx_nonce() == std::optional<uint32_t>(0xABC));
+  CHECK(!rz.vtx_nonce().has_value());
+}
+
+TEST(mismatch_ack_rekeys_update_pair) {
+  VrxRendezvous rz(cfg());
+  rz.feed_disc_ack(other(rz, 0xABC, 0), true, 10, nullptr);
+  rz.feed_disc_ack(other(rz, 0xDEF, 1000), true, 1010, nullptr);
+  CHECK(rz.update_vtx_nonce() == std::optional<uint32_t>(0xDEF));
+}
+
+TEST(update_pair_cleared_on_fallback) {
+  VrxRendezvous rz(cfg());
+  rz.feed_disc_ack(other(rz, 0xABC, 0), true, 10, nullptr);
+  rz.tick(10 + VrxRendezvous::kMismatchKeepalives * cfg().keepalive_ms);
+  CHECK(rz.state() == VrxState::BEACONING);
+  CHECK(!rz.update_vtx_nonce());
+}
+
+TEST(update_pair_cleared_on_same_version_ack) {
+  VrxRendezvous rz(cfg());
+  rz.feed_disc_ack(other(rz, 0xABC, 0), true, 10, nullptr);
+  CHECK(rz.feed_disc_ack(ok(rz, 7, 1000), true, 1010, nullptr));
+  CHECK(rz.state() == VrxState::SESSION);
+  CHECK(!rz.update_vtx_nonce());
+}
+
+TEST(update_pair_cleared_on_key_mismatch) {
+  VrxRendezvous rz(cfg());
+  rz.feed_disc_ack(other(rz, 0xABC, 0), true, 10, nullptr);
+  for (double t = 20; t < 2000; t += 20) {
+    rz.beacon(t);
+    rz.feed_disc_ack(ack_for(rz, 9, kAckKeyMismatch), false, t, nullptr);
+  }
+  CHECK(rz.state() == VrxState::KEY_MISMATCH);
+  CHECK(!rz.update_vtx_nonce());
+}
+
 MTEST_MAIN
