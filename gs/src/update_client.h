@@ -27,7 +27,10 @@ struct UpdateProgress {
   enum class Phase { kOpen, kSend, kStart, kTrial, kDone };
   Phase phase = Phase::kOpen;
   uint64_t sent = 0, total = 0;  // bytes acked / image size
-  int trial_s = 0;               // last trial_s the drone reported
+  // START answered: the old binary has exited and the drone is installing
+  // and booting the trial build, which has not reported yet.
+  bool installing = false;
+  int trial_s = 0;  // last trial_s the trial build reported
   // kDone only: "committed" | "rolled_back <r>" | "refused <r>" | "error <text>"
   std::string result;
 };

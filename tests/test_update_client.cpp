@@ -155,6 +155,33 @@ TEST(slow_install_before_trial_still_gets_result) {
   CHECK(c.progress().result == "committed");
 }
 
+TEST(installing_until_the_trial_build_answers) {
+  // START's reply comes from the old binary just before it exits: the drone
+  // then installs and boots the trial, and only the trial build's own replies
+  // carry real seconds.
+  FakeDrone d("committed", 5, 20000);
+  auto img = image(1000, 13);
+  UpdateClient c(img, sha_of(img));
+  Link l;
+  bool installing = false, trial = false, bad = false;
+  l.on_step = [&](uint64_t) {
+    const UpdateProgress& p = c.progress();
+    if (p.installing) {
+      installing = true;
+      if (p.trial_s || trial) bad = true;
+    }
+    if (p.trial_s) {
+      trial = true;
+      if (p.installing) bad = true;
+    }
+  };
+  l.run(c, d, 300000);
+  CHECK(c.progress().result == "committed");
+  CHECK(installing);
+  CHECK(trial);
+  CHECK(!bad);
+}
+
 TEST(create_busy) {
   FakeDrone d("committed");
   spit(d.dir + "/go", "x\n");

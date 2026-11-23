@@ -174,7 +174,7 @@ URL=https://x/v0.4.2/mabur-v0.4.2-b1-maburd
 startup() {
 	reset v0.4.1
 	asset v0.4.2
-	printf 'send 10 100\nsend 100 100\ntrial 30\ntrial 10\n%s\n' "$1" >"$T/lines"
+	printf 'send 10 100\nsend 100 100\ninstall\ntrial 31\ntrial 12\n%s\n' "$1" >"$T/lines"
 }
 
 name=start_commits
@@ -190,8 +190,11 @@ while [ $i -lt 150 ]; do
 	sleep 0.05
 	i=$((i + 1))
 done
-for p in download send trial; do case $seen in *"$p:"*) ;; *) ko "no $p in $seen" ;; esac; done
+for p in download send install trial; do case $seen in *"$p:"*) ;; *) ko "no $p in $seen" ;; esac; done
 case $seen in *send:[1-9]*) ;; *) ko "no send progress: $seen" ;; esac
+# The trial counts up: seconds run of 40, not seconds left.
+case $seen in *trial:9*|*trial:28*) ;; *) ko "trial not counting up: $seen" ;; esac
+case $seen in *trial:31*|*trial:12*) ko "trial shows seconds left: $seen" ;; esac
 [ "$(st msg)" = "Updated to v0.4.2" ] || ko "msg $(st msg)"
 lock_gone || ko "lock"
 grep -q "install .*maburd" "$T/up.log" || ko "maburup not run"

@@ -138,12 +138,19 @@ void UpdateClient::on_status(const mabur::ota::Status& s, uint64_t now) {
     first_reply_ms_ = now;
     deadline_ms_ = now + cfg_.final_ms;
     last_ms_ = now;
+    // The old binary's "trial 40" says it is about to exit, not that a trial
+    // runs: the seconds come from the trial build's own replies.
+    if (s.state == St::kTrial) {
+      p_.installing = true;
+      return;
+    }
   } else if (p_.phase != Phase::kTrial) {
     return;
   }
   const std::string why = mabur::ota::reason_name(s.reason);
   switch (s.state) {
     case St::kTrial:
+      p_.installing = false;
       p_.trial_s = s.trial_s;
       // The window plus 60 s, counted from the drone's own report: its install
       // before the trial does not eat the margin.

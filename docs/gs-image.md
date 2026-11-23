@@ -149,7 +149,9 @@ and the network, clock, tls and http errors of the GS check.
 `start` takes the asset URL (`mabur-<ver>-<board>-maburd`; its `.sha256`
 sits beside it), runs detached under the same lock and status file as a GS
 update, and reports the phases download, verify (the sha256 must match),
-send and trial (seconds left of 40) as `maburup install` reports them. It
+send, install (START answered; the drone installs and boots the new
+build) and trial (`done` = seconds run of the 40 s window) as `maburup
+install` reports them. It
 ends `state=done` with `msg=Updated to <version>`, or `state=error` with
 the reason (`Rolled back: ...`, `Refused: ...`, `Checksum mismatch`), or
 `state=cancelled` (cancel works until the file is fully sent, and stops `maburup`; after
@@ -176,8 +178,9 @@ update takes some of the replies and slows the transfer (retries recover it).
 and exits 0, or prints `error no drone` and exits 2 after five unanswered
 requests. `maburup install <file> <sha256-hex>` checks the file and its
 hash (`error bad file` / `error bad hash`, exit 1, nothing sent), writes it
-to the drone and prints `send <done> <total>` while it goes, `trial <s>`
-while the drone runs the new build, then one final line: `committed` (exit
+to the drone and prints `send <done> <total>` while it goes, `install`
+once the drone has taken START, `trial <s>` (seconds left) once the new
+build answers, then one final line: `committed` (exit
 0), `rolled_back <reason>`, `refused <reason>` or `error <text>` (exit 1).
 
 ## Configuration: the CONFIG partition

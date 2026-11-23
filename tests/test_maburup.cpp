@@ -108,6 +108,10 @@ TEST(install_commits) {
   CHECK(o.text.find("send ") != std::string::npos);
   CHECK(last_line(o.text) == "committed");
   CHECK(o.status == 0);
+  // "install" once START is answered, before any trial seconds.
+  const auto inst = o.text.find("\ninstall\n");
+  CHECK(inst != std::string::npos);
+  CHECK(o.text.find("\ntrial ") == std::string::npos || o.text.find("\ntrial ") > inst);
   ::unlink(f.c_str());
 }
 

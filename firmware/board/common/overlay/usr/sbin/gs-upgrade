@@ -621,7 +621,10 @@ do_drone_run() {
 			# All bytes sent: START may be out, so the drone decides alone.
 			[ "${2:-0}" != 0 ] && [ "$2" = "$3" ] && sent=1
 			;;
-		trial) sent=1 PHASE=trial; st running trial "${2:-0}" 40 ;;
+		# START answered: the drone installs and boots the new build.
+		install) sent=1 PHASE=install; st running install 0 0 ;;
+		# The bar fills through the 40 s window: seconds run, not seconds left.
+		trial) sent=1 PHASE=trial; st running trial $((40 - ${2:-40})) 40 ;;
 		esac
 		if [ -z "$sent" ]; then cancelled; else rm -f "$DIR/cancel"; fi
 		sleep 0.2

@@ -90,7 +90,7 @@ int install(int port, const char* path, const char* hex) {
   maburgs::UpdateClient cl(std::move(img), have);
   uint64_t last_print = 0;
   int last_trial = -1;
-  bool printed_total = false;
+  bool printed_total = false, printed_install = false;
   for (;;) {
     const uint64_t t = now_ms();
     for (const auto& p : cl.tick(t)) s.send(p);
@@ -101,6 +101,10 @@ int install(int port, const char* path, const char* hex) {
       std::printf("send %llu %llu\n", (unsigned long long)pr.sent, (unsigned long long)pr.total);
       last_print = t;
       printed_total = printed_total || full;
+    }
+    if (pr.installing && !printed_install) {
+      printed_install = true;
+      std::printf("install\n");
     }
     if (pr.trial_s != last_trial && pr.trial_s) {
       last_trial = pr.trial_s;

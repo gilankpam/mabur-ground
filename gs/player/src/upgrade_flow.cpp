@@ -13,6 +13,7 @@ std::string phase_name(const std::string& p) {
   if (p == "write") return "Writing";
   if (p == "reboot") return "Rebooting";
   if (p == "send") return "Sending to the drone";
+  if (p == "install") return "Installing on the drone";
   if (p == "trial") return "Trial run";
   return "Starting";
 }
@@ -262,7 +263,9 @@ UpgradePage UpgradeFlow::page() const {
   if (view_ == View::kRunning) {
     p.running = true;
     p.phase_text = phase_name(st_.phase);
-    if (st_.phase == "trial") p.phase_text += " · " + std::to_string(st_.done) + " s";
+    // done is the seconds run of the window; the text shows what is left.
+    if (st_.phase == "trial" && st_.total >= st_.done)
+      p.phase_text += " · " + std::to_string(st_.total - st_.done) + " s";
     if (have_status_ && st_.total > 0) p.pct = static_cast<int>(st_.done * 100 / st_.total);
     p.keys = cancellable(st_) ? "◀ cancel" : "";
     return p;

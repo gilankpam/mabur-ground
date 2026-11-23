@@ -320,8 +320,19 @@ TEST(drone_send_bar) {
 }
 
 TEST(drone_trial_seconds) {
-  auto f = drone_running(ust("running", "trial", 31, 40));
+  // done counts up through the 40 s window; the text shows what is left.
+  auto f = drone_running(ust("running", "trial", 9, 40));
   CHECK(f.page().phase_text == "Trial run \xc2\xb7 31 s");
+  CHECK(f.page().pct == 22);
+}
+
+TEST(drone_install_page) {
+  auto f = drone_running(ust("running", "install", 0, 0));
+  auto p = f.page();
+  CHECK(p.phase_text == "Installing on the drone");
+  CHECK(p.pct == -1);
+  CHECK(p.keys.empty());
+  CHECK(f.key(K::kLeft).kind == UpgradeCmd::Kind::kNone);
 }
 
 TEST(drone_done_page) {
