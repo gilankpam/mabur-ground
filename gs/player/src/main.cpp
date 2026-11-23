@@ -2413,6 +2413,7 @@ int main(int argc, char** argv) {
   std::optional<maburplay::UpgradeFlow> upgrade_flow;
   std::string upgrade_board;
   std::string upgrade_toast;
+  std::string upgrade_drone_board;    // the drone's own board: names its release asset
   std::string upgrade_drone_version;  // the ident the drone check was started for
   std::string upgrade_job;  // the find/check in flight: "find", "stable", "snapshot" or "drone"
   std::string update_cached;  // the menu's update mark, see update_available
@@ -2448,6 +2449,7 @@ int main(int argc, char** argv) {
       if (!upgrader->check_drone(id.version, id.board)) return;
       upgrade_job = "drone";
       upgrade_drone_version = id.version;
+      upgrade_drone_board = id.board;
       std::fprintf(stderr, "maburplay: upgrade: check drone\n");
     };
     menu_deps.upgrade_busy = [&] { return upgrader->busy(); };
@@ -2619,7 +2621,7 @@ int main(int argc, char** argv) {
       } else if (!upgrade_job.empty()) {
         const bool drone_job = upgrade_job == "drone";
         if (std::optional<maburplay::UpgradeRunner::CheckResult> r =
-                drone_job ? upgrader->poll_check_drone(upgrade_board)
+                drone_job ? upgrader->poll_check_drone(upgrade_drone_board)
                           : upgrader->poll_check(upgrade_board)) {
           if (r->rel && drone_job)
             upgrade_flow->show_drone_release(*r->rel, upgrade_drone_version);

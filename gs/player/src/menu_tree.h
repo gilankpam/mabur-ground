@@ -80,12 +80,6 @@ inline constexpr const char* kChannelRow = "link.channel";
 
 std::vector<MenuNode> build_menu_tree(const MenuTreeDeps& d);
 
-// The drone group's header line, drawn under the crumb (MenuModel::
-// set_header): "" with no snapshot, a stale session, or no link.vtx block;
-// the update text under a table mismatch; "Reading…" while the drone's
-// table is still being fetched (list == "pending" and some row has no
-// value yet); the partial-answer text once the fetch gave up with some
-// rows still unanswered; "" once every row has landed.
 // Why the drone cannot be updated over the air now, "" when it can: no fresh
 // ident answers "No drone found", a version mismatch without one needs the full image.
 std::string drone_block_text(const GsSnapshot* snap, bool stale);
@@ -93,6 +87,12 @@ std::string drone_block_text(const GsSnapshot* snap, bool stale);
 // A fresh snapshot in version_mismatch with a drone RC version older than ours.
 bool drone_needs_update(const GsSnapshot* snap, bool stale);
 
+// The drone group's header line, drawn under the crumb (MenuModel::
+// set_header): "" with no snapshot, a stale session, or no link.vtx block;
+// the update text under a table mismatch; "Reading…" while the drone's
+// table is still being fetched (list == "pending" and some row has no
+// value yet); the partial-answer text once the fetch gave up with some
+// rows still unanswered; "" once every row has landed.
 std::string drone_header(const GsSnapshot* snap, bool stale);
 
 // The amber mark drawn beside the link pill (MenuModel::set_pill_mark):
