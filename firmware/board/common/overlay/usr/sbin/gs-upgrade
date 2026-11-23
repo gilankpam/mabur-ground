@@ -9,6 +9,8 @@
 #   gs-upgrade install <file> [-y]           upgrade in the foreground (ssh)
 #   gs-upgrade install --online stable|snapshot [-y]
 #   gs-upgrade notify                        once per boot: mark a newer release
+#   gs-upgrade drone check [<version> <board>]   the drone's update, by the GS's version
+#   gs-upgrade drone start <url> <version>   update the drone, detached (the menu)
 #
 # Phases: download (online only), unpack, verify, stop, write, reboot.
 # Progress goes to $DIR/status (state=, phase=, done=, total=, msg=),
@@ -23,6 +25,8 @@
 
 DIR=${GS_UPGRADE_DIR:-/tmp/gs-upgrade}
 MEDIA=${GS_UPGRADE_MEDIA:-/media/dvr}
+DAPI=${GS_UPGRADE_DRONE_API:-https://api.github.com/repos/gilankpam/mabur}
+MABURUP=${GS_UPGRADE_MABURUP:-/usr/local/bin/maburup}
 OSR=${GS_UPGRADE_OS_RELEASE:-/etc/os-release}
 API=${GS_UPGRADE_API:-https://api.github.com/repos/gilankpam/mabur-ground}
 INITD=${GS_UPGRADE_INITD:-/etc/init.d}
@@ -36,7 +40,7 @@ BUSYBOX=${GS_UPGRADE_BUSYBOX:-/bin/busybox}
 CHUNK=4194304
 
 usage() {
-	sed -n '3,11s/^# *//p' "$0" >&2
+	sed -n '3,13s/^# *//p' "$0" >&2
 	exit 2
 }
 
@@ -81,7 +85,7 @@ abort() {
 	trap - INT TERM HUP
 	[ -n "$pid" ] && kill "$pid" 2>/dev/null
 	[ -n "$gz" ] && kill "$gz" 2>/dev/null
-	rm -rf "$U" "$DL" "$DIR/fifo" "$DIR/headers" "$DIR/http" "$DIR/cancel" "$DIR/ram"
+	rm -rf "$U" "$DL" "$DIR/fifo" "$DIR/headers" "$DIR/http" "$DIR/cancel" "$DIR/ram" "$DIR/drone/maburd" "$DIR/drone/maburd.sha256" "$DIR/drone/up.out"
 	drop_lock
 	st "$1" "$PHASE" 0 0 "$2"
 	exit 1
@@ -117,16 +121,8 @@ do_find() {
 	return 0
 }
 
-# do_check <stable|snapshot>: $DIR/release.json, or one "error <code> <text>" line.
-# do_check <channel> [out]: the release record into out (default
-# release.json, the manual check's).
-do_check() {
-	out=${2:-$DIR/release.json}
-	case $1 in
-	stable) path=releases/latest ;;
-	snapshot) path=releases/tags/snapshot ;;
-	*) usage ;;
-	esac
+# net_ok: no default route or an unsynced clock is one "error <code> <text>" line.
+net_ok() {
 	# Hotspot mode (the default) has no default route: say so, rather than
 	# blame the clock that a board with no network can never sync.
 	if ! awk '$2 == "00000000" { f = 1 } END { exit !f }' "$ROUTE" 2>/dev/null; then
@@ -140,19 +136,36 @@ do_check() {
 		echo "error clock Clock not synced yet — try again in a minute"
 		return 1
 	fi
+}
+
+# fetch_json <api> <path> <out>: a release record, or one "error <code> <text>" line.
+fetch_json() {
+	net_ok || return 1
 	mkdir -p "$DIR"
 	code=$(curl -s -L --cacert "$CACERT" --connect-timeout 15 -m 60 \
 		-H 'Accept: application/vnd.github+json' \
-		-o "$out.tmp" -w '%{http_code}' "$API/$path" 2>/dev/null)
+		-o "$3.tmp" -w '%{http_code}' "$1/$2" 2>/dev/null)
 	rc=$?
 	[ $rc = 0 ] || { echo "error $(curl_err $rc)"; return 1; }
 	case $code in
-	200) mv -f "$out.tmp" "$out" && return 0 ;;
+	200) mv -f "$3.tmp" "$3" && return 0 ;;
 	404) echo "error notfound No release found" ;;
 	*) echo "error http HTTP $code" ;;
 	esac
-	rm -f "$out.tmp"
+	rm -f "$3.tmp"
 	return 1
+}
+
+# do_check <channel> [out]: the release record into out (default
+# release.json, the manual check's), or one "error <code> <text>" line.
+do_check() {
+	out=${2:-$DIR/release.json}
+	case $1 in
+	stable) path=releases/latest ;;
+	snapshot) path=releases/tags/snapshot ;;
+	*) usage ;;
+	esac
+	fetch_json "$API" "$path" "$out"
 }
 
 # do_run <menu|tty> file <path> | <menu|tty> online <url> <version>
@@ -495,6 +508,165 @@ do_install() {
 	do_run tty online "$url" "$ver"
 }
 
+# This board's drone asset URL in a release record, or nothing.
+drone_url() {
+	grep -o "\"browser_download_url\": *\"[^\"]*-$2-maburd\"" "$1" |
+		head -n 1 | sed 's/.*: *"//; s/"$//'
+}
+
+# do_drone_check [<drone version> <drone board>]: "ok <version>", with the
+# release record in $DIR/drone/release.json, or one "error <code> <text>" line.
+do_drone_check() {
+	if [ $# = 2 ]; then
+		dv=$1 db=$2
+	else
+		[ $# = 0 ] || usage
+		id=$("$MABURUP" ident 2>/dev/null)
+		dv=$(echo "$id" | tr ' ' '\n' | sed -n 's/^version=//p')
+		db=$(echo "$id" | tr ' ' '\n' | sed -n 's/^board=//p')
+		[ -n "$dv" ] && [ -n "$db" ] || { echo "error nodrone No drone found"; return 1; }
+	fi
+	gv=$(osr VERSION)
+	rel=$DIR/drone/release.json
+	mkdir -p "$DIR/drone"
+	if echo "$gv" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+		gm=${gv%.*}
+		if vnewer "$gm.999999" "$dv"; then
+			echo "error gsolder Ground station $gv is older than drone $dv. Update the ground station first."
+			return 1
+		fi
+		fetch_json "$DAPI" "releases?per_page=100" "$DIR/drone/list.json" || return 1
+		best=
+		for t in $(grep -o '"tag_name": *"[^"]*"' "$DIR/drone/list.json" | sed 's/.*: *"//; s/"$//'); do
+			echo "$t" | grep -Eq "^$gm\\.[0-9]+\$" || continue
+			[ -z "$best" ] || vnewer "$best" "$t" && best=$t
+		done
+		[ -n "$best" ] || { echo "error norelease No drone release for $gm"; return 1; }
+		ver=$best
+		if vnewer "$dv" "$best" || ! echo "$dv" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then :
+		else
+			echo "error uptodate Drone is up to date ($dv)"
+			return 1
+		fi
+		fetch_json "$DAPI" "releases/tags/$best" "$rel" || return 1
+	elif echo "$gv" | grep -Eq '^snapshot-[0-9a-f]+$'; then
+		fetch_json "$DAPI" releases/tags/snapshot "$rel" || return 1
+		url=$(drone_url "$rel" "$db")
+		ver=${url##*/mabur-}
+		ver=${ver%-"$db"-maburd}
+		if [ -n "$url" ] && [ "$ver" = "$dv" ]; then
+			echo "error uptodate Drone is up to date ($dv)"
+			return 1
+		fi
+	else
+		echo "error testbuild Test build — no drone channel"
+		return 1
+	fi
+	[ -n "$(drone_url "$rel" "$db")" ] || { echo "error noboard No drone build for $db"; return 1; }
+	echo "ok $ver"
+}
+
+# drone_dl <url> <out>: download with progress, or abort.
+drone_dl() {
+	rm -f "$DIR/headers" "$DIR/http"
+	curl -s -L --cacert "$CACERT" --connect-timeout 15 --speed-limit 1024 --speed-time 30 \
+		-D "$DIR/headers" -o "$2" -w '%{http_code}' "$1" >"$DIR/http" 2>/dev/null &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		cancelled
+		total=$(tr -d '\r' 2>/dev/null <"$DIR/headers" | sed -n 's/^[Cc]ontent-[Ll]ength: *//p' | tail -n 1)
+		st running download "$(fsize "$2")" "${total:-0}"
+		sleep 0.2
+	done
+	wait "$pid"
+	rc=$? pid=''
+	cancelled
+	[ $rc = 0 ] || abort error "$(curl_err $rc | cut -d' ' -f2-)"
+	case $(cat "$DIR/http" 2>/dev/null) in
+	200) ;;
+	404) abort error "Snapshot changed — check again" ;;
+	*) abort error "Download failed: HTTP $(cat "$DIR/http" 2>/dev/null)" ;;
+	esac
+}
+
+# do_drone_run <url> <version>: called with the lock held.
+do_drone_run() {
+	SRC=$1 WANT=$2 MODE=menu pid='' gz='' PHASE=download
+	echo $$ >"$DIR/lock/pid"
+	trap 'abort cancelled Interrupted' INT TERM HUP
+	f=$DIR/drone/maburd
+	mkdir -p "$DIR/drone"
+	rm -f "$f" "$f.sha256" "$DIR/drone/up.out"
+	st running download 0 0
+	drone_dl "$SRC" "$f"
+	drone_dl "$SRC.sha256" "$f.sha256"
+
+	PHASE=verify
+	st running verify 0 0
+	want=$(awk '{ print $1; exit }' "$f.sha256")
+	have=$(sha256sum "$f" | awk '{ print $1 }')
+	[ -n "$want" ] && [ "$want" = "$have" ] || abort error "Checksum mismatch"
+	cancelled
+
+	PHASE=send
+	st running send 0 0
+	"$MABURUP" install "$f" "$want" >"$DIR/drone/up.out" 2>&1 </dev/null &
+	pid=$!
+	while kill -0 "$pid" 2>/dev/null; do
+		cancelled
+		set -- $(tail -n 1 "$DIR/drone/up.out" 2>/dev/null)
+		case $1 in
+		send) st running send "${2:-0}" "${3:-0}" ;;
+		trial) PHASE=trial; st running trial "${2:-0}" 40 ;;
+		esac
+		sleep 0.2
+	done
+	wait "$pid"
+	pid=''
+	fin=$(tail -n 1 "$DIR/drone/up.out" 2>/dev/null)
+	case $fin in
+	committed)
+		rm -f "$f" "$f.sha256" "$DIR/drone/up.out"
+		drop_lock
+		st done result 0 0 "Updated to $WANT"
+		exit 0
+		;;
+	"rolled_back exited") m="Rolled back: the new build exited" ;;
+	"rolled_back no_link") m="Rolled back: the new build never linked" ;;
+	"rolled_back no_video") m="Rolled back: no video from the new build" ;;
+	"refused bad_hash") m="Refused: the file arrived damaged" ;;
+	"refused wrong_board") m="Refused: built for another board" ;;
+	"refused bad_config") m="Refused: the drone's config does not load" ;;
+	"refused busy") m="Refused: the drone is busy" ;;
+	"refused no_file") m="Refused: the file did not arrive" ;;
+	"error "*)
+		m=${fin#error }
+		m=$(echo "$m" | cut -c1 | tr a-z A-Z)$(echo "$m" | cut -c2-)
+		;;
+	*) m=$fin ;;
+	esac
+	abort error "${m:-Update failed}"
+}
+
+do_drone() {
+	v=$1
+	shift
+	case $v in
+	check) do_drone_check "$@" ;;
+	start)
+		[ $# = 2 ] || usage
+		take_lock || { echo "error busy An update is already running"; exit 1; }
+		rm -f "$DIR/cancel"
+		st running download 0 0
+		if [ "$GS_UPGRADE_TEST" = 1 ]; then s=; else s=setsid; fi
+		$s sh "$0" __drone_run "$@" </dev/null >"$DIR/log" 2>&1 &
+		echo $! >"$DIR/lock/pid"
+		echo started
+		;;
+	*) usage ;;
+	esac
+}
+
 BB=
 case $1 in
 __write) BB=$GSU_BB ;;
@@ -507,6 +679,8 @@ case $1 in
 find) do_find ;;
 check) [ $# = 2 ] || usage; do_check "$2" ;;
 notify) do_notify ;;
+drone) shift; do_drone "$@" ;;
+__drone_run) shift; do_drone_run "$@" ;;
 start) shift; do_start "$@" ;;
 install) shift; do_install "$@" ;;
 __run) shift; do_run "$@" ;;

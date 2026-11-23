@@ -131,6 +131,29 @@ runs over the SPL at 256 KiB and leaves the board unbootable. The Orange
 Pi's own package carries no `u-boot.bin`; its bootloader is updated only by
 hand, as above.
 
+### The drone
+
+    gs-upgrade drone check [<version> <board>]
+    gs-upgrade drone start <url> <version>
+
+`check` prints one line: `ok <version>` (the release record is left in
+`/tmp/gs-upgrade/drone/release.json`) or `error <code> <text>`. The drone's
+version and board come from the arguments, or from `maburup ident` when
+there are none (`error nodrone No drone found` when it does not answer).
+The release follows the GS's own version: on `vX.Y.Z` it is the newest
+drone `vX.Y.*`; on `snapshot-*` it is the drone `snapshot` release; any
+other build has no drone channel (`testbuild`). Other errors: `gsolder`
+(the drone's minor is above the GS's), `uptodate`, `noboard`, `norelease`,
+and the network, clock, tls and http errors of the GS check.
+
+`start` takes the asset URL (`mabur-<ver>-<board>-maburd`; its `.sha256`
+sits beside it), runs detached under the same lock and status file as a GS
+update, and reports the phases download, verify (the sha256 must match),
+send and trial (seconds left of 40) as `maburup install` reports them. It
+ends `state=done` with `msg=Updated to <version>`, or `state=error` with
+the reason (`Rolled back: ...`, `Refused: ...`, `Checksum mismatch`), or
+`state=cancelled` (cancel works until the file is sent; it stops `maburup`).
+
 ### From an older image
 
 An image from before `gs-upgrade` has `sysupgrade` instead, which installs
