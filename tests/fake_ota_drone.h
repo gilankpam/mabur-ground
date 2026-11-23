@@ -59,25 +59,25 @@ class FakeDrone {
   // Answers one decoded message; the replies go back to the GS.
   std::vector<mabur::ota::OtaMsg> handle(const mabur::ota::OtaMsg& m, uint64_t now) {
     if (mute || now < down_until_) return {};
-    if (const auto* u = std::get_if<mabur::ota::UpdateCmd>(&m)) {
-      if (u->cmd == mabur::ota::Cmd::kStart) ++starts_seen;
-      if (u->cmd == mabur::ota::Cmd::kStatus && trial_ && ++polled_ >= polls_)
-        spit(dir + "/result", outcome_ + "\n");
-    }
+    observe(m);
     auto out = server_->on_msg(m, now);
     if (server_->exit_requested()) restart(now);
     return out;
   }
 
- private:
-  mabur::OtaEnv env(bool trial, uint64_t start) const {
-    mabur::OtaEnv e;
-    e.dir = dir;
-    e.ident = ident_;
-    e.trial = trial;
-    e.start_ms = start;
-    return e;
+  // The loop's side of one message the server is about to see: counts
+  // STARTs, and writes the result once the trial has been polled enough.
+  void observe(const mabur::ota::OtaMsg& m) {
+    if (const auto* u = std::get_if<mabur::ota::UpdateCmd>(&m)) {
+      if (u->cmd == mabur::ota::Cmd::kStart) ++starts_seen;
+      if (u->cmd == mabur::ota::Cmd::kStatus && trial_ && ++polled_ >= polls_)
+        spit(dir + "/result", outcome_ + "\n");
+    }
   }
+
+  // The server of the running process, for a caller that hosts it itself
+  // (calls on_msg through its own component) and so drives restart() too.
+  mabur::OtaServer& server() { return *server_; }
 
   // What S96mabur's step does for a go file.
   void restart(uint64_t now) {
@@ -92,6 +92,16 @@ class FakeDrone {
     polled_ = 0;
     down_until_ = now + gap_ms_;
     server_ = std::make_unique<mabur::OtaServer>(env(ok, now + gap_ms_));
+  }
+
+ private:
+  mabur::OtaEnv env(bool trial, uint64_t start) const {
+    mabur::OtaEnv e;
+    e.dir = dir;
+    e.ident = ident_;
+    e.trial = trial;
+    e.start_ms = start;
+    return e;
   }
 
   mabur::ota::Ident ident_;

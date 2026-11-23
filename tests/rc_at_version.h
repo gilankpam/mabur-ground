@@ -2,7 +2,9 @@
 // RC frames as a peer at another RC_VERSION would send them: the version
 // byte rewritten, the key-only tag recomputed where the frame has one (the
 // version is inside the tagged bytes), the CRC recomputed.
+#include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "mabur/crc16.h"
@@ -18,16 +20,28 @@ inline void fix_crc(std::vector<uint8_t>& b) {
   b[b.size() - 1] = static_cast<uint8_t>(crc >> 8);
 }
 
+// A frame with the key-only tag (ctx all zero) at `tag_at`, at version `ver`.
+inline std::vector<uint8_t> key_tagged_at_version(std::vector<uint8_t> b, uint8_t ver,
+                                                  const mabur::LinkKey& key, size_t tag_at) {
+  b[2] = ver;
+  std::vector<uint8_t> in(b.begin(), b.begin() + tag_at);
+  in.insert(in.end(), 12, 0);   // ctx {0, 0, 0}
+  const uint64_t tag = mabur::siphash24(key, in.data(), in.size());
+  for (int i = 0; i < 8; ++i) b[tag_at + i] = static_cast<uint8_t>(tag >> (8 * i));
+  fix_crc(b);
+  return b;
+}
+
 // A packed DISC_ACK (26 bytes, tag at 16) at version `ver`, tagged under `key`.
 inline std::vector<uint8_t> ack_at_version(std::vector<uint8_t> b, uint8_t ver,
                                            const mabur::LinkKey& key) {
-  b[2] = ver;
-  std::vector<uint8_t> in(b.begin(), b.begin() + 16);
-  in.insert(in.end(), 12, 0);   // ctx {0, 0, 0}
-  const uint64_t tag = mabur::siphash24(key, in.data(), in.size());
-  for (int i = 0; i < 8; ++i) b[16 + i] = static_cast<uint8_t>(tag >> (8 * i));
-  fix_crc(b);
-  return b;
+  return key_tagged_at_version(std::move(b), ver, key, 16);
+}
+
+// A packed DISC (20 bytes, tag at 10) at version `ver`, tagged under `key`.
+inline std::vector<uint8_t> disc_at_version(std::vector<uint8_t> b, uint8_t ver,
+                                            const mabur::LinkKey& key) {
+  return key_tagged_at_version(std::move(b), ver, key, 10);
 }
 
 // An untagged frame (Telem) at version `ver`.

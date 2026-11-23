@@ -324,6 +324,9 @@ if(TARGET maburd)
   # RcAgent <-> VrxController loopback: matching/mismatched keys, a same-key
   # stranger, a restart relink (spec 2026-10-01 link-pairing §11).
   add_mtest(test_link_auth_e2e test_link_auth_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
+  # Both ends of a drone update across RC versions: the GS's update-only
+  # session against the drone's RcAgent, MavComponent and OtaServer.
+  add_mtest(test_drone_ota_e2e test_drone_ota_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
   add_test(NAME gs_au_e2e COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_gs_au_e2e.sh)
   set_tests_properties(gs_au_e2e PROPERTIES
     ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")
