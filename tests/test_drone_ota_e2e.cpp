@@ -383,6 +383,8 @@ TEST(rollback_across_versions_reported) {
   CHECK(r.total_update_dropped() == 0);
 }
 
+// Covers the update-lane filter (a heartbeat is never packed beside an FTP
+// write), not the endpoint's answer-the-last-sender rule.
 TEST(heartbeat_from_ground_app_does_not_break_transfer) {
   Rig r("committed");
   r.reach_ident(2000);

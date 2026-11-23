@@ -169,7 +169,10 @@ or reflash.
 
 `maburup` (`/usr/local/bin/maburup`) talks to the drone through maburgs'
 MAVLink endpoint (`127.0.0.1:14550`, or `--port N`), so maburgs must be
-running and linked. `maburup ident` prints `version=<v> board=<b> chip=<c>`
+running and linked, with `[mavlink] enable = true` (the default). The
+endpoint answers the last sender, so a ground app connected to it during an
+update takes some of the replies and slows the transfer (retries recover it).
+`maburup ident` prints `version=<v> board=<b> chip=<c>`
 and exits 0, or prints `error no drone` and exits 2 after five unanswered
 requests. `maburup install <file> <sha256-hex>` checks the file and its
 hash (`error bad file` / `error bad hash`, exit 1, nothing sent), writes it
