@@ -1295,13 +1295,14 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       chan.on_rc_body(m.rx_channel);   // read by the rc sink inside on_rx_body()
       agg.on_rx_body(m);
       // A frame of another RC_VERSION other than the frozen DISC_ACK (which
-      // the rc sink reads: VERSION_MISMATCH) reaches no RC path and is never
+      // the rc sink reads: VERSION_MISMATCH, and T_MAV_UP, the update tunnel) reaches no RC path and is never
       // video. Log it, rate-limited to 1/5s: a mismatched peer transmits
       // continuously and /tmp is tmpfs. Gated on crc_ok because RC_MAGIC is
       // only two bytes: roughly 1 in 65536 corrupt video bodies matches it.
       if (m.crc_ok &&
           mabur::rc::is_foreign_rc_version(m.body.data(), m.body.size()) &&
           mabur::rc::frozen_type(m.body.data(), m.body.size()) != mabur::rc::T_DISC_ACK &&
+          mabur::rc::frozen_type(m.body.data(), m.body.size()) != mabur::rc::T_MAV_UP &&
           (!foreign_rc_logged || now_ms_u - last_foreign_rc_ms >= 5000)) {
         foreign_rc_logged = true;
         last_foreign_rc_ms = now_ms_u;
