@@ -100,3 +100,25 @@ TEST(os_release_value_unquotes) {
 }
 
 MTEST_MAIN
+
+namespace {
+const char* kDroneRel = R"({"body":"x\n\n**Changes**\n- one\n- two\n\n",
+  "assets":[{"name":"mabur-v0.4.2-other-maburd","browser_download_url":"https://e.invalid/other"},
+            {"name":"mabur-v0.4.2-ssc338q-maburd.sha256","browser_download_url":"https://e.invalid/sha"},
+            {"name":"mabur-v0.4.2-ssc338q-maburd","browser_download_url":"https://e.invalid/maburd"}]})";
+}
+
+TEST(parse_drone_release_picks_board_asset) {
+  std::string why;
+  auto r = parse_drone_release(kDroneRel, "ssc338q", &why);
+  REQUIRE(r);
+  CHECK(r->url == "https://e.invalid/maburd");
+  CHECK(r->version == "v0.4.2");
+  CHECK(r->changelog.size() == 2);
+}
+
+TEST(parse_drone_release_no_board) {
+  std::string why;
+  CHECK(!parse_drone_release(kDroneRel, "pi5", &why));
+  CHECK(why == "No drone build for pi5");
+}

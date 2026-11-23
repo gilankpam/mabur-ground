@@ -5,11 +5,28 @@
 #   FAKE_FIND_N       packages to report (each with VERSION and CHANGELOG)
 #   FAKE_CHECK_ERR    "<code> <text>": check fails with that error line
 #   FAKE_RELEASE      file copied to release.json on a good check
+#   FAKE_DRONE_RELEASE file copied to drone/release.json on a good drone check
+#   FAKE_DRONE_CHECK_ERR "<code> <text>": drone check fails with that line
+#   FAKE_LOG          drone verbs write their argv here
 #   FAKE_START_ERR    "<code> <text>": start fails with that error line;
 #                     ECHO_DIR: the error text is the GS_UPGRADE_DIR it was given
 D=$GS_UPGRADE_DIR
 mkdir -p "$D"
 [ -z "$FAKE_SLEEP" ] || sleep "$FAKE_SLEEP"
+if [ "$1" = drone ]; then
+	[ -z "$FAKE_LOG" ] || echo "$*" >"$FAKE_LOG"
+	case $2 in
+	check)
+		if [ -n "$FAKE_DRONE_CHECK_ERR" ]; then echo "error $FAKE_DRONE_CHECK_ERR"; exit 1; fi
+		mkdir -p "$D/drone"
+		cp "$FAKE_DRONE_RELEASE" "$D/drone/release.json"
+		echo "ok v0.4.2" ;;
+	start)
+		printf 'state=running\nphase=send\ndone=0\ntotal=1000\nmsg=\n' >"$D/status"
+		echo started ;;
+	esac
+	exit 0
+fi
 case $1 in
 find)
 	n=0

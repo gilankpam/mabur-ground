@@ -266,3 +266,82 @@ TEST(pad_events_map_to_page_keys) {
 }
 
 MTEST_MAIN
+
+namespace {
+ReleaseInfo drone_rel() {
+  ReleaseInfo r;
+  r.version = "v0.4.2";
+  r.url = "https://e.invalid/maburd";
+  return r;
+}
+UpgradeFlow drone_running(const UpgradeStatus& st) {
+  auto f = flow();
+  f.show_drone_release(drone_rel(), "v0.4.0");
+  f.key(K::kRight);
+  f.key(K::kRight);
+  f.on_status(st);
+  return f;
+}
+UpgradeStatus ust(const char* state, const char* phase, uint64_t d = 0, uint64_t t = 0,
+                  const char* msg = "") {
+  UpgradeStatus s;
+  s.state = state;
+  s.phase = phase;
+  s.done = d;
+  s.total = t;
+  s.msg = msg;
+  return s;
+}
+}  // namespace
+
+TEST(drone_release_page_header_from_drone_version) {
+  auto f = flow();
+  f.show_drone_release(drone_rel(), "v0.4.0");
+  auto p = f.page();
+  CHECK(p.title == "Update · Drone");
+  CHECK(p.header == "v0.4.0 → v0.4.2");
+}
+
+TEST(drone_confirm_text_and_cmd) {
+  auto f = flow();
+  f.show_drone_release(drone_rel(), "v0.4.0");
+  f.key(K::kRight);
+  CHECK(f.page().confirm == "Install v0.4.2 on the drone? Keep the drone and the GS powered.");
+  auto c = f.key(K::kRight);
+  CHECK(c.kind == UpgradeCmd::Kind::kStartDrone);
+  CHECK(c.arg == "https://e.invalid/maburd" && c.version == "v0.4.2");
+}
+
+TEST(drone_send_bar) {
+  auto f = drone_running(ust("running", "send", 500, 1000));
+  auto p = f.page();
+  CHECK(p.pct == 50);
+  CHECK(p.phase_text == "Sending to the drone");
+}
+
+TEST(drone_trial_seconds) {
+  auto f = drone_running(ust("running", "trial", 31, 40));
+  CHECK(f.page().phase_text == "Trial run \xc2\xb7 31 s");
+}
+
+TEST(drone_done_page) {
+  auto f = drone_running(ust("done", "result", 0, 0, "Updated to v0.4.2"));
+  auto p = f.page();
+  CHECK(p.phase_text == "Updated to v0.4.2");
+  CHECK(p.error.empty() && !p.running);
+  CHECK(p.keys == "◀ close");
+  f.key(K::kLeft);
+  CHECK(!f.active());
+}
+
+TEST(drone_error_page) {
+  auto f = drone_running(ust("error", "result", 0, 0, "Rolled back: the new build never linked"));
+  CHECK(f.page().error == "Rolled back: the new build never linked");
+}
+
+TEST(cancel_allowed_in_send) {
+  auto f = drone_running(ust("running", "send", 1, 1000));
+  CHECK(f.key(K::kLeft).kind == UpgradeCmd::Kind::kCancel);
+  auto g = drone_running(ust("running", "trial", 31, 40));
+  CHECK(g.key(K::kLeft).kind == UpgradeCmd::Kind::kNone);
+}
