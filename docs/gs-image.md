@@ -152,7 +152,8 @@ update, and reports the phases download, verify (the sha256 must match),
 send and trial (seconds left of 40) as `maburup install` reports them. It
 ends `state=done` with `msg=Updated to <version>`, or `state=error` with
 the reason (`Rolled back: ...`, `Refused: ...`, `Checksum mismatch`), or
-`state=cancelled` (cancel works until the file is sent; it stops `maburup`).
+`state=cancelled` (cancel works in download, verify and send, and stops `maburup`; once the
+trial starts the drone decides alone and a cancel is ignored).
 
 ### From an older image
 

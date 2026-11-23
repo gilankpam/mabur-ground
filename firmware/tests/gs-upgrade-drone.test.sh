@@ -242,7 +242,9 @@ echo $$ >"$T/dir/lock/pid"
 ok
 
 name=cancel_during_send
-startup committed
+reset v0.4.1
+asset v0.4.2
+printf 'send 10 100\nsend 50 100\n' >"$T/lines"
 FAKE_MABURUP_HANG=1
 export FAKE_MABURUP_HANG
 gsu drone start "$URL" v0.4.2 >/dev/null
@@ -254,9 +256,26 @@ while [ "$(st phase)" != send ] || [ "$(st done)" = 0 ]; do
 done
 gsu cancel
 wait_end
-[ "$(st state)" = cancelled ] || ko "state $(st state)"
+[ "$(st state)" = cancelled ] && [ "$(st phase)" = send ] || ko "state $(st state) phase $(st phase)"
 sleep 0.2
 grep -q killed "$T/up.log" || ko "maburup not killed"
+lock_gone || ko lock
+ok
+
+name=cancel_during_trial_ignored
+startup committed
+FAKE_MABURUP_GAP=0.3
+export FAKE_MABURUP_GAP
+gsu drone start "$URL" v0.4.2 >/dev/null
+i=0
+while [ "$(st phase)" != trial ]; do
+	sleep 0.05
+	i=$((i + 1))
+	[ $i -lt 200 ] || break
+done
+gsu cancel
+wait_end
+[ "$(st state)" = done ] && [ "$(st msg)" = "Updated to v0.4.2" ] || ko "state $(st state) $(st msg)"
 lock_gone || ko lock
 ok
 
