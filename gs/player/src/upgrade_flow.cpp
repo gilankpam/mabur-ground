@@ -263,10 +263,11 @@ UpgradePage UpgradeFlow::page() const {
   if (view_ == View::kRunning) {
     p.running = true;
     p.phase_text = phase_name(st_.phase);
-    // done is the seconds run of the window; the text shows what is left.
-    if (st_.phase == "trial" && st_.total >= st_.done)
-      p.phase_text += " · " + std::to_string(st_.total - st_.done) + " s";
-    if (have_status_ && st_.total > 0) p.pct = static_cast<int>(st_.done * 100 / st_.total);
+    // The trial's 40 s is the most the drone waits, not how long it takes: a
+    // good build commits once it has linked and sent video, so no time and no bar.
+    const bool trial = st_.phase == "trial";
+    if (trial) p.phase_text += " · checking link and video";
+    if (have_status_ && st_.total > 0 && !trial) p.pct = static_cast<int>(st_.done * 100 / st_.total);
     p.keys = cancellable(st_) ? "◀ cancel" : "";
     return p;
   }

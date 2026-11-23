@@ -319,11 +319,12 @@ TEST(drone_send_bar) {
   CHECK(p.phase_text == "Sending to the drone");
 }
 
-TEST(drone_trial_seconds) {
-  // done counts up through the 40 s window; the text shows what is left.
+TEST(drone_trial_page) {
+  // 40 s is the most the drone waits: a good build commits as soon as it has
+  // linked and sent video, so the page promises no time and draws no bar.
   auto f = drone_running(ust("running", "trial", 9, 40));
-  CHECK(f.page().phase_text == "Trial run \xc2\xb7 31 s");
-  CHECK(f.page().pct == 22);
+  CHECK(f.page().phase_text == "Trial run \xc2\xb7 checking link and video");
+  CHECK(f.page().pct == -1);
 }
 
 TEST(drone_install_page) {
