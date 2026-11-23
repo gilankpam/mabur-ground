@@ -6,9 +6,14 @@ std::optional<std::vector<uint8_t>> DroneIdent::tick(uint32_t vtx_nonce, uint64_
   if (vtx_nonce != nonce_) {
     nonce_ = vtx_nonce;
     sent_ = 0;
+    gave_up_ = false;
     ident_.reset();
   }
-  if (nonce_ == 0 || ident_ || sent_ >= kTries) return std::nullopt;
+  if (nonce_ == 0 || ident_) return std::nullopt;
+  if (sent_ >= kTries) {
+    if (now_ms - last_ms_ >= kRetryMs) gave_up_ = true;
+    return std::nullopt;
+  }
   if (sent_ > 0 && now_ms - last_ms_ < kRetryMs) return std::nullopt;
   ++sent_;
   last_ms_ = now_ms;

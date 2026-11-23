@@ -16,6 +16,7 @@ TEST(asks_at_once_then_every_second_five_times) {
   CHECK(d.tick(7, 0).has_value());
   CHECK(!d.tick(7, 500).has_value());
   for (uint64_t t : {1000, 2000, 3000, 4000}) CHECK(d.tick(7, t).has_value());
+  CHECK(!d.gave_up());
   CHECK(!d.tick(7, 5000).has_value());
   CHECK(d.gave_up());
 }

@@ -23,11 +23,14 @@ class DroneIdent {
   // Whole packets; anything but MABUR_IDENT is ignored.
   void on_packet(const uint8_t* bytes, size_t n);
   const std::optional<mabur::ota::Ident>& ident() const { return ident_; }
-  bool gave_up() const { return nonce_ != 0 && !ident_ && sent_ >= kTries; }
+  // kTries sent under this nonce and the last one's kRetryMs window ran out
+  // with no answer; set by tick(), cleared by a new nonce or an answer.
+  bool gave_up() const { return gave_up_ && !ident_; }
 
  private:
   uint32_t nonce_ = 0;
   int sent_ = 0;
+  bool gave_up_ = false;
   uint64_t last_ms_ = 0;
   std::optional<mabur::ota::Ident> ident_;
 };
