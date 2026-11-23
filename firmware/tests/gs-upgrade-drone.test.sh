@@ -279,5 +279,23 @@ wait_end
 lock_gone || ko lock
 ok
 
+name=cancel_after_sent_ignored
+reset v0.4.1
+asset v0.4.2
+printf 'send 50 100\nsend 100 100\ntrial 30\ncommitted\n' >"$T/lines"
+FAKE_MABURUP_GAP=0.6
+export FAKE_MABURUP_GAP
+gsu drone start "$URL" v0.4.2 >/dev/null
+i=0
+while [ "$(st done)" != 100 ]; do
+	sleep 0.05
+	i=$((i + 1))
+	[ $i -lt 200 ] || break
+done
+gsu cancel
+wait_end
+[ "$(st state)" = done ] && [ "$(st msg)" = "Updated to v0.4.2" ] || ko "state $(st state) $(st msg)"
+ok
+
 echo "gs-upgrade-drone: $pass passed, $fail failed"
 [ "$fail" = 0 ]

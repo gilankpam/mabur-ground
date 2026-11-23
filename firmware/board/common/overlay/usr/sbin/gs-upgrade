@@ -5,7 +5,7 @@
 #   gs-upgrade check stable|snapshot         fetch the GitHub release record
 #   gs-upgrade start file <path>             upgrade, detached (the menu)
 #   gs-upgrade start online <url> <version>
-#   gs-upgrade cancel                        honoured in download/unpack/verify; for the drone, download/verify/send
+#   gs-upgrade cancel                        honoured in download/unpack/verify; for the drone, until the file is sent
 #   gs-upgrade install <file> [-y]           upgrade in the foreground (ssh)
 #   gs-upgrade install --online stable|snapshot [-y]
 #   gs-upgrade notify                        once per boot: mark a newer release
@@ -612,14 +612,18 @@ do_drone_run() {
 	st running send 0 0
 	"$MABURUP" install "$f" "$want" >"$DIR/drone/up.out" 2>&1 </dev/null &
 	pid=$!
+	sent=
 	while kill -0 "$pid" 2>/dev/null; do
-		# Once the trial runs the drone decides alone: a cancel is ignored.
-		if [ "$PHASE" = send ]; then cancelled; else rm -f "$DIR/cancel"; fi
 		set -- $(tail -n 1 "$DIR/drone/up.out" 2>/dev/null)
 		case $1 in
-		send) st running send "${2:-0}" "${3:-0}" ;;
-		trial) PHASE=trial; st running trial "${2:-0}" 40 ;;
+		send)
+			st running send "${2:-0}" "${3:-0}"
+			# All bytes sent: START may be out, so the drone decides alone.
+			[ "${2:-0}" != 0 ] && [ "$2" = "$3" ] && sent=1
+			;;
+		trial) sent=1 PHASE=trial; st running trial "${2:-0}" 40 ;;
 		esac
+		if [ -z "$sent" ]; then cancelled; else rm -f "$DIR/cancel"; fi
 		sleep 0.2
 	done
 	wait "$pid"
