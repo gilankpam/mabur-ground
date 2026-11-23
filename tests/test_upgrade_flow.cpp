@@ -345,3 +345,11 @@ TEST(cancel_allowed_in_send) {
   auto g = drone_running(ust("running", "trial", 31, 40));
   CHECK(g.key(K::kLeft).kind == UpgradeCmd::Kind::kNone);
 }
+
+TEST(cancel_hidden_once_every_byte_is_sent) {
+  auto f = drone_running(ust("running", "send", 999, 1000));
+  CHECK(f.page().keys == "◀ cancel");
+  f.on_status(ust("running", "send", 1000, 1000));
+  CHECK(f.page().keys.empty());
+  CHECK(f.key(K::kLeft).kind == UpgradeCmd::Kind::kNone);
+}

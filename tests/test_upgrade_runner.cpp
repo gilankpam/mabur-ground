@@ -222,6 +222,16 @@ TEST(drone_check_error_text) {
   CHECK(res->error == "Drone is up to date (v0.4.2)");
 }
 
+TEST(drone_check_error_codes_share_the_gs_texts) {
+  clear_env();
+  ::setenv("FAKE_DRONE_CHECK_ERR", "network No network", 1);
+  UpgradeRunner r(fake(), fresh_dir());
+  REQUIRE(r.check_drone("v0.4.2", "ssc338q"));
+  auto res = wait_for([&] { return r.poll_check_drone("ssc338q"); });
+  REQUIRE(res);
+  CHECK(res->error == "No network \xe2\x80\x94 set wifi.toml to client mode");
+}
+
 TEST(drone_start_runs_tool) {
   clear_env();
   std::string d = fresh_dir();

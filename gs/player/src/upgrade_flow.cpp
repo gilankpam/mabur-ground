@@ -16,9 +16,12 @@ std::string phase_name(const std::string& p) {
   if (p == "trial") return "Trial run";
   return "Starting";
 }
-// The tool honours a cancel only before it touches services.
-bool cancellable(const std::string& p) {
-  return p.empty() || p == "download" || p == "unpack" || p == "verify" || p == "send";
+// The tool honours a cancel only before it touches services, and not once the
+// last byte is on its way to the drone.
+bool cancellable(const UpgradeStatus& st) {
+  const std::string& p = st.phase;
+  if (p == "send") return !(st.total > 0 && st.done == st.total);
+  return p.empty() || p == "download" || p == "unpack" || p == "verify";
 }
 // Header text for installing `next` over `cur`; warns when it is a downgrade or
 // a snapshot.
@@ -197,7 +200,7 @@ UpgradeCmd UpgradeFlow::key_impl(UpgradeKey k) {
       break;
     }
     case View::kRunning:
-      if (k == UpgradeKey::kLeft && cancellable(st_.phase)) cmd.kind = UpgradeCmd::Kind::kCancel;
+      if (k == UpgradeKey::kLeft && cancellable(st_)) cmd.kind = UpgradeCmd::Kind::kCancel;
       break;
     case View::kEnded:
       if (k == UpgradeKey::kLeft || k == UpgradeKey::kRight) view_ = View::kNone;
@@ -261,7 +264,7 @@ UpgradePage UpgradeFlow::page() const {
     p.phase_text = phase_name(st_.phase);
     if (st_.phase == "trial") p.phase_text += " · " + std::to_string(st_.done) + " s";
     if (have_status_ && st_.total > 0) p.pct = static_cast<int>(st_.done * 100 / st_.total);
-    p.keys = cancellable(st_.phase) ? "◀ cancel" : "";
+    p.keys = cancellable(st_) ? "◀ cancel" : "";
     return p;
   }
   if (st_.state == "done") {

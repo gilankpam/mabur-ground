@@ -193,13 +193,24 @@ bool UpgradeRunner::check_drone(const std::string& version, const std::string& b
   return spawn({"drone", "check", version, board}, &job_);
 }
 
+// The user text for a failed check; the same codes read the same for a GS and
+// a drone check.
+static std::string check_error_text(const std::string& code, const std::string& text,
+                                    bool snapshot) {
+  if (code == "clock") return "Clock not synced yet \xe2\x80\x94 try again in a minute";
+  if (code == "network") return "No network \xe2\x80\x94 set wifi.toml to client mode";
+  if (code == "notfound" && snapshot)
+    return "No snapshot right now \xe2\x80\x94 try again in a few minutes";
+  return text.empty() ? "Check failed" : text;
+}
+
 std::optional<UpgradeRunner::CheckResult> UpgradeRunner::poll_check_drone(const std::string& board) {
   int st = 0;
   if (!busy() || !reap(&job_, &st)) return std::nullopt;
   CheckResult r;
   std::string code, text;
   if (error_line(job_.out, &code, &text)) {
-    r.error = text.empty() ? "Check failed" : text;
+    r.error = check_error_text(code, text, false);
   } else if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
     r.error = "Check failed";
   } else {
@@ -216,15 +227,7 @@ std::optional<UpgradeRunner::CheckResult> UpgradeRunner::poll_check(const std::s
   CheckResult r;
   std::string code, text;
   if (error_line(job_.out, &code, &text)) {
-    if (code == "clock") {
-      r.error = "Clock not synced yet \xe2\x80\x94 try again in a minute";
-    } else if (code == "network") {
-      r.error = "No network \xe2\x80\x94 set wifi.toml to client mode";
-    } else if (code == "notfound" && snapshot_) {
-      r.error = "No snapshot right now \xe2\x80\x94 try again in a few minutes";
-    } else {
-      r.error = text.empty() ? "Check failed" : text;
-    }
+    r.error = check_error_text(code, text, snapshot_);
     return r;
   }
   if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
