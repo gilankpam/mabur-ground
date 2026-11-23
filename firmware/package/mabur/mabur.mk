@@ -131,7 +131,7 @@ MABUR_GPIO_COMPAT_FLAG = -include $(MABUR_PKGDIR)/gpio_v2_compat.h
 # burned-DVR colortrans stage (gs/player/src/frame_colortrans.cpp), which links
 # EGL/GLESv2/gbm/rga from staging (docs/colortrans.md). The V4L2-request
 # decoder has no encoder, so no burned DVR and no GPU stage.
-MABUR_MAKE_OPTS = maburgs maburplay
+MABUR_MAKE_OPTS = maburgs maburplay maburup
 
 MABUR_CONF_OPTS = \
 	-DBUILD_SHARED_LIBS=OFF \
@@ -192,6 +192,8 @@ MABUR_CONF_OPTS = \
 define MABUR_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(MABUR_BUILDDIR)/gs/maburgs \
 		$(TARGET_DIR)/usr/local/bin/maburgs
+	$(INSTALL) -D -m 0755 $(MABUR_BUILDDIR)/gs/maburup \
+		$(TARGET_DIR)/usr/local/bin/maburup
 	$(INSTALL) -D -m 0755 $(MABUR_BUILDDIR)/gs/player/maburplay \
 		$(TARGET_DIR)/usr/local/bin/maburplay
 

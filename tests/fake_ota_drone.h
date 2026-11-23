@@ -37,8 +37,9 @@ class FakeDrone {
  public:
   // `outcome` is the result file's text once the trial has been polled
   // `polls` times; the loop is silent for `gap_ms` after the exit.
-  explicit FakeDrone(std::string outcome, int polls = 3, uint64_t gap_ms = 0)
-      : outcome_(std::move(outcome)), polls_(polls), gap_ms_(gap_ms) {
+  explicit FakeDrone(std::string outcome, int polls = 3, uint64_t gap_ms = 0,
+                     mabur::ota::Ident ident = {"v", "b", "c"})
+      : ident_(std::move(ident)), outcome_(std::move(outcome)), polls_(polls), gap_ms_(gap_ms) {
     char t[] = "/tmp/fake-ota-XXXXXX";
     dir = mkdtemp(t);
     server_ = std::make_unique<mabur::OtaServer>(env(false, 0));
@@ -72,7 +73,7 @@ class FakeDrone {
   mabur::OtaEnv env(bool trial, uint64_t start) const {
     mabur::OtaEnv e;
     e.dir = dir;
-    e.ident = {"v", "b", "c"};
+    e.ident = ident_;
     e.trial = trial;
     e.start_ms = start;
     return e;
@@ -93,6 +94,7 @@ class FakeDrone {
     server_ = std::make_unique<mabur::OtaServer>(env(ok, now + gap_ms_));
   }
 
+  mabur::ota::Ident ident_;
   std::string outcome_;
   int polls_;
   uint64_t gap_ms_, down_until_ = 0;

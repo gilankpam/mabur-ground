@@ -141,6 +141,18 @@ images has an upgrade URL that points elsewhere: upgrade it once with
 `sysupgrade --url=https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`,
 or reflash.
 
+## Updating the drone: maburup
+
+`maburup` (`/usr/local/bin/maburup`) talks to the drone through maburgs'
+MAVLink endpoint (`127.0.0.1:14550`, or `--port N`), so maburgs must be
+running and linked. `maburup ident` prints `version=<v> board=<b> chip=<c>`
+and exits 0, or prints `error no drone` and exits 2 after five unanswered
+requests. `maburup install <file> <sha256-hex>` checks the file and its
+hash (`error bad file` / `error bad hash`, exit 1, nothing sent), writes it
+to the drone and prints `send <done> <total>` while it goes, `trial <s>`
+while the drone runs the new build, then one final line: `committed` (exit
+0), `rolled_back <reason>`, `refused <reason>` or `error <text>` (exit 1).
+
 ## Configuration: the CONFIG partition
 
 The settings live on a 64 MB FAT32 `CONFIG` partition, created on first

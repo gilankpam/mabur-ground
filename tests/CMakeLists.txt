@@ -319,6 +319,8 @@ if(TARGET maburd)
   # every defect that escaped this build lived in the glue between them.
   add_mtest(test_cal_e2e test_cal_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
   add_mtest(test_update_client test_update_client.cpp LIBS mabur_gs_core mabur_drone_core)
+  add_mtest(test_maburup test_maburup.cpp LIBS mabur_gs_core mabur_drone_core pthread)
+  target_compile_definitions(test_maburup PRIVATE MABURUP_BIN="$<TARGET_FILE:maburup>")
   # RcAgent <-> VrxController loopback: matching/mismatched keys, a same-key
   # stranger, a restart relink (spec 2026-10-01 link-pairing §11).
   add_mtest(test_link_auth_e2e test_link_auth_e2e.cpp LIBS mabur_gs_core mabur_drone_core)

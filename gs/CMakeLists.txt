@@ -89,6 +89,10 @@ add_executable(maburgs src/main.cpp)
 target_include_directories(maburgs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(maburgs PRIVATE mabur_gs_core mabur_gs_radio mabur_common pthread)
 
+add_executable(maburup src/maburup_main.cpp)
+target_include_directories(maburup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(maburup PRIVATE mabur_gs_core mabur_common)
+
 # Bench per-stream Gilbert-Elliott loss injector (gs/src/loss_sim.h,
 # loss_control.h), mainlined 2026-08-29 behind this flag instead of living on
 # an unmerged branch. Default OFF: prod maburgs contains none of it. main.cpp
