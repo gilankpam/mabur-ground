@@ -186,6 +186,11 @@ bool parse_gs_snapshot(const char* data, size_t n, GsSnapshot* out) {
                               st->get<std::string>() == "version_mismatch";
       out->session = st != link->end() && st->is_string() && st->get<std::string>() == "session";
     }
+    out->drone_rc_version = integer(*link, "drone_rc_version");
+    if (const json* id = obj(*link, "drone_ident")) {
+      const std::optional<std::string> ver = str(*id, "version"), board = str(*id, "board");
+      if (ver && board) out->drone_ident = DroneIdentSnap{*ver, *board, str(*id, "chip").value_or("")};
+    }
     if (hop) {
       const std::optional<int> target = integer(*hop, "target");
       out->hopped = target && scan_pick && out->channel &&

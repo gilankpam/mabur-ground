@@ -497,6 +497,35 @@ TEST(version_mismatch_parses_from_link_state) {
   CHECK(!s.version_mismatch);
 }
 
+TEST(snapshot_parses_drone_ident) {
+  GsSnapshot s;
+  REQUIRE(parse(R"({"link": {"drone_ident": {"version": "v0.4.0", "board": "board-x", "chip": "8812eu"}}})", &s));
+  REQUIRE(s.drone_ident.has_value());
+  CHECK(s.drone_ident->version == "v0.4.0");
+  CHECK(s.drone_ident->board == "board-x");
+  CHECK(s.drone_ident->chip == "8812eu");
+}
+
+TEST(snapshot_drone_ident_null) {
+  GsSnapshot s;
+  REQUIRE(parse(R"({"link": {"drone_ident": null}})", &s));
+  CHECK(!s.drone_ident);
+  REQUIRE(parse(R"({"link": {}})", &s));
+  CHECK(!s.drone_ident);
+  REQUIRE(parse(R"({"link": {"drone_ident": "x"}})", &s));
+  CHECK(!s.drone_ident);
+  REQUIRE(parse(R"({"link": {"drone_ident": {"version": 4}}})", &s));
+  CHECK(!s.drone_ident);
+}
+
+TEST(snapshot_parses_drone_rc_version) {
+  GsSnapshot s;
+  REQUIRE(parse(R"({"link": {"state": "version_mismatch", "drone_rc_version": 18}})", &s));
+  CHECK(s.drone_rc_version == std::optional<int>(18));
+  REQUIRE(parse(R"({"link": {"drone_rc_version": null}})", &s));
+  CHECK(!s.drone_rc_version);
+}
+
 // scan.pinned (the operator's pin, docs/channel-select.md) and
 // link.state == "session" (the drone is linked): both false when the block
 // or the key is absent or mistyped.

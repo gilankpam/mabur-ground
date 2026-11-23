@@ -17,6 +17,7 @@
 #include "gs_live_view.h"
 #include "gs_snapshot.h"
 #include "mabur/config_params.h"
+#include "mabur/rc_proto.h"
 #include "menu_model.h"
 #include "menu_tree.h"
 #include "mode_pick.h"
@@ -32,6 +33,7 @@ using maburplay::ChoiceTone;
 using maburplay::clean_air_bars;
 using maburplay::clean_air_level;
 using maburplay::drone_header;
+using maburplay::drone_block_text;
 using maburplay::drone_pill_mark;
 using maburplay::GsLiveView;
 using maburplay::GsSnapshot;
@@ -102,6 +104,7 @@ struct Fx {
   bool stale = false;    // the sideport's staleness read (MenuTreeDeps::snap_stale)
   std::string version = "v0.1.0";
   int file_calls = 0;
+  int drone_calls = 0;
   std::vector<std::string> online_calls;
   bool upgrade_busy = false;
   std::string available;  // gs-upgrade notify's newer version, "" = none
@@ -145,6 +148,7 @@ struct Fx {
     d.upgrade_file = [this] { ++file_calls; };
     d.upgrade_online = [this](const std::string& c) { online_calls.push_back(c); };
     d.upgrade_busy = [this] { return upgrade_busy; };
+    d.upgrade_drone = [this] { ++drone_calls; };
     d.update_available = [this] { return available; };
     return d;
   }
@@ -1420,7 +1424,7 @@ TEST(firmware_group_holds_the_gs_update_rows) {
   Fx f;
   std::vector<std::string> ids;
   for (const MenuNode& n : f.node("fw").children()) ids.push_back(n.id);
-  CHECK((ids == std::vector<std::string>{"fw.gs"}));
+  CHECK((ids == std::vector<std::string>{"fw.gs", "fw.drone"}));
   ids.clear();
   for (const MenuNode& n : f.node("fw.gs").children()) ids.push_back(n.id);
   CHECK((ids == std::vector<std::string>{"fw.gs.version", "fw.gs.file", "fw.gs.online"}));
@@ -1491,6 +1495,73 @@ TEST(update_rows_survive_null_deps) {
 
 // A null warn and an empty one both draw nothing.
 std::string warn_of(const MenuNode& n) { return n.warn ? n.warn() : std::string(); }
+
+// --- Firmware > Drone ---------------------------------------------------
+
+static void set_ident(GsSnapshot* s, const char* chip = "8812eu") {
+  s->drone_ident = maburplay::DroneIdentSnap{"v0.4.0", "board-x", chip};
+}
+
+TEST(fw_drone_rows_read_ident) {
+  Fx f;
+  set_ident(&f.snap);
+  CHECK(f.node("fw.drone").group_value() == "v0.4.0");
+  CHECK(f.node("fw.drone.version").value_text() == "v0.4.0  board-x · 8812eu");
+  set_ident(&f.snap, "");
+  CHECK(f.node("fw.drone.version").value_text() == "v0.4.0  board-x");
+  f.upgrade_busy = true;
+  CHECK(f.node("fw.drone.online").value_text() == "Checking…");
+  f.upgrade_busy = false;
+  f.node("fw.drone.online").action();
+  CHECK(f.drone_calls == 1);
+}
+
+TEST(fw_drone_dash_without_ident) {
+  Fx f;
+  CHECK(f.node("fw.drone").group_value() == "—");
+  CHECK(f.node("fw.drone.version").value_text() == "—");
+}
+
+TEST(fw_marks_needs_update_in_mismatch) {
+  Fx f;
+  f.snap.version_mismatch = true;
+  f.snap.drone_rc_version = mabur::rc::RC_VERSION - 1;
+  CHECK(warn_of(f.node("fw")) == "update");
+  CHECK(warn_of(f.node("fw.drone")) == "needs update");
+  f.stale = true;
+  CHECK(warn_of(f.node("fw")).empty());
+}
+
+TEST(fw_drone_no_mark_when_drone_newer) {
+  Fx f;
+  f.snap.version_mismatch = true;
+  f.snap.drone_rc_version = mabur::rc::RC_VERSION + 1;
+  CHECK(warn_of(f.node("fw")).empty());
+  CHECK(warn_of(f.node("fw.drone")).empty());
+}
+
+TEST(drone_block_text_mismatch_without_ident) {
+  GsSnapshot s;
+  s.version_mismatch = true;
+  CHECK(drone_block_text(&s, false) == "Drone can't be updated over the air — flash the full image");
+  CHECK(drone_block_text(&s, true) == "No drone found");
+  GsSnapshot none;
+  CHECK(drone_block_text(&none, false) == "No drone found");
+}
+
+TEST(drone_block_text_stale_is_no_drone) {
+  GsSnapshot s;
+  set_ident(&s);
+  CHECK(drone_block_text(&s, true) == "No drone found");
+  CHECK(drone_block_text(nullptr, false) == "No drone found");
+}
+
+TEST(drone_block_text_empty_with_ident) {
+  GsSnapshot s;
+  set_ident(&s);
+  CHECK(drone_block_text(&s, false).empty());
+}
+
 
 TEST(firmware_unmarked_without_an_update) {
   Fx f;

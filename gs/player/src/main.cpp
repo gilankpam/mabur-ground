@@ -2412,7 +2412,9 @@ int main(int argc, char** argv) {
   std::optional<maburplay::UpgradeRunner> upgrader;
   std::optional<maburplay::UpgradeFlow> upgrade_flow;
   std::string upgrade_board;
-  std::string upgrade_job;  // the find/check in flight: "find", "stable" or "snapshot"
+  std::string upgrade_toast;
+  std::string upgrade_drone_version;  // the ident the drone check was started for
+  std::string upgrade_job;  // the find/check in flight: "find", "stable", "snapshot" or "drone"
   std::string update_cached;  // the menu's update mark, see update_available
   uint64_t update_read_ms = 0;
   bool update_read = false;
@@ -2433,6 +2435,20 @@ int main(int argc, char** argv) {
       if (!upgrader->check(channel)) return;
       upgrade_job = channel;
       std::fprintf(stderr, "maburplay: upgrade: check %s\n", channel.c_str());
+    };
+    menu_deps.upgrade_drone = [&] {
+      const bool stale = !gs_src || gs_src->stale(mono_ms());
+      const maburplay::GsSnapshot* snap = gs_src ? &gs_src->snapshot() : nullptr;
+      const std::string why = maburplay::drone_block_text(snap, stale);
+      if (!why.empty()) {
+        upgrade_toast = why;  // shown by the loop: menu_model is built after these hooks
+        return;
+      }
+      const maburplay::DroneIdentSnap& id = *snap->drone_ident;
+      if (!upgrader->check_drone(id.version, id.board)) return;
+      upgrade_job = "drone";
+      upgrade_drone_version = id.version;
+      std::fprintf(stderr, "maburplay: upgrade: check drone\n");
     };
     menu_deps.upgrade_busy = [&] { return upgrader->busy(); };
     // The rows read this on every view rebuild on the player loop: the file
@@ -2487,7 +2503,9 @@ int main(int argc, char** argv) {
       upgrader->cancel();
       return;
     }
-    if (c.kind != Kind::kStartFile && c.kind != Kind::kStartOnline) return;
+    if (c.kind != Kind::kStartFile && c.kind != Kind::kStartOnline &&
+        c.kind != Kind::kStartDrone)
+      return;
     const std::string& what = c.version.empty() ? c.arg : c.version;
     std::fprintf(stderr, "maburplay: upgrade: start %s\n", what.c_str());
     upgrade_logged.clear();
@@ -2584,6 +2602,10 @@ int main(int argc, char** argv) {
         if (const std::optional<bool> repeat = menu.key(e, now_ms)) bank.set_repeat(*repeat);
       }
       menu.tick(now_ms);
+      if (!upgrade_toast.empty()) {
+        menu_model.toast(upgrade_toast, now_ms);
+        upgrade_toast.clear();
+      }
       if (upgrade_job == "find") {
         if (std::optional<maburplay::UpgradeRunner::FindResult> r = upgrader->poll_find()) {
           upgrade_job.clear();
@@ -2595,9 +2617,13 @@ int main(int argc, char** argv) {
           }
         }
       } else if (!upgrade_job.empty()) {
+        const bool drone_job = upgrade_job == "drone";
         if (std::optional<maburplay::UpgradeRunner::CheckResult> r =
-                upgrader->poll_check(upgrade_board)) {
-          if (r->rel)
+                drone_job ? upgrader->poll_check_drone(upgrade_board)
+                          : upgrader->poll_check(upgrade_board)) {
+          if (r->rel && drone_job)
+            upgrade_flow->show_drone_release(*r->rel, upgrade_drone_version);
+          else if (r->rel)
             upgrade_flow->show_release(*r->rel, upgrade_job);
           else
             menu_model.toast(r->error, now_ms);

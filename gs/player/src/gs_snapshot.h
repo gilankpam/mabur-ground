@@ -90,6 +90,10 @@ struct ScanRelocate {
   std::string why;
 };
 
+struct DroneIdentSnap {
+  std::string version, board, chip;
+};
+
 struct GsSnapshot {
   // Top-level t_ms: maburgs' own monotonic clock reading when this
   // datagram was built. DroneSetWatch (menu_apply.cpp) uses it, paired
@@ -143,6 +147,11 @@ struct GsSnapshot {
   // link.state == "version_mismatch": the drone speaks another RC version
   // (the pair found each other but cannot run the link).
   bool version_mismatch = false;
+  // link.drone_ident: what the drone answered to the identity request; empty
+  // when absent, null or mistyped. Published even in version_mismatch.
+  std::optional<DroneIdentSnap> drone_ident;
+  // link.drone_rc_version: the drone's RC version while version_mismatch.
+  std::optional<int> drone_rc_version;
   // link.state == "session": the drone is linked. False for any other
   // state ("beaconing", "key_mismatch") and when the key is absent.
   bool session = false;
