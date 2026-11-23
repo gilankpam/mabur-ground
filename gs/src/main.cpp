@@ -53,6 +53,7 @@
 #include "loss_control.h"
 #endif
 #include "mav_endpoint.h"
+#include "drone_ident.h"
 #include "mav_tunnel.h"
 #include "mabur/cal_wire.h"
 #include "mabur/channel_file.h"
@@ -1015,6 +1016,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   // declaration, but nothing drives a packet through it until the main
   // loop starts -- long after both objects are built.
   maburgs::ParamHost* param_host = nullptr;
+  maburgs::DroneIdent drone_ident;
   maburgs::MavTunnel mav_tunnel(
       cfg.link.key,
       [&](std::vector<uint8_t> frame) {
@@ -1030,6 +1032,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         mav_ep.send_to_peer(b, n);
         maburgs::feed_cal_packet(cal_session, b, n, mav_rx_ms);
         if (param_host) param_host->on_packet(b, n, mav_rx_ms);
+        drone_ident.on_packet(b, n);
       },
       [&](std::vector<uint8_t> frame) {
         maburgs::SlotFrame sf{std::move(frame), 0, mav_tick_card, false};
@@ -1483,6 +1486,8 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
           std::fprintf(stderr, "maburgs: mavlink: drone lacks CAP_MAVLINK\n");
       }
       mav_tunnel.set_session(mav_ctx, update_only);
+      if (auto p = drone_ident.tick(mav_ctx.vtx_nonce, drained_ms))
+        mav_tunnel.push_outbound(p->data(), p->size());
       // vtx_nonce 0 while unlinked: the same "no drone to list" value
       // mav_ctx itself carries above.
       params.tick(mav_linked, mav_linked ? mav_ctx.vtx_nonce : 0, drained_ms);
@@ -1834,6 +1839,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       sin.key_mismatch = vrx.key_mismatch();
       sin.version_mismatch = vrx.version_mismatch();
       sin.drone_rc_version = vrx.drone_rc_version();
+      sin.drone_ident = drone_ident.ident();
       sin.key_fp = key_fp;
       sin.tx_card = sel.selected();
       sin.op = vrx.cur_op();

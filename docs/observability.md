@@ -29,7 +29,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 
 ### `link` — op point, ladder, loss
 
-- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the drone's RC version while `version_mismatch`, `null` in every other state), `key_fp`,
+- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the drone's RC version while `version_mismatch`, `null` in every other state), `drone_ident` (`{version, board, chip}` from the drone's IDENT answer, asked for at every session; `null` until one arrives), `key_fp`,
   `tx_card` — pairing is [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `width` — the live receiver width in MHz (20 or 40), `ChannelCore`'s own
   `width_mhz()`: what the link ladder (any 40 MHz rung) or the static pin

@@ -212,6 +212,10 @@ bool StatsExporter::poll(uint64_t now_ms, const StatsInput& in) {
                   : in.in_session       ? "session"
                                         : "beaconing";
   link["drone_rc_version"] = in.drone_rc_version ? json(*in.drone_rc_version) : json(nullptr);
+  link["drone_ident"] = in.drone_ident
+      ? json{{"version", in.drone_ident->version}, {"board", in.drone_ident->board},
+             {"chip", in.drone_ident->chip}}
+      : json(nullptr);
   link["key_fp"] = in.key_fp;
   link["tx_card"] = in.tx_card;
   // OpPoint.overhead is a base/enh pair (same-rate fixed pairs): export

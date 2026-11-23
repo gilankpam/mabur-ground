@@ -11,6 +11,7 @@
 #include "au_ring.h"
 #include "lat_window.h"
 #include "mabur/nack_tracker.h"
+#include "mabur/ota_mav.h"
 #include "mabur/rc_proto.h"
 #include "mav_tunnel.h"
 #include "op_point.h"
@@ -378,6 +379,7 @@ struct StatsInput {
   bool key_mismatch = false;   // VrxState::KEY_MISMATCH
   bool version_mismatch = false;   // VrxState::VERSION_MISMATCH
   std::optional<uint8_t> drone_rc_version;   // the verified ack's version; null before one
+  std::optional<mabur::ota::Ident> drone_ident;   // the drone's IDENT answer; null until one
   std::string key_fp;          // mabur::key_fingerprint(cfg.link.key)
   int tx_card = 0;
   OpPoint op;

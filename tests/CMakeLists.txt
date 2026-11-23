@@ -299,6 +299,7 @@ add_mtest(test_relay_ring test_relay_ring.cpp LIBS mabur_web_core)
 add_test(NAME web_relay_e2e
   COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/web/tests/test_relay_e2e.py $<TARGET_FILE:webgs>)
 add_mtest(test_stats_exporter test_stats_exporter.cpp LIBS mabur_gs_core)
+add_mtest(test_drone_ident test_drone_ident.cpp LIBS mabur_gs_core)
 add_mtest(test_stats_sink test_stats_sink.cpp LIBS mabur_gs_core)
 add_mtest(test_cal_analysis test_cal_analysis.cpp LIBS mabur_gs_core)
 add_mtest(test_cal_plan test_cal_plan.cpp LIBS mabur_gs_core)
