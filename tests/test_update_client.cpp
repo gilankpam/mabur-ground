@@ -144,6 +144,17 @@ TEST(lost_during_trial) {
   CHECK(l.now - t0 >= 99000 && l.now - t0 <= 101000);
 }
 
+TEST(slow_install_before_trial_still_gets_result) {
+  // The drone is away 50 s installing, then runs a 40 s trial; the result lands
+  // 105 s after the first reply, past the first-reply bound.
+  FakeDrone d("committed", 55, 50000);
+  auto img = image(1000, 12);
+  UpdateClient c(img, sha_of(img));
+  Link l;
+  l.run(c, d, 300000);
+  CHECK(c.progress().result == "committed");
+}
+
 TEST(create_busy) {
   FakeDrone d("committed");
   spit(d.dir + "/go", "x\n");

@@ -10,7 +10,8 @@
 // until the first status reply and never after (a START after a commit would
 // reinstall). A silent drone ends the run: no create ACK within stall_ms is
 // "no drone", no write progress for stall_ms or no final state within
-// final_ms of the first START reply is "lost drone".
+// final_ms of the first START reply (or 60 s past the trial window the drone
+// last reported, if later) is "lost drone".
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -67,7 +68,7 @@ class UpdateClient {
   bool started_ = false;   // first packet of the current phase sent
   uint64_t phase_ms_ = 0;  // when the current phase's clock began
   uint64_t last_ms_ = 0;   // last send (create, START) or last write progress
-  uint64_t first_reply_ms_ = 0;
+  uint64_t first_reply_ms_ = 0, deadline_ms_ = 0;
   bool have_reply_ = false;
 };
 

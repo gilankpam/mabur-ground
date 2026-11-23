@@ -76,7 +76,7 @@ std::vector<std::vector<uint8_t>> UpdateClient::tick(uint64_t now) {
     case Phase::kTrial:
       if (p_.phase == Phase::kStart && !have_reply_ && now - phase_ms_ >= cfg_.final_ms)
         return finish("error lost drone"), pk;
-      if (p_.phase == Phase::kTrial && now - first_reply_ms_ >= cfg_.final_ms)
+      if (p_.phase == Phase::kTrial && now >= deadline_ms_)
         return finish("error lost drone"), pk;
       if (now - last_ms_ >= (p_.phase == Phase::kStart ? cfg_.retry_ms : cfg_.poll_ms)) {
         last_ms_ = now;
@@ -136,13 +136,19 @@ void UpdateClient::on_status(const mabur::ota::Status& s, uint64_t now) {
     p_.phase = Phase::kTrial;
     have_reply_ = true;
     first_reply_ms_ = now;
+    deadline_ms_ = now + cfg_.final_ms;
     last_ms_ = now;
   } else if (p_.phase != Phase::kTrial) {
     return;
   }
   const std::string why = mabur::ota::reason_name(s.reason);
   switch (s.state) {
-    case St::kTrial: p_.trial_s = s.trial_s; break;
+    case St::kTrial:
+      p_.trial_s = s.trial_s;
+      // The window plus 60 s, counted from the drone's own report: its install
+      // before the trial does not eat the margin.
+      deadline_ms_ = std::max(deadline_ms_, now + uint64_t(s.trial_s) * 1000 + 60000);
+      break;
     case St::kCommitted: finish("committed"); break;
     case St::kRolledBack: finish("rolled_back " + why); break;
     case St::kRefused: finish("refused " + why); break;
