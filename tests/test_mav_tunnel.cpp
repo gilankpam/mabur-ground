@@ -7,6 +7,8 @@
 #include "mabur/mav.h"
 #include "mabur/rc_proto.h"
 #include "mav_tunnel.h"
+#include "mabur/ota_mav.h"
+#include "rc_at_version.h"
 
 using namespace maburgs;
 using namespace mabur;
@@ -596,3 +598,49 @@ TEST(cal_frames_go_to_the_cal_sender_when_one_is_given) {
 }
 
 MTEST_MAIN
+
+// Update-only session: only the update lane goes up.
+TEST(update_only_drops_non_update_lane) {
+  Rig r;
+  r.t.set_session(kPair, true);
+  mabur::ota::Ftp ftp;
+  ftp.opcode = 7;
+  ftp.data = {1, 2, 3};
+  const Bytes pkt = mabur::ota::encode(ftp, 255, 190, mabur::mav::kChanGsLocal);
+  const Bytes in = cat({hb_bytes(255, 190), pkt});
+  r.t.push_outbound(in.data(), in.size());
+  CHECK(r.t.flush() == 1);
+  CHECK(r.sent.size() == 1);
+  const auto up = mabur::rc::parse_mav(r.sent[0].data(), r.sent[0].size());
+  CHECK(up && up->payload == pkt);
+  CHECK(r.t.stats().drop_not_update == 1);
+}
+
+static std::vector<uint8_t> mav_up_frame(TagCtx pair) {
+  Mav m;
+  m.type = mabur::rc::T_MAV_UP;
+  m.counter = 4;
+  m.payload = hb_bytes(1, 191);
+  pair.seq32 = m.counter;
+  return rc_test::mav_at_version(mabur::rc::pack_mav(m, test_key(), pair),
+                                 mabur::rc::RC_VERSION - 1, test_key(), pair);
+}
+
+TEST(update_only_reply_verifies_under_update_pair) {
+  Rig r;
+  const TagCtx pair{5, 6, 0};
+  r.t.set_session(pair, true);
+  auto f = mav_up_frame(pair);
+  r.t.on_rc_frame(f.data(), f.size());
+  CHECK(r.delivered.size() == 1);
+  CHECK(r.t.stats().drop_auth == 0);
+}
+
+TEST(matched_session_forwards_everything) {
+  Rig r;
+  r.t.set_session(kPair);
+  const Bytes hb = hb_bytes(255, 190);
+  r.t.push_outbound(hb.data(), hb.size());
+  CHECK(r.t.flush() == 1);
+  CHECK(r.t.stats().drop_not_update == 0);
+}

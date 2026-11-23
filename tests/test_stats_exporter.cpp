@@ -1452,14 +1452,16 @@ TEST(link_mav_block) {
   in.mav.t.tx_frames = 4; in.mav.t.tx_packets = 9;
   in.mav.t.rx_frames = 7; in.mav.t.rx_packets = 20;
   in.mav.t.drop_unlinked = 2; in.mav.t.drop_bad_packet = 3; in.mav.t.drop_oversize = 1;
+  in.mav.t.drop_not_update = 5;
   in.mav.peer = true;
   ex.poll(1600, in);
   json j = cap.last();
   REQUIRE(j["link"].contains("mav"));
-  CHECK(j["link"]["mav"].size() == 4);
+  CHECK(j["link"]["mav"].size() == 5);
   CHECK(j["link"]["mav"]["tx"] == 4);
   CHECK(j["link"]["mav"]["rx"] == 7);
   CHECK(j["link"]["mav"]["reject"] == 6);
+  CHECK(j["link"]["mav"]["drop_not_update"] == 5);
   CHECK(j["link"]["mav"]["peer"] == true);
   in.mav.peer = false;
   ex.poll(2200, in);

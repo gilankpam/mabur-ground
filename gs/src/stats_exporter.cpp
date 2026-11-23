@@ -300,6 +300,7 @@ bool StatsExporter::poll(uint64_t now_ms, const StatsInput& in) {
     link["mav"] = {{"tx", t.tx_frames},
                    {"rx", t.rx_frames},
                    {"reject", t.drop_unlinked + t.drop_bad_packet + t.drop_oversize},
+                   {"drop_not_update", t.drop_not_update},
                    {"peer", in.mav.peer}};
   }
   // Calibration run progress (docs/calibration.md): only while a run owns

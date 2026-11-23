@@ -85,6 +85,7 @@ struct MavTunnelStats {
            drop_auth = 0,         // a T_MAV_UP verifying under neither the live nor the cal pair
            rx_uplink_heard = 0,   // the GS's own T_MAV (type 8), heard by its other card
            tx_cal_frames = 0,     // cal-lane frames sent (never counted in tx_frames/tx_packets)
+           drop_not_update = 0,   // a non-update-lane packet while the session is update-only
            drop_cal_oversize = 0; // a cal packet larger than kMavMaxPayload, never queued
 };
 
@@ -104,7 +105,10 @@ class MavTunnel {
   // dropped. A change of vtx_nonce restarts the counter: the next frame is 1.
   // (The inbound window is per pair and resets on its own when the pair
   // changes.)
-  void set_session(const mabur::rc::TagCtx& ctx);
+  // While `update_only` (the update pair, a drone at another RC_VERSION),
+  // push_outbound queues only update-lane packets: the drone drops a whole
+  // frame that mixes in anything else. Others are dropped and counted.
+  void set_session(const mabur::rc::TagCtx& ctx, bool update_only = false);
   // Bytes from a local MAVLink peer, cut at any boundary. Whole packets are
   // queued (or dropped and counted while unlinked).
   void push_outbound(const uint8_t* bytes, size_t n);
@@ -131,6 +135,7 @@ class MavTunnel {
   DeliverFn deliver_;
   SendFn cal_send_;
   mabur::rc::TagCtx ctx_{};
+  bool update_only_ = false;
   uint32_t vtx_seen_ = 0;
   uint32_t counter_ = 0;
   // Anti-replay window per pair: the highest counter taken and a bitmap of

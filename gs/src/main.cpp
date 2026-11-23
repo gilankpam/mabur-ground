@@ -1050,7 +1050,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     return params.handle_verb(v, r, mono_ms());
   };
   agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (maburgs::is_mav_frame(mabur::rc::frame_type(f.data(), f.size()))) {
+    if (maburgs::is_mav_frame(mabur::rc::frozen_type(f.data(), f.size()))) {
       mav_rx_ms = us / 1000;
       mav_tunnel.on_rc_frame(f.data(), f.size());
       return;
@@ -1470,18 +1470,22 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     // then endpoint datagrams -> tunnel -> T_MAV frames. CAP_MAVLINK is
     // display-only: one line per session, nothing is gated on it.
     {
-      const mabur::rc::TagCtx mav_ctx = mav_linked ? vrx.session_ctx() : mabur::rc::TagCtx{};
+      // Linked: the live session. Version mismatch: the update pair, update
+      // lane only. Otherwise none.
+      const bool update_only = vrx.version_mismatch();
+      const mabur::rc::TagCtx mav_ctx =
+          mav_linked ? vrx.session_ctx() : update_only ? vrx.update_ctx() : mabur::rc::TagCtx{};
       // Caps arrive in Telem after the ack: judge them only once heard.
-      if (mav_ctx.vtx_nonce != 0 && vrx.peer_caps_known() &&
+      if (mav_linked && mav_ctx.vtx_nonce != 0 && vrx.peer_caps_known() &&
           mav_ctx.vtx_nonce != mav_vtx_seen) {
         mav_vtx_seen = mav_ctx.vtx_nonce;
         if (cfg.mavlink.enable && (vrx.peer_caps() & mabur::rc::CAP_MAVLINK) == 0)
           std::fprintf(stderr, "maburgs: mavlink: drone lacks CAP_MAVLINK\n");
       }
-      mav_tunnel.set_session(mav_ctx);
+      mav_tunnel.set_session(mav_ctx, update_only);
       // vtx_nonce 0 while unlinked: the same "no drone to list" value
       // mav_ctx itself carries above.
-      params.tick(mav_linked, mav_ctx.vtx_nonce, drained_ms);
+      params.tick(mav_linked, mav_linked ? mav_ctx.vtx_nonce : 0, drained_ms);
       for (const std::string& line : params.take_log_lines())
         std::fprintf(stderr, "maburgs: %s\n", line.c_str());
       mav_ep.poll(mav_tunnel);
