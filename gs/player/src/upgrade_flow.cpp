@@ -12,10 +12,16 @@ std::string phase_name(const std::string& p) {
   if (p == "stop") return "Stopping services";
   if (p == "write") return "Writing";
   if (p == "reboot") return "Rebooting";
+  if (p == "send") return "Sending to the drone";
+  if (p == "install") return "Installing on the drone";
+  if (p == "trial") return "Trial run";
   return "Starting";
 }
-// The tool honours a cancel only before it touches services.
-bool cancellable(const std::string& p) {
+// The tool honours a cancel only before it touches services, and not once the
+// last byte is on its way to the drone.
+bool cancellable(const UpgradeStatus& st) {
+  const std::string& p = st.phase;
+  if (p == "send") return !(st.total > 0 && st.done == st.total);
   return p.empty() || p == "download" || p == "unpack" || p == "verify";
 }
 // Header text for installing `next` over `cur`; warns when it is a downgrade or
@@ -106,6 +112,23 @@ void UpgradeFlow::show_release(const ReleaseInfo& rel, const std::string& channe
   open_item(0);
 }
 
+void UpgradeFlow::show_drone_release(const ReleaseInfo& rel, const std::string& drone_version) {
+  toast_.clear();
+  Item it;
+  it.online = it.drone = true;
+  it.title = "Update · Drone";
+  it.version = rel.version;
+  it.arg = rel.url;
+  it.changelog = rel.changelog;
+  version_header(drone_version, rel.version, &it.header, &it.header_warn);
+  items_ = {it};
+  from_list_ = false;
+  confirm_ = false;
+  have_status_ = false;
+  ++gen_;
+  open_item(0);
+}
+
 void UpgradeFlow::open_item(int i) {
   sel_ = i;
   scroll_ = 0;
@@ -158,7 +181,9 @@ UpgradeCmd UpgradeFlow::key_impl(UpgradeKey k) {
       if (confirm_) {
         if (k == UpgradeKey::kLeft) confirm_ = false;
         if (k == UpgradeKey::kRight) {
-          cmd.kind = it.online ? UpgradeCmd::Kind::kStartOnline : UpgradeCmd::Kind::kStartFile;
+          cmd.kind = it.drone    ? UpgradeCmd::Kind::kStartDrone
+                     : it.online ? UpgradeCmd::Kind::kStartOnline
+                                 : UpgradeCmd::Kind::kStartFile;
           cmd.arg = it.arg;
           cmd.version = it.version;
           view_ = View::kRunning;
@@ -176,7 +201,7 @@ UpgradeCmd UpgradeFlow::key_impl(UpgradeKey k) {
       break;
     }
     case View::kRunning:
-      if (k == UpgradeKey::kLeft && cancellable(st_.phase)) cmd.kind = UpgradeCmd::Kind::kCancel;
+      if (k == UpgradeKey::kLeft && cancellable(st_)) cmd.kind = UpgradeCmd::Kind::kCancel;
       break;
     case View::kEnded:
       if (k == UpgradeKey::kLeft || k == UpgradeKey::kRight) view_ = View::kNone;
@@ -195,7 +220,7 @@ void UpgradeFlow::status_impl(const UpgradeStatus& st) {
   if (view_ != View::kRunning) return;
   st_ = st;
   have_status_ = true;
-  if (st.state == "error" || st.state == "cancelled") view_ = View::kEnded;
+  if (st.state == "error" || st.state == "cancelled" || st.state == "done") view_ = View::kEnded;
 }
 
 UpgradePage UpgradeFlow::page() const {
@@ -225,7 +250,8 @@ UpgradePage UpgradeFlow::page() const {
       // A package with no VERSION is named by its file.
       const std::string name =
           it.version.empty() ? file_name(it.arg) : it.version;
-      p.confirm = "Install " + name + "? The GS reboots. Keep the power on.";
+      p.confirm = it.drone ? "Install " + name + " on the drone? Keep the drone and the GS powered."
+                           : "Install " + name + "? The GS reboots. Keep the power on.";
       p.keys = "▶ install  ◀ back";
     } else {
       p.keys = it.error.empty() ? "▲▼ scroll  ▶ install  ◀ back" : "▲▼ scroll  ◀ back";
@@ -237,11 +263,17 @@ UpgradePage UpgradeFlow::page() const {
   if (view_ == View::kRunning) {
     p.running = true;
     p.phase_text = phase_name(st_.phase);
-    if (have_status_ && st_.total > 0) p.pct = static_cast<int>(st_.done * 100 / st_.total);
-    p.keys = cancellable(st_.phase) ? "◀ cancel" : "";
+    // The trial's 40 s is the most the drone waits, not how long it takes: a
+    // good build commits once it has linked and sent video, so no time and no bar.
+    const bool trial = st_.phase == "trial";
+    if (trial) p.phase_text += " · checking link and video";
+    if (have_status_ && st_.total > 0 && !trial) p.pct = static_cast<int>(st_.done * 100 / st_.total);
+    p.keys = cancellable(st_) ? "◀ cancel" : "";
     return p;
   }
-  if (st_.state == "cancelled") {
+  if (st_.state == "done") {
+    p.phase_text = st_.msg;
+  } else if (st_.state == "cancelled") {
     p.phase_text = "Cancelled";
   } else if (st_.phase == "write") {
     p.error = "Write failed — reflash from SD card";

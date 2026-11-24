@@ -154,7 +154,7 @@ The dev box keeps the repos as siblings: `../mabur`, `../mabur-ground`,
 resolve. A host build also builds `maburd` from `MABUR_DIR` (the e2e
 tests feed maburgs from `maburd --dry-run`). Host suite:
 `ctest --test-dir build -R 'test_|gs_e2e|gs_au_e2e|player_e2e|web_au_parity'`.
-Cross-build: `tools/build-arm64.sh` (maburgs, maburplay, linkbench-rx,
+Cross-build: `tools/build-arm64.sh` (maburgs, maburup, maburplay, linkbench-rx,
 nhm-reset-probe, encosd; honours `MABUR_DIR`). It must run bare, never
 inside that `nix-shell` wrapper — Nix's pkg-config wrapper overrides
 `PKG_CONFIG_LIBDIR` and breaks its stage 6 glibc build.

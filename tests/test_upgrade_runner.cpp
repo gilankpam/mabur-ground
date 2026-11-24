@@ -32,7 +32,7 @@ void put(const std::string& path, const std::string& text) {
 }
 
 void clear_env() {
-  for (const char* v : {"FAKE_SLEEP", "FAKE_FIND_N", "FAKE_CHECK_ERR", "FAKE_RELEASE", "FAKE_START_ERR"})
+  for (const char* v : {"FAKE_SLEEP", "FAKE_FIND_N", "FAKE_CHECK_ERR", "FAKE_RELEASE", "FAKE_START_ERR", "FAKE_DRONE_RELEASE", "FAKE_DRONE_CHECK_ERR", "FAKE_LOG"})
     ::unsetenv(v);
 }
 
@@ -196,3 +196,58 @@ TEST(available_reads_the_mark_file) {
 }
 
 MTEST_MAIN
+
+TEST(drone_check_ok) {
+  clear_env();
+  std::string d = fresh_dir();
+  put(d + "/rel.json", R"({"assets":[{"name":"mabur-v0.4.2-ssc338q-maburd","browser_download_url":"u"}]})");
+  ::setenv("FAKE_DRONE_RELEASE", (d + "/rel.json").c_str(), 1);
+  UpgradeRunner r(fake(), d);
+  REQUIRE(r.check_drone("v0.4.0", "ssc338q"));
+  auto res = wait_for([&] { return r.poll_check_drone("ssc338q"); });
+  REQUIRE(res);
+  REQUIRE(res->rel);
+  CHECK(res->rel->version == "v0.4.2");
+  CHECK(res->error.empty());
+}
+
+TEST(drone_check_error_text) {
+  clear_env();
+  ::setenv("FAKE_DRONE_CHECK_ERR", "uptodate Drone is up to date (v0.4.2)", 1);
+  UpgradeRunner r(fake(), fresh_dir());
+  REQUIRE(r.check_drone("v0.4.2", "ssc338q"));
+  auto res = wait_for([&] { return r.poll_check_drone("ssc338q"); });
+  REQUIRE(res);
+  CHECK(!res->rel);
+  CHECK(res->error == "Drone is up to date (v0.4.2)");
+}
+
+TEST(drone_check_error_codes_share_the_gs_texts) {
+  clear_env();
+  ::setenv("FAKE_DRONE_CHECK_ERR", "network No network", 1);
+  UpgradeRunner r(fake(), fresh_dir());
+  REQUIRE(r.check_drone("v0.4.2", "ssc338q"));
+  auto res = wait_for([&] { return r.poll_check_drone("ssc338q"); });
+  REQUIRE(res);
+  CHECK(res->error == "No network \xe2\x80\x94 set wifi.toml to client mode");
+}
+
+TEST(drone_start_runs_tool) {
+  clear_env();
+  std::string d = fresh_dir();
+  ::setenv("FAKE_LOG", (d + "/argv").c_str(), 1);
+  UpgradeRunner r(fake(), d);
+  UpgradeCmd c;
+  c.kind = UpgradeCmd::Kind::kStartDrone;
+  c.arg = "https://e.invalid/maburd";
+  c.version = "v0.4.2";
+  std::string why;
+  CHECK(r.start(c, &why));
+  std::ifstream f(d + "/argv");
+  std::string line;
+  std::getline(f, line);
+  CHECK(line == "drone start https://e.invalid/maburd v0.4.2");
+  auto st = r.status();
+  REQUIRE(st);
+  CHECK(st->phase == "send");
+}

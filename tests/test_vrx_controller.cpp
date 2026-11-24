@@ -1058,3 +1058,19 @@ TEST(replace_ladder_opens_the_s3_settle_window_even_at_rung_0) {
   REQUIRE(saw_feedback);
   CHECK(vrx.ctl().util3() == 0.0);
 }
+
+TEST(update_ctx_only_in_mismatch) {
+  auto vrx = make();
+  vrx.step(1500, no_data());
+  CHECK(vrx.update_ctx().vtx_nonce == 0);
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = vrx.rz_nonce(); ack.vtx_nonce = 0x1234; ack.seq = vrx.stamp_disc(1600);
+  const auto wire = rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack), 18, mabur::kDefaultLinkKey);
+  vrx.on_rc_frame(wire.data(), wire.size(), 1600);
+  REQUIRE(vrx.version_mismatch());
+  CHECK(vrx.update_ctx().vtx_nonce == 0x1234);
+  CHECK(vrx.update_ctx().vrx_nonce == vrx.session_ctx().vrx_nonce);
+  link(vrx, 2700, 0xBEEF0002);
+  CHECK(!vrx.version_mismatch());
+  CHECK(vrx.update_ctx().vtx_nonce == 0);
+}

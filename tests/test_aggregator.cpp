@@ -506,6 +506,32 @@ TEST(other_version_telem_is_never_video) {
   CHECK(agg.card(0).frames == 1);   // still a received frame for the card totals
 }
 
+// The update pair's replies are T_MAV_UP at the drone's own version.
+TEST(foreign_mav_up_reaches_rc_sink) {
+  Aggregator agg(vec_layers(), 512, 1);
+  int routed = 0;
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) { ++routed; });
+  mabur::rc::Mav m;
+  m.counter = 3;
+  m.payload = {1, 2, 3};
+  const auto f = rc_test::mav_at_version(pack_up(m), mabur::rc::RC_VERSION - 1,
+                                         mabur::kDefaultLinkKey, {});
+  agg.on_rx_body(msg(0, 10, true, f));
+  CHECK(routed == 1);
+  CHECK(agg.card(0).video_bodies == 0);
+}
+
+TEST(foreign_telem_still_dropped) {
+  Aggregator agg(vec_layers(), 512, 1);
+  int routed = 0;
+  agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>&, uint64_t) { ++routed; });
+  mabur::rc::Telem t;
+  agg.on_rx_body(msg(0, 10, true,
+                     rc_test::untagged_at_version(mabur::rc::pack_telem(t),
+                                                  mabur::rc::RC_VERSION - 1)));
+  CHECK(routed == 0);
+}
+
 TEST(crc_fail_stays_out_of_classes) {
   Aggregator agg(vec_layers(), 512, 1);
   std::vector<uint8_t> junk(20, 0);

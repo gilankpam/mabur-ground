@@ -23,6 +23,8 @@ class UpgradeRunner {
 
   bool find();                             // false: a find/check is already in flight
   bool check(const std::string& channel);  // "stable" | "snapshot"
+  // Asks the drone check: the drone version and board come from the link.
+  bool check_drone(const std::string& version, const std::string& board);
   bool busy() const { return job_.pid > 0; }
   // The newer version `gs-upgrade notify` left in <dir>/available, or "".
   std::string available() const;
@@ -38,6 +40,8 @@ class UpgradeRunner {
   // Each returns once, when its child has exited; nullopt until then.
   std::optional<FindResult> poll_find();
   std::optional<CheckResult> poll_check(const std::string& board);
+
+  std::optional<CheckResult> poll_check_drone(const std::string& board);
 
   bool start(const UpgradeCmd& c, std::string* why);
   bool cancel();

@@ -52,6 +52,7 @@ struct MenuTreeDeps {
   std::function<void()> upgrade_file;
   std::function<void(const std::string& channel)> upgrade_online;  // "stable" | "snapshot"
   std::function<bool()> upgrade_busy;
+  std::function<void()> upgrade_drone;  // Firmware › Drone › Check online
   // The newer version `gs-upgrade notify` found this boot; null or "" = none.
   // Marks Firmware, Ground station and the matching Check online row.
   std::function<std::string()> update_available;
@@ -78,6 +79,13 @@ inline constexpr int64_t kFreshMs = 5000;
 inline constexpr const char* kChannelRow = "link.channel";
 
 std::vector<MenuNode> build_menu_tree(const MenuTreeDeps& d);
+
+// Why the drone cannot be updated over the air now, "" when it can: no fresh
+// ident answers "No drone found", a version mismatch without one needs the full image.
+std::string drone_block_text(const GsSnapshot* snap, bool stale);
+
+// A fresh snapshot in version_mismatch with a drone RC version older than ours.
+bool drone_needs_update(const GsSnapshot* snap, bool stale);
 
 // The drone group's header line, drawn under the crumb (MenuModel::
 // set_header): "" with no snapshot, a stale session, or no link.vtx block;

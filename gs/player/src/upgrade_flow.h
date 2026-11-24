@@ -29,8 +29,8 @@ struct FoundPackage {
 };
 
 struct UpgradeCmd {
-  enum class Kind { kNone, kStartFile, kStartOnline, kCancel } kind = Kind::kNone;
-  std::string arg, version;  // file: arg = path; online: arg = url, version = release
+  enum class Kind { kNone, kStartFile, kStartOnline, kStartDrone, kCancel } kind = Kind::kNone;
+  std::string arg, version;  // file: arg = path; online/drone: arg = url, version = release
 };
 
 struct UpgradePage {
@@ -62,6 +62,8 @@ class UpgradeFlow {
   // to its page; several show a list.
   void show_packages(std::vector<FoundPackage> pkgs);
   void show_release(const ReleaseInfo& rel, const std::string& channel);
+  // Drone update page; drone_version is what the link reports.
+  void show_drone_release(const ReleaseInfo& rel, const std::string& drone_version);
   // The last refusal text for the menu to toast, "" if none.
   std::string toast() const { return toast_; }
   UpgradeCmd key(UpgradeKey k);
@@ -72,7 +74,7 @@ class UpgradeFlow {
   enum class View { kNone, kList, kInfo, kRunning, kEnded };
   struct Item {  // one installable thing: a file package or an online release
     std::string title, header, pair, error, version, arg;
-    bool header_warn = false, pair_warn = false, online = false;
+    bool header_warn = false, pair_warn = false, online = false, drone = false;
     std::vector<std::string> changelog;
   };
   Item from_package(const FoundPackage& p) const;

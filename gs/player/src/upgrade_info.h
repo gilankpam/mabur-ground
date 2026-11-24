@@ -31,6 +31,11 @@ struct ReleaseInfo {
 std::optional<ReleaseInfo> parse_release_json(const std::string& json, const std::string& board,
                                               std::string* why);
 
+// The drone release's mabur-<ver>-<board>-maburd asset; nullopt with *why set when
+// the JSON is bad or has none for `board`.
+std::optional<ReleaseInfo> parse_drone_release(const std::string& json, const std::string& board,
+                                               std::string* why);
+
 // The "- " lines under "**Changes**", up to the next blank line, markers stripped.
 std::vector<std::string> changelog_lines(const std::string& body);
 

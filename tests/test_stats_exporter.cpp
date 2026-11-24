@@ -121,6 +121,25 @@ TEST(link_carries_key_fp_and_mismatch_state_and_drone_auth_reject) {
   CHECK(j["drone"]["auth_reject"] == false);
 }
 
+TEST(drone_ident_null_by_default) {
+  Capture cap;
+  StatsExporter ex(1, 500, cap.fn());
+  ex.poll(1000, base_input());
+  CHECK(cap.last()["link"]["drone_ident"].is_null());
+}
+
+TEST(drone_ident_exported_under_link) {
+  Capture cap;
+  StatsExporter ex(1, 500, cap.fn());
+  StatsInput in = base_input();
+  in.drone_ident = mabur::ota::Ident{"v0.9.0", "board-x", "8812eu"};
+  ex.poll(1000, in);
+  json j = cap.last();
+  CHECK(j["link"]["drone_ident"]["version"] == "v0.9.0");
+  CHECK(j["link"]["drone_ident"]["board"] == "board-x");
+  CHECK(j["link"]["drone_ident"]["chip"] == "8812eu");
+}
+
 // A drone at another RC version: link.state names it and link.drone_rc_version
 // carries the number (null while none is known). A key mismatch outranks it.
 TEST(link_state_version_mismatch_carries_the_drone_rc_version) {
@@ -1452,14 +1471,16 @@ TEST(link_mav_block) {
   in.mav.t.tx_frames = 4; in.mav.t.tx_packets = 9;
   in.mav.t.rx_frames = 7; in.mav.t.rx_packets = 20;
   in.mav.t.drop_unlinked = 2; in.mav.t.drop_bad_packet = 3; in.mav.t.drop_oversize = 1;
+  in.mav.t.drop_not_update = 5;
   in.mav.peer = true;
   ex.poll(1600, in);
   json j = cap.last();
   REQUIRE(j["link"].contains("mav"));
-  CHECK(j["link"]["mav"].size() == 4);
+  CHECK(j["link"]["mav"].size() == 5);
   CHECK(j["link"]["mav"]["tx"] == 4);
   CHECK(j["link"]["mav"]["rx"] == 7);
   CHECK(j["link"]["mav"]["reject"] == 6);
+  CHECK(j["link"]["mav"]["drop_not_update"] == 5);
   CHECK(j["link"]["mav"]["peer"] == true);
   in.mav.peer = false;
   ex.poll(2200, in);

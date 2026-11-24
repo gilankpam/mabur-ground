@@ -131,6 +131,32 @@ runs over the SPL at 256 KiB and leaves the board unbootable. The Orange
 Pi's own package carries no `u-boot.bin`; its bootloader is updated only by
 hand, as above.
 
+### The drone
+
+    gs-upgrade drone check [<version> <board>]
+    gs-upgrade drone start <url> <version>
+
+`check` prints one line: `ok <version>` (the release record is left in
+`/tmp/gs-upgrade/drone/release.json`) or `error <code> <text>`. The drone's
+version and board come from the arguments, or from `maburup ident` when
+there are none (`error nodrone No drone found` when it does not answer).
+The release follows the GS's own version: on `vX.Y.Z` it is the newest
+drone `vX.Y.*`; on `snapshot-*` it is the drone `snapshot` release; any
+other build has no drone channel (`testbuild`). Other errors: `gsolder`
+(the drone's minor is above the GS's), `uptodate`, `noboard`, `norelease`,
+and the network, clock, tls and http errors of the GS check.
+
+`start` takes the asset URL (`mabur-<ver>-<board>-maburd`; its `.sha256`
+sits beside it), runs detached under the same lock and status file as a GS
+update, and reports the phases download, verify (the sha256 must match),
+send, install (START answered; the drone installs and boots the new
+build) and trial (`done` = seconds run of the 40 s window) as `maburup
+install` reports them. It
+ends `state=done` with `msg=Updated to <version>`, or `state=error` with
+the reason (`Rolled back: ...`, `Refused: ...`, `Checksum mismatch`), or
+`state=cancelled` (cancel works until the file is fully sent, and stops `maburup`; after
+that the drone decides alone and a cancel is ignored).
+
 ### From an older image
 
 An image from before `gs-upgrade` has `sysupgrade` instead, which installs
@@ -140,6 +166,22 @@ partition and reboot (those images flash it at boot), or run
 images has an upgrade URL that points elsewhere: upgrade it once with
 `sysupgrade --url=https://github.com/gilankpam/mabur-ground/releases/latest/download/<board>.tar.gz`,
 or reflash.
+
+## Updating the drone: maburup
+
+`maburup` (`/usr/local/bin/maburup`) talks to the drone through maburgs'
+MAVLink endpoint (`127.0.0.1:14550`, or `--port N`), so maburgs must be
+running and linked, with `[mavlink] enable = true` (the default). The
+endpoint answers the last sender, so a ground app connected to it during an
+update takes some of the replies and slows the transfer (retries recover it).
+`maburup ident` prints `version=<v> board=<b> chip=<c>`
+and exits 0, or prints `error no drone` and exits 2 after five unanswered
+requests. `maburup install <file> <sha256-hex>` checks the file and its
+hash (`error bad file` / `error bad hash`, exit 1, nothing sent), writes it
+to the drone and prints `send <done> <total>` while it goes, `install`
+once the drone has taken START, `trial <s>` (seconds left) once the new
+build answers, then one final line: `committed` (exit
+0), `rolled_back <reason>`, `refused <reason>` or `error <text>` (exit 1).
 
 ## Configuration: the CONFIG partition
 

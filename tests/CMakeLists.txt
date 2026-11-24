@@ -299,6 +299,7 @@ add_mtest(test_relay_ring test_relay_ring.cpp LIBS mabur_web_core)
 add_test(NAME web_relay_e2e
   COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/web/tests/test_relay_e2e.py $<TARGET_FILE:webgs>)
 add_mtest(test_stats_exporter test_stats_exporter.cpp LIBS mabur_gs_core)
+add_mtest(test_drone_ident test_drone_ident.cpp LIBS mabur_gs_core)
 add_mtest(test_stats_sink test_stats_sink.cpp LIBS mabur_gs_core)
 add_mtest(test_cal_analysis test_cal_analysis.cpp LIBS mabur_gs_core)
 add_mtest(test_cal_plan test_cal_plan.cpp LIBS mabur_gs_core)
@@ -317,9 +318,15 @@ if(TARGET maburd)
   # against each other -- everything else tests one side in isolation, and
   # every defect that escaped this build lived in the glue between them.
   add_mtest(test_cal_e2e test_cal_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
+  add_mtest(test_update_client test_update_client.cpp LIBS mabur_gs_core mabur_drone_core)
+  add_mtest(test_maburup test_maburup.cpp LIBS mabur_gs_core mabur_drone_core pthread)
+  target_compile_definitions(test_maburup PRIVATE MABURUP_BIN="$<TARGET_FILE:maburup>")
   # RcAgent <-> VrxController loopback: matching/mismatched keys, a same-key
   # stranger, a restart relink (spec 2026-10-01 link-pairing §11).
   add_mtest(test_link_auth_e2e test_link_auth_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
+  # Both ends of a drone update across RC versions: the GS's update-only
+  # session against the drone's RcAgent, MavComponent and OtaServer.
+  add_mtest(test_drone_ota_e2e test_drone_ota_e2e.cpp LIBS mabur_gs_core mabur_drone_core)
   add_test(NAME gs_au_e2e COMMAND bash ${PROJECT_SOURCE_DIR}/tests/integration/run_gs_au_e2e.sh)
   set_tests_properties(gs_au_e2e PROPERTIES
     ENVIRONMENT "BUILD=${CMAKE_BINARY_DIR};MABURD=$<TARGET_FILE:maburd>;MABUR_DIR=${MABUR_DIR}")

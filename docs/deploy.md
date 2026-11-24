@@ -29,10 +29,10 @@ before the daemon is gone, and copying over a running binary fails with
 
 **GS.**
 
-- `maburgs` and `maburplay` live in `/usr/local/bin`; `maburtop` and
+- `maburgs`, `maburup` and `maburplay` live in `/usr/local/bin`; `maburtop` and
   `maburcal` in `/usr/bin` (the GS shell's default PATH lacks
   `/usr/local/bin`); the OSD fonts and splash in `/usr/local/share/mabur/`
-  (staged in `out/arm64/` by `tools/build-arm64.sh`). The remembered
+  (staged in `out/arm64/`, `maburup` as `out/arm64/maburup`, by `tools/build-arm64.sh`). The remembered
   channel is `/etc/maburgs.channel`.
 - Never load the 8812eu kernel module on the GS cards; `S96maburgs`
   unloads it on start.

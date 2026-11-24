@@ -29,7 +29,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 
 ### `link` — op point, ladder, loss
 
-- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the drone's RC version while `version_mismatch`, `null` in every other state), `key_fp`,
+- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the drone's RC version while `version_mismatch`, `null` in every other state), `drone_ident` (`{version, board, chip}` from the drone's IDENT answer, asked for at every session; `null` until one arrives), `key_fp`,
   `tx_card` — pairing is [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `width` — the live receiver width in MHz (20 or 40), `ChannelCore`'s own
   `width_mhz()`: what the link ladder (any 40 MHz rung) or the static pin
@@ -203,7 +203,7 @@ line in the LADDER panel. Design: [`docs/fec-nack.md`](https://github.com/gilank
 
 ### `link.mav` — MAVLink tunnel
 
-`link.mav{tx, rx, reject, peer}`: the GS's `MavTunnel` and its UDP endpoint,
+`link.mav{tx, rx, reject, drop_not_update, peer}`: the GS's `MavTunnel` and its UDP endpoint,
 counters cumulative since the daemon started; present only while
 `[mavlink] enable`. `tx` counts T_MAV frames sent to the drone, `rx` T_MAV_UP
 frames received from it (each once: the second card's copy of a frame is
@@ -214,7 +214,10 @@ fails to parse) -- the sum of `MavTunnelStats` `drop_unlinked +
 drop_bad_packet + drop_oversize`. The second card's copies and replays
 (`rx_dup`, a 64-wide anti-replay window per pair), unverified uplinks
 (`drop_auth`) and the GS's own T_MAV heard by its other card
-(`rx_uplink_heard`) are neither `rx` nor `reject` and are not exported. `peer` is true
+(`rx_uplink_heard`) are neither `rx` nor `reject` and are not exported. `drop_not_update` counts the
+packets dropped because the session is update-only (the drone is at another
+RC_VERSION, the tunnel runs under the update pair): only update-lane
+packets go up there, and it is not part of `reject`. `peer` is true
 once a UDP client has sent the endpoint a datagram. maburtop draws a
 `mav <tx>/<rx>` cell (`mav off` without the key) on the top bar beside
 `key`. Calibration's cal-lane frames are not in `tx`. Design:

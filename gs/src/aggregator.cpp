@@ -282,15 +282,17 @@ void Aggregator::on_rx_body(const mabur::node::RxBody& m) {
     }
   }
 
-  // RC frames at our version, plus a DISC_ACK at any version: the frozen
-  // ack is how the rc sink learns a drone at another RC_VERSION is there.
-  if (rc_t >= 0 ||
-      mabur::rc::frozen_type(m.body.data(), m.body.size()) == mabur::rc::T_DISC_ACK) {
+  // RC frames at our version, plus a DISC_ACK at any version (the frozen
+  // ack is how the rc sink learns a drone at another RC_VERSION is there)
+  // and a CRC-clean T_MAV_UP at any version (the update pair's replies).
+  const int frozen_t = mabur::rc::frozen_type(m.body.data(), m.body.size());
+  if (rc_t >= 0 || frozen_t == mabur::rc::T_DISC_ACK ||
+      (m.crc_ok && frozen_t == mabur::rc::T_MAV_UP)) {
     ++c.rc_frames;
     if (rc_sink_) rc_sink_(m.card_id, m.body, m.mono_us);
     return;
   }
-  // Any other RC frame of another version (its Telem, its T_MAV_UP): no RC
+  // Any other RC frame of another version (its Telem): no RC
   // path reads it, and it is never video. crc_ok: the two-byte magic alone
   // matches about one corrupt video body in 65536.
   if (m.crc_ok && mabur::rc::is_foreign_rc_version(m.body.data(), m.body.size())) return;

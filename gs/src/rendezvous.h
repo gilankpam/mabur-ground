@@ -24,6 +24,9 @@ namespace maburgs {
 // kPeerAliveMs): a same-key spare drone at another version in range must
 // not take down a live session. Key mismatch outranks it (flagged acks
 // carry no tag, so they never reach the version check).
+// While in it the drone's vtx_nonce from the last such ack is kept as the
+// update pair (update_vtx_nonce): the drone tags its update-only session
+// with it, and it is dropped on every exit from the state.
 // See docs/link-pairing.md.
 enum class VrxState { SESSION, BEACONING, KEY_MISMATCH, VERSION_MISMATCH };
 enum class VrxAction { TxFeedback, Beacon, Idle };
@@ -72,6 +75,8 @@ class VrxRendezvous {
   uint64_t ignored_version_acks() const { return ignored_version_acks_; }
   // The drone's RC_VERSION while VERSION_MISMATCH, else empty.
   std::optional<uint8_t> drone_rc_version() const { return drone_version_; }
+  // The vtx_nonce of the last verified other-version ack while VERSION_MISMATCH.
+  std::optional<uint32_t> update_vtx_nonce() const { return update_vtx_; }
   VrxState state() const { return state_; }
   // Real link video is flowing (feed_video only). SESSION alone is not:
   // a DISC_ACK opens it and refreshes the silence timer with no video, so
@@ -111,6 +116,7 @@ class VrxRendezvous {
   // would reject every RCF until failsafe. The trigger is a stranger's
   // flagged acks while three of our drone's acks are lost on the uplink.
   std::optional<uint32_t> vtx_nonce_;
+  std::optional<uint32_t> update_vtx_;
   // Stranger rule: time of the first flagged ack in the current run of
   // flagged-only acks, and the DISCs beacon() built since it; both reset by
   // any unflagged ack.

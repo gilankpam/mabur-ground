@@ -172,6 +172,12 @@ class VrxController {
   mabur::rc::TagCtx session_ctx() const {
     return mabur::rc::TagCtx{rz_.nonce(), rz_.vtx_nonce().value_or(0), 0};
   }
+  // Tag ctx for the update-only session: {vrx, the other-version ack's vtx, 0}
+  // while version_mismatch(), else {}.
+  mabur::rc::TagCtx update_ctx() const {
+    if (!version_mismatch()) return {};
+    return mabur::rc::TagCtx{rz_.nonce(), *rz_.update_vtx_nonce(), 0};
+  }
 
  private:
   mabur::rc::Rcf build_rcf();

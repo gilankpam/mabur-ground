@@ -122,6 +122,35 @@ std::optional<ReleaseInfo> parse_release_json(const std::string& json, const std
   return r;
 }
 
+std::optional<ReleaseInfo> parse_drone_release(const std::string& json, const std::string& board,
+                                               std::string* why) {
+  nlohmann::json j = nlohmann::json::parse(json, nullptr, false);
+  if (!j.is_object()) {
+    if (why) *why = "bad release json";
+    return std::nullopt;
+  }
+  const std::string prefix = "mabur-";
+  const std::string suffix = "-" + board + "-maburd";
+  const auto assets = j.find("assets");
+  if (assets != j.end() && assets->is_array()) {
+    for (const auto& a : *assets) {
+      const std::string name = a.value("name", "");
+      const std::string url = a.value("browser_download_url", "");
+      if (name.size() <= prefix.size() + suffix.size() || name.rfind(prefix, 0) != 0 ||
+          name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0 || url.empty()) {
+        continue;
+      }
+      ReleaseInfo r;
+      r.version = name.substr(prefix.size(), name.size() - prefix.size() - suffix.size());
+      r.url = url;
+      r.changelog = changelog_lines(j.value("body", ""));
+      return r;
+    }
+  }
+  if (why) *why = "No drone build for " + board;
+  return std::nullopt;
+}
+
 VersionRel version_rel(const std::string& cur, const std::string& next) {
   if (cur == next) return VersionRel::kSame;
   int a[3], b[3];

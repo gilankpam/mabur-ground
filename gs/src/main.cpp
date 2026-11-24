@@ -53,6 +53,7 @@
 #include "loss_control.h"
 #endif
 #include "mav_endpoint.h"
+#include "drone_ident.h"
 #include "mav_tunnel.h"
 #include "mabur/cal_wire.h"
 #include "mabur/channel_file.h"
@@ -1015,6 +1016,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   // declaration, but nothing drives a packet through it until the main
   // loop starts -- long after both objects are built.
   maburgs::ParamHost* param_host = nullptr;
+  maburgs::DroneIdent drone_ident;
   maburgs::MavTunnel mav_tunnel(
       cfg.link.key,
       [&](std::vector<uint8_t> frame) {
@@ -1030,6 +1032,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
         mav_ep.send_to_peer(b, n);
         maburgs::feed_cal_packet(cal_session, b, n, mav_rx_ms);
         if (param_host) param_host->on_packet(b, n, mav_rx_ms);
+        drone_ident.on_packet(b, n);
       },
       [&](std::vector<uint8_t> frame) {
         maburgs::SlotFrame sf{std::move(frame), 0, mav_tick_card, false};
@@ -1050,7 +1053,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     return params.handle_verb(v, r, mono_ms());
   };
   agg.set_rc_sink([&](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (maburgs::is_mav_frame(mabur::rc::frame_type(f.data(), f.size()))) {
+    if (maburgs::is_mav_frame(mabur::rc::frozen_type(f.data(), f.size()))) {
       mav_rx_ms = us / 1000;
       mav_tunnel.on_rc_frame(f.data(), f.size());
       return;
@@ -1292,13 +1295,14 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       chan.on_rc_body(m.rx_channel);   // read by the rc sink inside on_rx_body()
       agg.on_rx_body(m);
       // A frame of another RC_VERSION other than the frozen DISC_ACK (which
-      // the rc sink reads: VERSION_MISMATCH) reaches no RC path and is never
+      // the rc sink reads: VERSION_MISMATCH, and T_MAV_UP, the update tunnel) reaches no RC path and is never
       // video. Log it, rate-limited to 1/5s: a mismatched peer transmits
       // continuously and /tmp is tmpfs. Gated on crc_ok because RC_MAGIC is
       // only two bytes: roughly 1 in 65536 corrupt video bodies matches it.
       if (m.crc_ok &&
           mabur::rc::is_foreign_rc_version(m.body.data(), m.body.size()) &&
           mabur::rc::frozen_type(m.body.data(), m.body.size()) != mabur::rc::T_DISC_ACK &&
+          mabur::rc::frozen_type(m.body.data(), m.body.size()) != mabur::rc::T_MAV_UP &&
           (!foreign_rc_logged || now_ms_u - last_foreign_rc_ms >= 5000)) {
         foreign_rc_logged = true;
         last_foreign_rc_ms = now_ms_u;
@@ -1470,18 +1474,24 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     // then endpoint datagrams -> tunnel -> T_MAV frames. CAP_MAVLINK is
     // display-only: one line per session, nothing is gated on it.
     {
-      const mabur::rc::TagCtx mav_ctx = mav_linked ? vrx.session_ctx() : mabur::rc::TagCtx{};
+      // Linked: the live session. Version mismatch: the update pair, update
+      // lane only. Otherwise none.
+      const bool update_only = vrx.version_mismatch();
+      const mabur::rc::TagCtx mav_ctx =
+          mav_linked ? vrx.session_ctx() : update_only ? vrx.update_ctx() : mabur::rc::TagCtx{};
       // Caps arrive in Telem after the ack: judge them only once heard.
-      if (mav_ctx.vtx_nonce != 0 && vrx.peer_caps_known() &&
+      if (mav_linked && mav_ctx.vtx_nonce != 0 && vrx.peer_caps_known() &&
           mav_ctx.vtx_nonce != mav_vtx_seen) {
         mav_vtx_seen = mav_ctx.vtx_nonce;
         if (cfg.mavlink.enable && (vrx.peer_caps() & mabur::rc::CAP_MAVLINK) == 0)
           std::fprintf(stderr, "maburgs: mavlink: drone lacks CAP_MAVLINK\n");
       }
-      mav_tunnel.set_session(mav_ctx);
+      mav_tunnel.set_session(mav_ctx, update_only);
+      if (auto p = drone_ident.tick(mav_ctx.vtx_nonce, drained_ms))
+        mav_tunnel.push_outbound(p->data(), p->size());
       // vtx_nonce 0 while unlinked: the same "no drone to list" value
       // mav_ctx itself carries above.
-      params.tick(mav_linked, mav_ctx.vtx_nonce, drained_ms);
+      params.tick(mav_linked, mav_linked ? mav_ctx.vtx_nonce : 0, drained_ms);
       for (const std::string& line : params.take_log_lines())
         std::fprintf(stderr, "maburgs: %s\n", line.c_str());
       mav_ep.poll(mav_tunnel);
@@ -1830,6 +1840,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       sin.key_mismatch = vrx.key_mismatch();
       sin.version_mismatch = vrx.version_mismatch();
       sin.drone_rc_version = vrx.drone_rc_version();
+      sin.drone_ident = drone_ident.ident();
       sin.key_fp = key_fp;
       sin.tx_card = sel.selected();
       sin.op = vrx.cur_op();

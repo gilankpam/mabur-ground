@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "mabur/mav.h"
+#include "mabur/ota_mav.h"
 
 namespace maburgs {
 
@@ -66,7 +67,8 @@ bool MavTunnel::RxWindow::accept(const mabur::rc::TagCtx& p, uint32_t c) {
   return true;
 }
 
-void MavTunnel::set_session(const mabur::rc::TagCtx& ctx) {
+void MavTunnel::set_session(const mabur::rc::TagCtx& ctx, bool update_only) {
+  update_only_ = update_only;
   if (ctx.vtx_nonce != 0 && ctx.vtx_nonce != vtx_seen_) {
     vtx_seen_ = ctx.vtx_nonce;
     counter_ = 0;
@@ -80,6 +82,9 @@ void MavTunnel::push_outbound(const uint8_t* bytes, size_t n) {
       [&](const std::vector<uint8_t>& pkt) {
         if (ctx_.vtx_nonce == 0) {
           ++stats_.drop_unlinked;
+        } else if (update_only_ && !mabur::ota::is_uplink_lane_msgid(
+                                       pkt[7] | (pkt[8] << 8) | (static_cast<uint32_t>(pkt[9]) << 16))) {
+          ++stats_.drop_not_update;
         } else if (pkt.size() > mabur::rc::kMavMaxPayload) {
           ++stats_.drop_oversize;
         } else {

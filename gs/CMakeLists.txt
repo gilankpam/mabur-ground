@@ -37,6 +37,7 @@ add_library(mabur_gs_core STATIC
   src/rcf_slot.cpp
   src/mav_tunnel.cpp
   src/param_client.cpp
+  src/update_client.cpp
   src/param_host.cpp
   src/msp_sink.cpp
   src/frame_stream.cpp
@@ -48,6 +49,7 @@ add_library(mabur_gs_core STATIC
   src/link_health.cpp
   src/rtt_estimator.cpp
   src/uplink_delivery.cpp
+  src/drone_ident.cpp
   src/stats_exporter.cpp
   src/stats_sink.cpp)
 target_include_directories(mabur_gs_core
@@ -86,6 +88,10 @@ target_link_libraries(mabur_gs_radio PUBLIC mabur_gs_core mabur_gs_dot11 mabur_g
 add_executable(maburgs src/main.cpp)
 target_include_directories(maburgs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(maburgs PRIVATE mabur_gs_core mabur_gs_radio mabur_common pthread)
+
+add_executable(maburup src/maburup_main.cpp)
+target_include_directories(maburup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(maburup PRIVATE mabur_gs_core mabur_common)
 
 # Bench per-stream Gilbert-Elliott loss injector (gs/src/loss_sim.h,
 # loss_control.h), mainlined 2026-08-29 behind this flag instead of living on

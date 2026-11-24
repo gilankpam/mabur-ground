@@ -10,6 +10,7 @@
 
 #include "mabur/camera_modes.h"
 #include "mabur/config_params.h"
+#include "mabur/rc_proto.h"
 
 namespace maburplay {
 
@@ -1355,6 +1356,45 @@ MenuNode gs_firmware_group(const Deps& d) {
   return gs;
 }
 
+MenuNode drone_firmware_group(const Deps& d) {
+  auto snap_of = [d]() -> const GsSnapshot* {
+    return d->snap_stale && d->snap_stale() ? nullptr : d->snap;
+  };
+  auto ident = [snap_of]() -> const DroneIdentSnap* {
+    const GsSnapshot* s = snap_of();
+    return s && s->drone_ident ? &*s->drone_ident : nullptr;
+  };
+  MenuNode version;
+  version.id = "fw.drone.version";
+  version.label = "Version";
+  version.kind = NodeKind::kInfo;
+  version.value_text = [ident] {
+    const DroneIdentSnap* i = ident();
+    if (!i) return std::string("—");
+    return i->version + "  " + i->board + (i->chip.empty() ? "" : " · " + i->chip);
+  };
+  MenuNode online;
+  online.id = "fw.drone.online";
+  online.label = "Check online";
+  online.kind = NodeKind::kAction;
+  online.value_text = [d] { return d->upgrade_busy && d->upgrade_busy() ? std::string("Checking…") : std::string(); };
+  online.action = [d] {
+    if (d->upgrade_drone) d->upgrade_drone();
+    return std::vector<SetStep>{};
+  };
+  MenuNode drone = group("fw.drone", "Drone", "The drone's maburd, and updating it over the radio.",
+                         [version, online] { return std::vector<MenuNode>{version, online}; });
+  drone.group_value = [ident] {
+    const DroneIdentSnap* i = ident();
+    return i ? i->version : std::string("—");
+  };
+  drone.warn = [d] {
+    return drone_needs_update(d->snap, d->snap_stale && d->snap_stale()) ? std::string("needs update")
+                                                                         : std::string();
+  };
+  return drone;
+}
+
 // --- Unread GS values ----------------------------------------------------
 
 // A GS row reads "—" until maburgs' first `get` lands: until then the view
@@ -1394,6 +1434,18 @@ std::vector<MenuNode> guarded(const Deps& d, std::vector<MenuNode> rows) {
 }
 
 }  // namespace
+
+std::string drone_block_text(const GsSnapshot* snap, bool stale) {
+  if (!snap || stale) return "No drone found";
+  if (snap->drone_ident) return std::string();
+  if (snap->version_mismatch) return "Drone can't be updated over the air — flash the full image";
+  return "No drone found";
+}
+
+bool drone_needs_update(const GsSnapshot* snap, bool stale) {
+  return snap && !stale && snap->version_mismatch && snap->drone_rc_version &&
+         *snap->drone_rc_version < mabur::rc::RC_VERSION;
+}
 
 std::string drone_header(const GsSnapshot* snap, bool stale) {
   if (!snap || stale || !snap->vtx) return std::string();
@@ -1440,9 +1492,12 @@ std::vector<MenuNode> build_menu_tree(const MenuTreeDeps& deps) {
       group("power", "Power & FC", "The drone's power saving and its flight-controller link.",
             [d] { return power_rows(d); }),
       [&] {
-        MenuNode fw = group("fw", "Firmware", "What runs on the GS, and updating it.",
-                            [d] { return std::vector<MenuNode>{gs_firmware_group(d)}; });
-        fw.warn = update_warn(d);
+        MenuNode fw = group("fw", "Firmware", "What runs on the GS and the drone, and updating them.",
+                            [d] { return std::vector<MenuNode>{gs_firmware_group(d), drone_firmware_group(d)}; });
+        fw.warn = update_warn(d, [d] {
+          return drone_needs_update(d->snap, d->snap_stale && d->snap_stale()) ? std::string("update")
+                                                                               : std::string();
+        });
         return fw;
       }(),
       group("sys", "System", "GS housekeeping.", [d] { return sys_rows(d); }),
