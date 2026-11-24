@@ -182,6 +182,8 @@ bool parse_gs_snapshot(const char* data, size_t n, GsSnapshot* out) {
       auto st = link->find("state");
       out->key_mismatch = st != link->end() && st->is_string() &&
                           st->get<std::string>() == "key_mismatch";
+      out->version_mismatch = st != link->end() && st->is_string() &&
+                              st->get<std::string>() == "version_mismatch";
       out->session = st != link->end() && st->is_string() && st->get<std::string>() == "session";
     }
     if (hop) {

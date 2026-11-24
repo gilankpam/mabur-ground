@@ -121,6 +121,27 @@ TEST(link_carries_key_fp_and_mismatch_state_and_drone_auth_reject) {
   CHECK(j["drone"]["auth_reject"] == false);
 }
 
+// A drone at another RC version: link.state names it and link.drone_rc_version
+// carries the number (null while none is known). A key mismatch outranks it.
+TEST(link_state_version_mismatch_carries_the_drone_rc_version) {
+  Capture cap;
+  StatsExporter ex(1, 500, cap.fn());
+  StatsInput in = base_input();
+  json j;
+  ex.poll(1000, in);
+  j = cap.last();
+  CHECK(j["link"]["drone_rc_version"].is_null());
+  in.version_mismatch = true;
+  in.drone_rc_version = 18;
+  ex.poll(1500, in);
+  j = cap.last();
+  CHECK(j["link"]["state"] == "version_mismatch");
+  CHECK(j["link"]["drone_rc_version"] == 18);
+  in.key_mismatch = true;
+  ex.poll(2000, in);
+  CHECK(cap.last()["link"]["state"] == "key_mismatch");
+}
+
 // link-rtt: link.rtt is null until the estimator has a sample,
 // then carries the control-path RTT (EWMA + session min + n), the filtered
 // pts offset, and floor_ms when the anchor was usable — all from StatsInput,

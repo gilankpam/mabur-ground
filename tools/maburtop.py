@@ -555,6 +555,8 @@ def panel_topbar(model, wall):
     state = link.get("state")
     if state == "key_mismatch":
         state_s = "KEY MISMATCH"
+    elif state == "version_mismatch":
+        state_s = "VERSION MISMATCH"
     elif isinstance(state, str):
         state_s = state.upper()
     else:
@@ -593,6 +595,8 @@ def panel_topbar(model, wall):
         spans.append((dot_start, len(dot), "good"))
     elif state == "key_mismatch":
         spans.append((dot_start, len(dot), "bad"))
+    elif state == "version_mismatch":
+        spans.append((dot_start, len(dot), "warn"))
     if cal_s:
         # A run owns the air: the link's own numbers are not the flight's.
         spans.append((text.index(cal_s), len(cal_s), "warn"))

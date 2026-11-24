@@ -101,8 +101,8 @@ class CalSession {
   // power before capacity (so a capacity sweep measures at the power its
   // own width's walls just parked), and deduplicated. Refuses (false, with
   // `*err`) an empty list, a Verify or non-20/40 entry, a run already in
-  // progress (Picking included), a link that is down, or a peer without
-  // CAP_CALIBRATE.
+  // progress (Picking included), a link that is down, a linked peer whose
+  // caps are not known yet, or a peer without CAP_CALIBRATE.
   bool start(uint32_t nonce, std::vector<mabur::cal::SweepSpec> sweeps, uint64_t now_ms,
              std::string* err);
 
@@ -155,8 +155,9 @@ class CalSession {
   void abort(const char* why);
 
   // Told every tick: link state, whether the peer advertised
-  // CAP_CALIBRATE, and the pair's tag context.
-  void set_peer(bool linked, bool cal_capable, mabur::rc::TagCtx ctx = {});
+  // CAP_CALIBRATE (nullopt: no Telem since the session opened, caps not
+  // known yet), and the pair's tag context.
+  void set_peer(bool linked, std::optional<bool> cal_capable, mabur::rc::TagCtx ctx = {});
 
   // The tag context every cal message of the current run is packed under:
   // set_peer()'s ctx as of the moment the run first commands the drone
@@ -218,7 +219,7 @@ class CalSession {
   State state_ = State::Idle;
   uint32_t nonce_ = 0;
   bool linked_ = false;
-  bool cal_capable_ = false;
+  std::optional<bool> cal_capable_;
   mabur::rc::TagCtx peer_ctx_{};
   mabur::rc::TagCtx tag_ctx_{};
   std::string fail_reason_;

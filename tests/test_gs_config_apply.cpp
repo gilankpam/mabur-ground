@@ -814,7 +814,7 @@ TEST(applier_40_ladder_over_a_non_pair_set_reads_the_core_refusal) {
   VrxController vrx(vrx_cfg_from(pinned, 40));
   RecordingSink sink;
   ChannelCoreCfg cc;
-  cc.radio = pinned.radio; cc.hop = pinned.hop; cc.key = pinned.link.key;
+  cc.radio = pinned.radio; cc.hop = pinned.hop;
   cc.width_mhz = 20; cc.start_ch = 40; cc.n_usb = 2; cc.threaded = false;
   ChannelCore core(cc, ptrs, vrx, sink, [](uint8_t) { return true; },
                    [&] { return clk.now_ms(); }, [&] { return clk.now_us(); },

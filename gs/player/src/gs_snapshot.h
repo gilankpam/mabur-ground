@@ -140,6 +140,9 @@ struct GsSnapshot {
   // (link pairing). False when the block is absent (older
   // maburgs) or state is any other value.
   bool key_mismatch = false;
+  // link.state == "version_mismatch": the drone speaks another RC version
+  // (the pair found each other but cannot run the link).
+  bool version_mismatch = false;
   // link.state == "session": the drone is linked. False for any other
   // state ("beaconing", "key_mismatch") and when the key is absent.
   bool session = false;

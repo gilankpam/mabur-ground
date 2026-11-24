@@ -20,6 +20,7 @@
 #include "mabur/msp_source.h"
 #include "mabur/param_value.h"
 #include "osd_screen.h"
+#include "rc_at_version.h"
 using namespace webgs;
 
 namespace {
@@ -53,8 +54,18 @@ mabur::node::RxBody telem_body(uint16_t tlm_seq, uint64_t mono_us) {
   t.tlm_seq = tlm_seq;
   return rc_body(mabur::rc::pack_telem(t), mono_us);
 }
+// A verified DISC_ACK from a drone at RC_VERSION 18, answering a DISC the
+// page records as sent at now_ms.
+std::vector<uint8_t> other_version_ack(WebGs& g, const mabur::LinkKey& key, double now_ms) {
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = g.vrx()->rz_nonce();
+  ack.vtx_nonce = 7;
+  ack.channel = 136;
+  ack.seq = g.vrx()->stamp_disc(now_ms);
+  return rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack, key), 18, key);
+}
 // A wire-exact MAVLink 2 heartbeat (as the drone's component would send),
-// for feeding the web core's T_MAV rc-sink branch.
+// for feeding the web core's T_MAV_UP rc-sink branch.
 std::vector<uint8_t> mav_heartbeat_bytes(uint8_t sysid, uint8_t compid) {
   mavlink_message_t msg;
   mavlink_msg_heartbeat_pack(sysid, compid, &msg, MAV_TYPE_GCS, MAV_AUTOPILOT_INVALID, 0, 0,
@@ -63,13 +74,17 @@ std::vector<uint8_t> mav_heartbeat_bytes(uint8_t sysid, uint8_t compid) {
   const uint16_t n = mavlink_msg_to_send_buffer(buf, &msg);
   return std::vector<uint8_t>(buf, buf + n);
 }
-// An untagged T_MAV frame (drone -> GS layout) carrying one packet.
-mabur::node::RxBody mav_body(const std::vector<uint8_t>& payload, uint32_t counter,
-                              uint64_t mono_us) {
+// A T_MAV_UP frame (drone -> GS) carrying one packet, tagged under the
+// GS's live session and the default bundle key; the GS must be linked.
+mabur::node::RxBody mav_body(const WebGs& g, const std::vector<uint8_t>& payload,
+                              uint32_t counter, uint64_t mono_us) {
   mabur::rc::Mav m;
+  m.type = mabur::rc::T_MAV_UP;
   m.counter = counter;
   m.payload = payload;
-  return rc_body(mabur::rc::pack_mav(m, /*tagged=*/false), mono_us);
+  mabur::rc::TagCtx ctx = g.vrx()->session_ctx();
+  ctx.seq32 = counter;
+  return rc_body(mabur::rc::pack_mav(m, cfg().link.key, ctx), mono_us);
 }
 // A PARAM_EXT_VALUE packet from the drone (1/191), as test_mav_tunnel.cpp's
 // param_ext_value_bytes but with a real id/count/index.
@@ -89,7 +104,7 @@ int count_param_list_requests(const std::vector<std::vector<uint8_t>>& sent) {
   int n = 0;
   for (auto& s : sent) {
     if (mabur::rc::frame_type(s.data(), s.size()) != mabur::rc::T_MAV) continue;
-    const auto m = mabur::rc::parse_mav(s.data(), s.size(), /*tagged=*/true);
+    const auto m = mabur::rc::parse_mav(s.data(), s.size());
     if (!m) continue;
     mavlink_reset_channel_status(MAVLINK_COMM_1);
     mavlink_message_t msg{};
@@ -195,6 +210,61 @@ TEST(spotter_loss_row_reads_real_loss) {
   const auto heavy = run(2);                           // half gone: past what FEC repairs
   REQUIRE(heavy.residual.has_value());
   CHECK(*heavy.residual > 0.0);
+}
+
+// The replay's synthetic ack is tagged under the configured link key, so a
+// non-default key still opens SESSION.
+TEST(replay_ack_links_under_a_non_default_key) {
+  auto c = cfg();
+  c.link.key[0] ^= 0x5a;
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  WebGs g(c, Mode::Gs, 136, 40, {}, 0, io);
+  g.inject_disc_ack_for_replay(1'000'000);
+  REQUIRE(g.vrx() != nullptr);
+  CHECK(g.vrx()->link_state() == maburgs::VrxState::SESSION);
+}
+
+TEST(web_state_reports_version_mismatch) {
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  auto c = cfg();
+  WebGs g(c, Mode::Gs, 136, 40, {}, 0, io);
+  REQUIRE(g.vrx() != nullptr);
+  CHECK(stats_json(g.stats()).find("\"version_mismatch\":false") != std::string::npos);
+  // A genuine ack from a drone at another RC version, tagged under our key,
+  // through the page's receive path (aggregator -> rc sink).
+  g.on_rx(rc_body(other_version_ack(g, c.link.key, 1000.0), 1'000'000));
+  g.tick(1'001'000);
+  const std::string j = stats_json(g.stats());
+  CHECK(j.find("\"version_mismatch\":true") != std::string::npos);
+  CHECK(j.find("\"drone_rc_version\":18") != std::string::npos);
+  CHECK(j.find("\"rc_version\":" + std::to_string(mabur::rc::RC_VERSION)) != std::string::npos);
+  CHECK(j.find("\"key_mismatch\":false") != std::string::npos);
+}
+
+// Another version's Telem is not video: it must not hold or reopen a
+// session. Here the session is lost to silence (BEACONING with the nonce
+// held), and a stream of RC 18 Telem must leave it there.
+TEST(other_version_telem_never_reopens_a_session) {
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  WebGs g(cfg(), Mode::Gs, 136, 40, {}, 0, io);
+  uint64_t t = 1'000'000;
+  g.inject_disc_ack_for_replay(t);
+  REQUIRE(g.vrx()->link_state() == maburgs::VrxState::SESSION);
+  for (int i = 0; i < 150; ++i) g.tick(t += 10'000);   // 1.5 s of silence
+  REQUIRE(g.vrx()->link_state() == maburgs::VrxState::BEACONING);
+  mabur::rc::Telem tl;
+  for (int i = 0; i < 20; ++i) {
+    tl.tlm_seq = static_cast<uint16_t>(i);
+    g.on_rx(rc_body(rc_test::untagged_at_version(mabur::rc::pack_telem(tl), 18), t));
+    g.tick(t += 10'000);
+  }
+  CHECK(g.vrx()->link_state() == maburgs::VrxState::BEACONING);
 }
 
 TEST(gs_beacons_then_rcf_after_ack) {
@@ -565,8 +635,8 @@ TEST(idr_requests_are_noop_in_spotter) {
   CHECK(g.sends() == 0);
 }
 
-// The T_MAV rc-sink branch (mav_tunnel.h, drone -> GS layout, untagged):
-// one whole heartbeat packet in one frame reaches mav_take_inbound byte
+// The T_MAV_UP rc-sink branch (mav_tunnel.h, drone -> GS, tagged under the
+// live session): one whole heartbeat packet in one frame reaches mav_take_inbound byte
 // for byte, and nothing is left queued after it is drained. A second
 // packet queued ahead of any take() call still comes out one at a time
 // (mav_take_inbound's contract: at most one packet per call), not merged.
@@ -578,7 +648,9 @@ TEST(mav_inbound_frame_delivers_whole_packet_to_take) {
   REQUIRE(g.mav() != nullptr);
   const auto hb = mav_heartbeat_bytes(1, 191);
   const uint64_t t = 1'000'000;
-  g.on_rx(mav_body(hb, 1, t));
+  g.inject_disc_ack_for_replay(t);
+  g.tick(t);
+  g.on_rx(mav_body(g, hb, 1, t));
   g.tick(t);
   CHECK(g.mav()->stats().rx_frames == 1);
   CHECK(g.mav()->stats().rx_packets == 1);
@@ -589,8 +661,8 @@ TEST(mav_inbound_frame_delivers_whole_packet_to_take) {
   CHECK(g.mav_take_inbound(buf, sizeof buf) == 0);   // nothing left queued
 
   const auto hb2 = mav_heartbeat_bytes(2, 192);
-  g.on_rx(mav_body(hb, 2, t));
-  g.on_rx(mav_body(hb2, 3, t));
+  g.on_rx(mav_body(g, hb, 2, t));
+  g.on_rx(mav_body(g, hb2, 3, t));
   g.tick(t);
   CHECK(g.mav()->stats().rx_packets == 3);
   const size_t n1 = g.mav_take_inbound(buf, sizeof buf);
@@ -641,6 +713,41 @@ TEST(gs_lists_parameters_after_disc_ack) {
   CHECK(g.params()->state().list == maburgs::ParamListState::Pending);
 }
 
+// A T_MAV (the GS's own uplink heard on another card) tagged under the live
+// session is counted apart and never delivered; a T_MAV_UP forged under
+// another key is dropped as auth, not delivered.
+TEST(own_uplink_heard_and_forged_up_are_not_delivered) {
+  Io io;
+  io.on_au = [](Au&&) {};
+  io.send = [](const std::vector<uint8_t>&) {};
+  WebGs g(cfg(), Mode::Gs, 136, 40, {}, 0, io);
+  const uint64_t t = 1'000'000;
+  g.inject_disc_ack_for_replay(t);
+  g.tick(t);
+  REQUIRE(g.mav() != nullptr);
+  const auto hb = mav_heartbeat_bytes(1, 191);
+  mabur::rc::Mav m;
+  m.type = mabur::rc::T_MAV;
+  m.counter = 1;
+  m.payload = hb;
+  mabur::rc::TagCtx ctx = g.vrx()->session_ctx();
+  ctx.seq32 = 1;
+  g.on_rx(rc_body(mabur::rc::pack_mav(m, cfg().link.key, ctx), t));
+  g.tick(t);
+  CHECK(g.mav()->stats().rx_uplink_heard == 1);
+  uint8_t buf[256];
+  CHECK(g.mav_take_inbound(buf, sizeof buf) == 0);
+  m.type = mabur::rc::T_MAV_UP;
+  m.counter = 2;
+  ctx.seq32 = 2;
+  auto other = cfg().link.key;
+  other[0] ^= 0xff;
+  g.on_rx(rc_body(mabur::rc::pack_mav(m, other, ctx), t));
+  g.tick(t);
+  CHECK(g.mav()->stats().drop_auth == 1);
+  CHECK(g.mav_take_inbound(buf, sizeof buf) == 0);
+}
+
 // A drone PARAM_EXT_VALUE lands on the right row and shows up in the page's
 // params_json, keyed by its MAVLink id.
 TEST(drone_values_reach_the_client) {
@@ -657,7 +764,7 @@ TEST(drone_values_reach_the_client) {
   const auto pkt = param_ext_value_pkt(
       "VENC_MODE", mabur::cfgparam::mav_type(mabur::cfgparam::Type::Str), wire,
       mabur::cfgparam::kCount, static_cast<uint16_t>(mabur::cfgparam::kVencModeRow));
-  g.on_rx(mav_body(pkt, 1, t));
+  g.on_rx(mav_body(g, pkt, 1, t));
   g.tick(t);
   CHECK(g.params()->state().rows[mabur::cfgparam::kVencModeRow].value.s == "60@1920x1080/binned");
   const std::string j = params_json(g, t / 1000);
@@ -679,7 +786,7 @@ TEST(params_json_alive_is_null_until_the_first_heartbeat) {
   REQUIRE(g.params()->state().linked);
   CHECK(params_json(g, t / 1000).find("\"alive\":null") != std::string::npos);
   const auto hb = mav_heartbeat_bytes(1, 191);
-  g.on_rx(mav_body(hb, 1, t));
+  g.on_rx(mav_body(g, hb, 1, t));
   g.tick(t);
   CHECK(params_json(g, t / 1000).find("\"alive\":true") != std::string::npos);
   t += 3'500'000;   // 3.5 s with no further heartbeat
@@ -707,7 +814,7 @@ TEST(new_session_nonce_relists) {
   const auto pkt = param_ext_value_pkt(
       "VENC_MODE", mabur::cfgparam::mav_type(mabur::cfgparam::Type::Str), wire,
       mabur::cfgparam::kCount, static_cast<uint16_t>(mabur::cfgparam::kVencModeRow));
-  g.on_rx(mav_body(pkt, 1, t));
+  g.on_rx(mav_body(g, pkt, 1, t));
   g.tick(t);
   REQUIRE(g.params()->state().rows[mabur::cfgparam::kVencModeRow].have_value);
 
@@ -743,7 +850,7 @@ TEST(vtx_nonce_change_while_linked_relists) {
   const auto pkt = param_ext_value_pkt(
       "VENC_MODE", mabur::cfgparam::mav_type(mabur::cfgparam::Type::Str), wire,
       mabur::cfgparam::kCount, static_cast<uint16_t>(mabur::cfgparam::kVencModeRow));
-  g.on_rx(mav_body(pkt, 1, t));
+  g.on_rx(mav_body(g, pkt, 1, t));
   g.tick(t);
   REQUIRE(g.params()->state().rows[mabur::cfgparam::kVencModeRow].have_value);
 
@@ -755,9 +862,8 @@ TEST(vtx_nonce_change_while_linked_relists) {
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = g.vrx()->rz_nonce();
   ack.vtx_nonce = 2;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE;
-  ack.agreed_channel = g.vrx()->proposal();
-  ack.seq = 2;
+  ack.channel = g.vrx()->proposal();
+  ack.seq = g.vrx()->stamp_disc(static_cast<double>(t) / 1000.0);
   const auto wire2 = mabur::rc::pack_disc_ack(ack);
   g.vrx()->on_rc_frame(wire2.data(), wire2.size(), static_cast<double>(t) / 1000.0);
   REQUIRE(g.vrx()->link_state() == maburgs::VrxState::SESSION);   // no BEACONING edge
@@ -1238,6 +1344,20 @@ TEST(gs_roster_builds_core_and_one_card_prelude_commits_and_stores) {
   CHECK(stats_json(r.g->stats()).find("\"channel\":" + std::to_string(r.card.ch)) != std::string::npos);
 }
 
+// A version-mismatched drone counts as found: the page's channel search
+// stops on it, as maburgs's does.
+TEST(gs_roster_version_mismatch_stops_the_search) {
+  GsRig r(40, /*pinned=*/true);
+  REQUIRE(r.g->channel_core() != nullptr);
+  r.ticks(5);
+  REQUIRE(r.g->channel_core()->lease_state() == maburgs::LeaseState::Search);
+  r.g->on_rx(rc_body(other_version_ack(*r.g, r.c.link.key, static_cast<double>(r.t) / 1000.0),
+                     r.t, 40));
+  r.ticks(100);   // 1 s: inside the mismatch hold
+  REQUIRE(r.g->vrx()->version_mismatch());
+  CHECK(r.g->channel_core()->lease_state() != maburgs::LeaseState::Search);
+}
+
 // Pin is static: it reaches the browser GS through the shared core:
 // the page's Link channel select becomes `channel = N` in the [radio]
 // overlay, the loader sets radio.pin, WebGs hands cfg.radio to ChannelCore.
@@ -1417,7 +1537,7 @@ TEST(channel_width_error_checks_the_set_membership_and_pin) {
 TEST(one_card_frames_pass_to_the_card_while_the_scout_beacons) {
   GsRig r;
   r.card.cca_per_ms_on[40] = 5;
-  struct Obs { std::vector<int> targets; bool pass; uint8_t ch; bool proposes_ch; };
+  struct Obs { std::vector<int> targets; bool pass; uint8_t ch; };
   std::vector<Obs> obs;
   r.on_sleep = [&] {
     const auto* core = r.g->channel_core();
@@ -1426,11 +1546,6 @@ TEST(one_card_frames_pass_to_the_card_while_the_scout_beacons) {
     if (o.targets.empty()) return;            // not beaconing: the send path offers nothing
     o.pass = core->may_send(0);
     o.ch = r.card.ch;
-    mabur::rc::Disc d;
-    d.op_channel = 0;
-    const auto wire = core->disc_for_card(mabur::rc::pack_disc(d, r.c.link.key), 0);
-    const auto back = mabur::rc::parse_disc(wire.data(), wire.size());
-    o.proposes_ch = back && back->op_channel == o.ch;
     obs.push_back(o);
   };
   for (int i = 0; i < 800 && !r.has_log("one-card prelude ranking picks"); ++i) r.ticks(1);
@@ -1441,7 +1556,6 @@ TEST(one_card_frames_pass_to_the_card_while_the_scout_beacons) {
   for (const auto& o : obs) {
     CHECK(o.targets == std::vector<int>{0});  // the one card, never Io::send
     CHECK(o.pass);                            // the gate lets a beaconing card send
-    CHECK(o.proposes_ch);                     // a DISC proposes the channel it is sent on
     (o.ch == r.g->channel_core()->op() ? on_op : on_other) = true;
   }
   CHECK(on_op);                               // the one-card op window
@@ -1674,9 +1788,8 @@ void ack_with_nonce(WebGs& g, uint32_t vtx_nonce, uint64_t t_us) {
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = g.vrx()->rz_nonce();
   ack.vtx_nonce = vtx_nonce;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE;
-  ack.agreed_channel = g.vrx()->proposal();
-  ack.seq = 1;
+  ack.channel = g.vrx()->proposal();
+  ack.seq = g.vrx()->stamp_disc(static_cast<double>(t_us) / 1000.0);
   g.on_rx(rc_body(mabur::rc::pack_disc_ack(ack), t_us));
   g.tick(t_us);
 }

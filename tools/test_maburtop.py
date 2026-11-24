@@ -147,6 +147,13 @@ class TopBarTest(unittest.TestCase):
         self.assertFalse(any(style == "good" for _, _, style in spans))
         self.assertFalse(any(style == "warn" for _, _, style in spans))
 
+    def test_version_mismatch_state_warn_span(self):
+        d = dict(DGRAM, link=dict(DGRAM["link"], state="version_mismatch"))
+        text, spans = panel_topbar(_fresh(d), 100.2)[0]
+        self.assertIn("VERSION MISMATCH", text)
+        self.assertTrue(any(style == "warn" for _, _, style in spans))
+        self.assertFalse(any(style == "good" for _, _, style in spans))
+
     def test_stale_takeover(self):
         m = _fresh(wall=100.0)
         text, spans = panel_topbar(m, 103.5)[0]

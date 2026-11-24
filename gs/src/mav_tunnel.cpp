@@ -45,11 +45,31 @@ MavTunnel::MavTunnel(mabur::LinkKey key, SendFn send, DeliverFn deliver, SendFn 
   mavlink_reset_channel_status(mabur::mav::kChanGsRx);
 }
 
+bool MavTunnel::RxWindow::accept(const mabur::rc::TagCtx& p, uint32_t c) {
+  if (!valid || p.vrx_nonce != pair.vrx_nonce || p.vtx_nonce != pair.vtx_nonce) {
+    valid = true;
+    pair = p;
+    high = c;
+    bits = 1;
+    return true;
+  }
+  if (c > high) {
+    const uint32_t shift = c - high;
+    bits = shift >= 64 ? 0 : bits << shift;
+    bits |= 1;
+    high = c;
+    return true;
+  }
+  const uint32_t back = high - c;
+  if (back > 63 || (bits >> back & 1)) return false;
+  bits |= uint64_t{1} << back;
+  return true;
+}
+
 void MavTunnel::set_session(const mabur::rc::TagCtx& ctx) {
   if (ctx.vtx_nonce != 0 && ctx.vtx_nonce != vtx_seen_) {
     vtx_seen_ = ctx.vtx_nonce;
     counter_ = 0;
-    have_rx_ = false;   // a restarted drone starts its own counter over
   }
   ctx_ = ctx;
 }
@@ -85,6 +105,8 @@ int MavTunnel::flush() {
       cal_vtx_seen_ = run_ctx.vtx_nonce;
       cal_counter_ = 0;
     }
+    cal_ctx_ = run_ctx;   // the drone answers a cal frame under this pair
+    have_cal_ = true;
     mabur::rc::Mav m;
     while (!cal_queue_.empty() && cal_queue_.front().second.vrx_nonce == run_ctx.vrx_nonce &&
            cal_queue_.front().second.vtx_nonce == run_ctx.vtx_nonce &&
@@ -105,7 +127,7 @@ int MavTunnel::flush() {
     m.counter = ++cal_counter_;
     mabur::rc::TagCtx tag = run_ctx;
     tag.seq32 = cal_counter_;
-    (cal_send_ ? cal_send_ : send_)(mabur::rc::pack_mav(m, true, key_, tag));
+    (cal_send_ ? cal_send_ : send_)(mabur::rc::pack_mav(m, key_, tag));
     ++stats_.tx_cal_frames;
     ++frames;
   }
@@ -126,7 +148,7 @@ int MavTunnel::flush() {
     m.counter = ++counter_;
     mabur::rc::TagCtx tag = ctx_;
     tag.seq32 = counter_;
-    send_(mabur::rc::pack_mav(m, true, key_, tag));
+    send_(mabur::rc::pack_mav(m, key_, tag));
     ++stats_.tx_frames;
     stats_.tx_packets += packets;
     ++frames;
@@ -135,28 +157,40 @@ int MavTunnel::flush() {
 }
 
 void MavTunnel::on_rc_frame(const uint8_t* body, size_t len) {
-  // The GS's other card hears the GS's own tagged T_MAV. Checked first: an
-  // untagged frame is at least 6 bytes short of the tagged structural
-  // length even with a trailing 4-byte FCS, so it never parses as tagged,
-  // while a tagged frame always passes its own CRC -- and could, once in
-  // 2^16, also pass the untagged CRC on its tag bytes and be delivered.
-  if (mabur::rc::parse_mav(body, len, /*tagged=*/true)) {
-    ++stats_.rx_uplink_heard;
-    return;
-  }
-  auto m = mabur::rc::parse_mav(body, len, false);
+  auto m = mabur::rc::parse_mav(body, len);
   if (!m) {
     ++stats_.drop_bad_packet;
     return;
   }
-  // A two-card GS hands the rc sink each card's copy of a drone frame; the
-  // drone's per-process counter tells the second copy from a new frame.
-  if (have_rx_ && m->counter == rx_last_) {
-    ++stats_.rx_dup;
+  // The GS's other card hears the GS's own T_MAV.
+  if (m->type == mabur::rc::T_MAV) {
+    ++stats_.rx_uplink_heard;
     return;
   }
-  have_rx_ = true;
-  rx_last_ = m->counter;
+  // A reply verifies under the live pair or, when the live session is gone
+  // (every calibration sweep lapses it), under the last cal run's pair. The
+  // anti-replay window is that pair's own.
+  mabur::rc::TagCtx tag{};
+  RxWindow* win = nullptr;
+  if (ctx_.vtx_nonce != 0) {
+    tag = ctx_;
+    tag.seq32 = m->counter;
+    if (mabur::rc::verify_control(body, len, key_, tag)) win = &win_live_;
+  }
+  if (!win && have_cal_) {
+    tag = cal_ctx_;
+    tag.seq32 = m->counter;
+    if (mabur::rc::verify_control(body, len, key_, tag)) win = &win_cal_;
+  }
+  if (!win) {
+    ++stats_.drop_auth;
+    return;
+  }
+  tag.seq32 = 0;
+  if (!win->accept(tag, m->counter)) {
+    ++stats_.rx_dup;   // a repeat, the other card's copy, or older than the window
+    return;
+  }
   ++stats_.rx_frames;
   const uint8_t chan = mabur::mav::kChanGsRx;
   split(

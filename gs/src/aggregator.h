@@ -19,6 +19,13 @@ namespace maburgs {
 enum class RfClass { S0 = 0, S1, Probe, Msp, Ctrl };
 constexpr int kNumRfClasses = 5;
 
+// A CRC-clean body that is link video: no RC magic at any version, not MSP,
+// not probe. Only such a body may refresh the rendezvous video-silence
+// timer (maburgs main and the web GS both gate vrx.on_video on it): a link
+// carrying only MSP or probes must still fall back to BEACONING, and
+// another version's Telem must never hold or reopen a session.
+bool is_video_body(const uint8_t* body, size_t len);
+
 // Per-class signal track, same shape/semantics as the pooled EMAs below but
 // scoped to one RfClass — lets the stats sideport report signal
 // quality per traffic class instead of only the card-wide pool.

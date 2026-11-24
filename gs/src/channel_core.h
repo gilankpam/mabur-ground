@@ -3,8 +3,8 @@
 // the boot scout + BootPick, the hop verdict/ranker/controller and the
 // in-flight scout, plus the per-card retune/width bookkeeping they share.
 // Six seams: lifecycle (on_card_died/on_card_reopened/shutdown), the rc sink
-// (on_rc_body/on_session_opened), the drain hooks (note_video/note_au_end),
-// tick(), the send path (disc_targets/may_send/disc_for_card/note_tx_card/
+// (on_rc_body/on_drone_found), the drain hooks (note_video/note_au_end),
+// tick(), the send path (disc_targets/may_send/note_tx_card/
 // note_sent) and snapshot(). Per tick: drain -> tick() -> send path.
 // Threading: the core thread calls everything public; the scout thread and
 // the in-flight thread are owned (started, joined) here; threaded = false
@@ -138,7 +138,6 @@ inline const char* lease_state_name(LeaseState s) {
 struct ChannelCoreCfg {
   RadioCfg radio;              // channels, pin, scan knobs (the width is width_mhz)
   HopCfg hop;                  // [hop] + [hop.verdict]
-  mabur::LinkKey key;          // disc_for_channel re-tags per channel
   // The receiver width every card is opened at. The live value is
   // ChannelCore::width_mhz(); set_width moves it, the hop ranker and the
   // in-flight scout with it, and the boot scout once its card is retuned.
@@ -176,6 +175,7 @@ struct ChannelTickIn {
   double now_ms = 0;
   bool in_session = false;     // VrxState::SESSION
   bool cal_running = false;    // CalSession::running()
+  bool version_mismatch = false;   // VrxState::VERSION_MISMATCH: found, so the search stops
   int tx_card = 0;             // TxSelector::selected()
   const Aggregator* agg = nullptr;   // per-card crc_fail/rssi_ema/snr_ema, decoder stats
 };
@@ -224,9 +224,10 @@ class ChannelCore {
 
   // ---- receive hooks (core thread, in the drain loop) ----
   void on_rc_body(uint8_t rx_ch);                        // before agg.on_rx_body()
-  // The DISC_ACK that opened the session (BEACONING/… -> SESSION inside this
-  // on_rc_frame call): the link forms where it was heard (link_found).
-  void on_session_opened(const mabur::rc::DiscAck& ack, double now_ms);
+  // The drone answered (SESSION or VERSION_MISMATCH): the link forms on the
+  // channel its ack named (link_found). Ignored for 0, a channel off the
+  // set, op itself, or while a hop is in flight.
+  void on_drone_found(uint8_t channel, double now_ms);
   bool is_link_video(uint8_t rx_ch) const { return plan_.is_link_video(rx_ch); }
   void note_video(uint8_t rx_ch) { last_video_ch_ = rx_ch; }
   void note_au_end() { au_seq_.fetch_add(1, std::memory_order_relaxed); }
@@ -237,7 +238,6 @@ class ChannelCore {
   // ---- send path (core thread, after tick()) ----
   std::vector<int> disc_targets(int tx) const;   // scan_disc_targets while the scout owns a card, else {tx}
   bool may_send(int card) const;                 // the scout gate; false = drop (counted)
-  std::vector<uint8_t> disc_for_card(const std::vector<uint8_t>& frame, int card) const;
   void note_sent(bool sent_ok, bool is_rcf);
   // The send path's TX choice, stored the instant it is made (old main.cpp
   // stored tx_card_now right after sel.update()): the in-flight thread

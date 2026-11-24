@@ -139,6 +139,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
   // Telem.
   spotter_op_.bw = width;
   key_fp_ = mabur::key_fingerprint(cfg.link.key);
+  key_ = cfg.link.key;
   if (mode_ == Mode::Gs) {
     if (!io_.send && cards_.empty())
       throw std::invalid_argument("webgs: Gs mode needs Io::send or a card");
@@ -172,7 +173,6 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
       nack_ = std::make_unique<mabur::NackTracker>(cfg.link.nack);
       nack_lookback_ = static_cast<uint32_t>(cfg.link.nack.lookback);
       nack_down_util_ = cfg.link.ladder_cfg.down_util;
-      key_ = cfg.link.key;
     }
     if (!cards_.empty()) {
       sink_ = std::make_unique<Sink>(this);
@@ -180,7 +180,6 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
       cc.radio = cfg.radio;
       cc.width_mhz = static_cast<uint8_t>(width);
       cc.hop = cfg.hop;
-      cc.key = cfg.link.key;
       cc.start_ch = start_ch;
       cc.n_usb = n_usb_;
       cc.leak_per_frame = 1.0;   // as maburgs (bench row 7, docs/channel-select.md)
@@ -211,7 +210,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
                       {f.body_mono_us, f.q_ms, f.enc_us, f.air_ms, f.sw_seq, true, f.retx});
   });
   agg_.set_rc_sink([this](uint8_t, const std::vector<uint8_t>& f, uint64_t us) {
-    if (mav_ && mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_MAV) {
+    if (mav_ && maburgs::is_mav_frame(mabur::rc::frame_type(f.data(), f.size()))) {
       mav_->on_rc_frame(f.data(), f.size());
       return;
     }
@@ -226,6 +225,7 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
           reset_video_();
         // RTT pairs telem echoes with our own sends: Gs only.
         if (vrx_) {
+          vrx_->note_telem(*t, static_cast<double>(us) / 1000.0);
           rtt_.on_telem(t->rcf_seq_echo, (t->flags & 0x08) != 0, t->rcf_age_ms,
                         t->pts_at_build, us);
           uplink_.on_telem(t->tlm_seq, t->rcf_rx, t->state, us / 1000);
@@ -249,14 +249,15 @@ WebGs::WebGs(const maburgs::Config& cfg, Mode mode, uint8_t start_ch, int width,
           follow_->on_rcf(r->hop_ch, r->hop_epoch, rx_ch_cur_, static_cast<double>(us) / 1000.0);
       return;
     }
-    const bool was_session = vrx_->link_state() == maburgs::VrxState::SESSION;
+    const auto found = [&] {
+      const auto st = vrx_->link_state();
+      return st == maburgs::VrxState::SESSION || st == maburgs::VrxState::VERSION_MISMATCH;
+    };
+    const bool was_found = found();
     vrx_->on_rc_frame(f.data(), f.size(), static_cast<double>(us) / 1000.0);
-    // As in main.cpp: the ack that OPENED the session links
-    // where it was heard (on_rc_body() handed the core its rx channel).
-    if (chan_ && !was_session && vrx_->link_state() == maburgs::VrxState::SESSION &&
-        mabur::rc::frame_type(f.data(), f.size()) == mabur::rc::T_DISC_ACK)
-      if (const auto ack = mabur::rc::parse_disc_ack(f.data(), f.size()))
-        chan_->on_session_opened(*ack, static_cast<double>(us) / 1000.0);
+    // As in main.cpp: the link forms on the channel the drone's ack named.
+    if (chan_ && !was_found && found())
+      chan_->on_drone_found(vrx_->agreed_channel(), static_cast<double>(us) / 1000.0);
   });
   agg_.set_probe_sink([this](uint8_t card, const mabur::node::RxBody& m) {
     if (slot_) slot_->on_probe_tail(now_us_ / 1000);
@@ -331,8 +332,7 @@ void WebGs::on_rx(const mabur::node::RxBody& m) {
   // on this body (legacy/VHT, or a relay frame without one), keep the last.
   if (sid == 0 && m.mcs != 255) air_mcs_ = m.mcs;
   if (!vrx_) return;
-  if (mabur::rc::frame_type(m.body.data(), m.body.size()) < 0 && sid != mabur::kMspStreamId &&
-      sid != mabur::kProbeStreamId) {
+  if (maburgs::is_video_body(m.body.data(), m.body.size())) {
     // Only real video heard where the link lives refreshes the rendezvous
     // silence timer (main.cpp, ChannelPlan::is_link_video).
     if (!chan_ || chan_->is_link_video(m.rx_channel))
@@ -451,6 +451,7 @@ void WebGs::tick(uint64_t now_us) {
     maburgs::ChannelTickIn cin;
     cin.now_ms = now_ms;
     cin.in_session = vrx_->link_state() == maburgs::VrxState::SESSION;
+    cin.version_mismatch = vrx_->version_mismatch();   // found: the search stops
     cin.cal_running = false;
     cin.tx_card = 0;
     cin.agg = &agg_;
@@ -458,12 +459,10 @@ void WebGs::tick(uint64_t now_us) {
     chan_->note_tx_card(0);
   }
   if (vrx_) {
-    // maburgs main.cpp: video tail only while in SESSION with a
-    // CAP_FRAME_WIRE peer; any change drops FRAG-seq continuity and
-    // half-assembled frames -- the new session's seqs/frame_ids are
-    // unrelated to the old one's.
-    const bool fw = vrx_->link_state() == maburgs::VrxState::SESSION &&
-                    (vrx_->peer_caps() & mabur::rc::CAP_FRAME_WIRE);
+    // Video tail only while in SESSION (as maburgs does); any change drops
+    // FRAG-seq continuity and half-assembled frames -- the new session's
+    // seqs/frame_ids are unrelated to the old one's.
+    const bool fw = vrx_->link_state() == maburgs::VrxState::SESSION;
     if (fw != frame_wire_) {
       frame_wire_ = fw;
       reset_video_();
@@ -520,8 +519,6 @@ void WebGs::tick(uint64_t now_us) {
       for (size_t k = 0; k < targets.size(); ++k) {
         maburgs::SlotFrame sf{k + 1 == targets.size() ? std::move(out->frame) : out->frame,
                               vrx_->rcf_seq(), targets[k], !out->is_disc};
-        // A DISC proposes the channel it is sent on (main.cpp, C1 addendum A).
-        if (out->is_disc && chan_) sf.frame = chan_->disc_for_card(sf.frame, targets[k]);
         if (!slot_->offer(sf, now_ms_u, false) && send_(sf)) {
           sent_copy = sf.frame;
           sent = &sent_copy;
@@ -543,10 +540,9 @@ void WebGs::inject_disc_ack_for_replay(uint64_t now_us) {
   mabur::rc::DiscAck ack;
   ack.vrx_nonce = vrx_->rz_nonce();
   ack.vtx_nonce = 1;  // replay has no drone: any held vtx_nonce opens SESSION
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE;
-  ack.agreed_channel = vrx_->proposal();
-  ack.seq = 1;
-  const auto wire = mabur::rc::pack_disc_ack(ack);
+  ack.channel = vrx_->proposal();
+  ack.seq = vrx_->stamp_disc(static_cast<double>(now_us) / 1000.0);
+  const auto wire = mabur::rc::pack_disc_ack(ack, key_);
   vrx_->on_rc_frame(wire.data(), wire.size(), static_cast<double>(now_us) / 1000.0);
 }
 
@@ -590,6 +586,8 @@ Stats WebGs::stats() const {
     s.bw = vrx_->cur_op().bw;
     s.probe_state = maburgs::to_string(vrx_->ctl().probe_gate(now_ms).state);
     s.key_mismatch = vrx_->key_mismatch();
+    s.version_mismatch = vrx_->version_mismatch();
+    s.drone_rc_version = vrx_->drone_rc_version();
     if (nack_) {
       NackStatsOut n;
       n.cum = nack_->stats();
@@ -673,6 +671,9 @@ std::string stats_json(const Stats& s) {
   j["bw"] = s.bw;
   j["probe"] = s.probe_state;
   j["key_mismatch"] = s.key_mismatch;
+  j["version_mismatch"] = s.version_mismatch;
+  if (s.drone_rc_version) j["drone_rc_version"] = *s.drone_rc_version;
+  j["rc_version"] = mabur::rc::RC_VERSION;   // ours, for the page to say which side is older
   j["key_fp"] = s.key_fp;
   auto opt = [&](const char* k, const auto& v) {
     if (v)

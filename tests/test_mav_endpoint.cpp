@@ -109,7 +109,7 @@ TEST(inbound_datagram_reaches_the_tunnel_and_sets_the_peer) {
   CHECK(r.tunnel.stats().tx_packets == 1);
   CHECK(r.tunnel.stats().tx_frames == 1);
   REQUIRE(r.sent.size() == 1);
-  auto m = mabur::rc::parse_mav(r.sent[0].data(), r.sent[0].size(), true);
+  auto m = mabur::rc::parse_mav(r.sent[0].data(), r.sent[0].size());
   REQUIRE(m.has_value());
   CHECK(m->payload == hb);
   CHECK(r.ep.has_peer());

@@ -29,7 +29,7 @@ player's GS OSD (:8302), `tools/flightreport.py` (over `flight.jsonl`).
 
 ### `link` — op point, ladder, loss
 
-- `channel`, `state` (`session` | `beaconing` | `key_mismatch`), `key_fp`,
+- `channel`, `state` (`session` | `beaconing` | `key_mismatch` | `version_mismatch`), `drone_rc_version` (the drone's RC version while `version_mismatch`, `null` in every other state), `key_fp`,
   `tx_card` — pairing is [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `width` — the live receiver width in MHz (20 or 40), `ChannelCore`'s own
   `width_mhz()`: what the link ladder (any 40 MHz rung) or the static pin
@@ -205,15 +205,16 @@ line in the LADDER panel. Design: [`docs/fec-nack.md`](https://github.com/gilank
 
 `link.mav{tx, rx, reject, peer}`: the GS's `MavTunnel` and its UDP endpoint,
 counters cumulative since the daemon started; present only while
-`[mavlink] enable`. `tx` counts T_MAV frames sent to the drone, `rx` T_MAV
+`[mavlink] enable`. `tx` counts T_MAV frames sent to the drone, `rx` T_MAV_UP
 frames received from it (each once: the second card's copy of a frame is
-not counted), `reject` the MAVLink packets the tunnel refused in either
+not counted; only a T_MAV_UP verifying under the live or the cal run's pair counts), `reject` the MAVLink packets the tunnel refused in either
 direction (outbound while unlinked; a bad CRC, MAVLink 1 or a partial; an
-outbound packet larger than a frame's payload; a drone T_MAV frame that
+outbound packet larger than a frame's payload; a drone T_MAV_UP frame that
 fails to parse) -- the sum of `MavTunnelStats` `drop_unlinked +
-drop_bad_packet + drop_oversize`. The second card's copies (`rx_dup`) and
-the GS's own tagged T_MAV heard by its other card (`rx_uplink_heard`) are
-neither `rx` nor `reject` and are not exported. `peer` is true
+drop_bad_packet + drop_oversize`. The second card's copies and replays
+(`rx_dup`, a 64-wide anti-replay window per pair), unverified uplinks
+(`drop_auth`) and the GS's own T_MAV heard by its other card
+(`rx_uplink_heard`) are neither `rx` nor `reject` and are not exported. `peer` is true
 once a UDP client has sent the endpoint a datagram. maburtop draws a
 `mav <tx>/<rx>` cell (`mav off` without the key) on the top bar beside
 `key`. Calibration's cal-lane frames are not in `tx`. Design:
@@ -995,7 +996,7 @@ with the REC indicator alone in the top-right corner
 
 | icon | item | source |
 |---|---|---|
-| wifi | channel the RECEIVER is tuned to, `(a)` auto-selected / `(h)` hopped suffix; `KEY?` replaces the item on a link-key mismatch | `link.channel` |
+| wifi | channel the RECEIVER is tuned to, `(a)` auto-selected / `(h)` hopped suffix; `KEY?` replaces the item on a link-key mismatch, `UPD?` (below it) when the drone speaks another RC version; neither shows on a stale snapshot | `link.channel` |
 | tune-vertical | MCS / channel width (MHz) | `link.ctl.rung` (else `link.op`) |
 | chart-donut | airtime % | `link.air_pct` |
 | signal | RSSI per GS card, dBm | `cards[]` |
@@ -1379,7 +1380,7 @@ hook and is not counted), and gains
 on the ticks where any of those moved since the last time they were
 printed; the values are cumulative since start. `rx` counts verified
 T_MAV frames and the MAVLink 2 packets parsed out of them, `tx` the
-uplink T_MAV frames and the packets they carried (replies and the 1 Hz
+uplink T_MAV_UP frames and the packets they carried (replies and the 1 Hz
 HEARTBEAT, sent only while a session is published, plus the calibration
 replies, sent whatever the session state), `drop` the frames
 that failed to parse plus the packets the component dropped (another

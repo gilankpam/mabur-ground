@@ -488,6 +488,15 @@ TEST(key_mismatch_parses_from_link_state) {
   CHECK(!s.key_mismatch);
 }
 
+TEST(version_mismatch_parses_from_link_state) {
+  GsSnapshot s;
+  REQUIRE(parse(R"({"link": {"channel": 136, "state": "version_mismatch"}})", &s));
+  CHECK(s.version_mismatch);
+  CHECK(!s.key_mismatch);
+  REQUIRE(parse(R"({"link": {"channel": 136, "state": "session"}})", &s));
+  CHECK(!s.version_mismatch);
+}
+
 // scan.pinned (the operator's pin, docs/channel-select.md) and
 // link.state == "session" (the drone is linked): both false when the block
 // or the key is absent or mistyped.

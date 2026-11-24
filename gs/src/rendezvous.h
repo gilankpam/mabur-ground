@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <optional>
 #include "mabur/rc_proto.h"
 namespace maburgs {
@@ -14,8 +15,17 @@ namespace maburgs {
 // in SESSION (1 s keep-alives) on one or two lost acks of our own drone.
 // BEACONING (20 ms DISCs) still trips in ~1 s; SESSION takes ~3 s. Any
 // unflagged ack resets both and leaves KEY_MISMATCH.
+// VERSION_MISMATCH: a verified ack from a drone at another RC_VERSION. No
+// session is held, DISCs go out at keepalive_ms, and a verified ack at our
+// version leaves it; kMismatchKeepalives keep-alive periods with no
+// verified other-version ack fall back to BEACONING (the drone has gone, so
+// the channel search may resume). An other-version ack is ignored while our
+// own drone is alive (a same-version verified ack or Telem within
+// kPeerAliveMs): a same-key spare drone at another version in range must
+// not take down a live session. Key mismatch outranks it (flagged acks
+// carry no tag, so they never reach the version check).
 // See docs/link-pairing.md.
-enum class VrxState { SESSION, BEACONING, KEY_MISMATCH };
+enum class VrxState { SESSION, BEACONING, KEY_MISMATCH, VERSION_MISMATCH };
 enum class VrxAction { TxFeedback, Beacon, Idle };
 
 struct VrxRzConfig {
@@ -26,12 +36,16 @@ struct VrxRzConfig {
   // NEW session on the drone (its seq32 restarts), so the nonce is never
   // derived from config. Tests and the hop-inject self-test pin one.
   uint32_t nonce = 0;
+  int keepalive_ms = 1000;  // DISC cadence while VERSION_MISMATCH
 };
 
 class VrxRendezvous {
  public:
   static constexpr double kKeyMismatchMs = 1000;
   static constexpr int kKeyMismatchBeacons = 3;
+  static constexpr double kAckWindowMs = 2000;
+  static constexpr int kMismatchKeepalives = 3;
+  static constexpr double kPeerAliveMs = 2000;
   // video_flowing(): link video bodies with no gap above kVideoGapMs for at
   // least kVideoRunMs. The lowest encoder rate (low-power 30 fps) spaces
   // frames 33 ms apart; the first frames of a booting encoder (~1.5 fps)
@@ -41,8 +55,23 @@ class VrxRendezvous {
   explicit VrxRendezvous(VrxRzConfig cfg);
   void feed_video(double now_ms);
   VrxAction tick(double now_ms);
-  mabur::rc::Disc beacon();
-  bool feed_disc_ack(const mabur::rc::DiscAck& ack, double now_ms, bool* adopted_new);
+  // An unflagged ack is adopted only if tag_ok (the caller holds the key and
+  // verified it) and its seq echoes a DISC sent within kAckWindowMs.
+  // A DISC built to send: counts toward the stranger rule.
+  mabur::rc::Disc beacon(double now_ms);
+  // A DISC recorded as sent without being sent (replay, tests): opens the
+  // ack window but is not a beacon the stranger rule may count.
+  mabur::rc::Disc stamp(double now_ms);
+  // An other-version ack ignored under the liveness rule returns false.
+  bool feed_disc_ack(const mabur::rc::DiscAck& ack, bool tag_ok, double now_ms,
+                     bool* adopted_new);
+  // Same-version proof of our drone (the controller calls it per Telem);
+  // a verified same-version ack counts by itself.
+  void note_peer_alive(double now_ms) { last_peer_alive_ms_ = now_ms; }
+  // Verified other-version acks ignored because our drone was alive.
+  uint64_t ignored_version_acks() const { return ignored_version_acks_; }
+  // The drone's RC_VERSION while VERSION_MISMATCH, else empty.
+  std::optional<uint8_t> drone_rc_version() const { return drone_version_; }
   VrxState state() const { return state_; }
   // Real link video is flowing (feed_video only). SESSION alone is not:
   // a DISC_ACK opens it and refreshes the silence timer with no video, so
@@ -66,6 +95,13 @@ class VrxRendezvous {
   double video_run_start_ms_ = 0;
   double last_beacon_ms_ = -1e18;
   uint16_t seq_ = 0;
+  // Send time of the last 128 DISCs, by seq % 128: the replay window.
+  struct Sent { uint16_t seq = 0; double ms = -1e18; };
+  std::array<Sent, 128> sent_{};
+  std::optional<uint8_t> drone_version_;
+  double last_mismatch_ack_ms_ = 0;
+  double last_peer_alive_ms_ = -1e18;
+  uint64_t ignored_version_acks_ = 0;
   uint32_t nonce_;
   uint8_t proposal_;
   // Kept across KEY_MISMATCH: tick() never returns TxFeedback outside

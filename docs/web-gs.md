@@ -341,6 +341,12 @@ What the status overlay shows (`statusText()`, `web/ui/src/lib/view.js`):
   ends` — GS mode, the drone answers our DISCs with key_mismatch (our key
   differs from its key; `VrxState::KEY_MISMATCH`); the header tag reads
   `Key mismatch`. See [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
+- `Drone runs RC <n>, this ground station RC <m> — update the drone` (or
+  `…update the ground station` when the drone's version is the higher) — GS
+  mode, a verified DISC_ACK from a drone at another RC version
+  (`VrxState::VERSION_MISMATCH`); the header tag reads `Update needed`. The
+  state JSON carries `version_mismatch`, `drone_rc_version` and our own
+  `rc_version`.
 - After the first frame, no overlay text covers the video while the
   key-frame gate is unarmed. A freeze holds the last frame and GS mode
   requests an IDR instead of waiting; see "Key-frame recovery" below.
@@ -1487,13 +1493,11 @@ constants are pinned by `web/tests/colortrans.test.mjs` (see
   picture ([`docs/slices.md`](https://github.com/gilankpam/mabur/blob/master/docs/slices.md)) only between such resets.
 - **Spotter can never force an IDR.** No GS-relayed IDR request path exists
   (see "Spotter key frames" above and Follow-ups).
-- **Spotter cannot gate on `CAP_FRAME_WIRE`.** Spotter mode has no
-  rendezvous or caps exchange of its own, so its frame-wire gate is always
-  true (`web/src/web_gs.cpp`). GS mode, by contrast, only decodes while in
-  SESSION with a peer that has advertised `CAP_FRAME_WIRE`. A spotter
-  therefore cannot detect a caps-mismatched drone (a half-deployed
-  `RC_VERSION` flag-day pair, [`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)). Instead of refusing the
-  stream the way a caps-aware GS would, it feeds the decoder whatever
+- **Spotter cannot gate on the session.** Spotter mode has no rendezvous
+  of its own, so its video gate is always true (`web/src/web_gs.cpp`). GS
+  mode, by contrast, only decodes while in SESSION. A spotter therefore
+  cannot detect a drone at another `RC_VERSION`
+  ([`docs/deploy.md`](https://github.com/gilankpam/mabur/blob/master/docs/deploy.md)); it feeds the decoder whatever
   bitstream arrives, parseable or not.
 - **Chrome must run via the Nix wrapper** (`bin/google-chrome-stable`), not
   the raw `share/google/chrome/chrome` binary. The raw binary has no libEGL,

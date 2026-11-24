@@ -19,6 +19,7 @@
 #include "nhm_busy.h"
 #include "recording_sink.h"
 #include "vrx_cfg.h"
+#include "rc_at_version.h"
 using namespace maburgs;
 
 static Config bundle() {
@@ -75,7 +76,7 @@ struct Rig {
     }
     vrx = std::make_unique<VrxController>(vrx_cfg_from(cfg, start_ch));
     ChannelCoreCfg cc;
-    cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key;
+    cc.radio = cfg.radio; cc.hop = cfg.hop;
     cc.width_mhz = width;
     cc.start_ch = start_ch; cc.n_usb = n_usb; cc.threaded = false;
     cc.store_name = "the-store";
@@ -179,26 +180,12 @@ TEST(disc_targets_follow_scan_disc_targets_while_scout_owns) {
   CHECK(std::find(t.begin(), t.end(), 1) == t.end());   // not beaconing yet
 }
 
-TEST(disc_for_card_retags_only_members) {
-  Rig g(2, 0);
-  mabur::rc::Disc d; d.vrx_nonce = 7; d.op_channel = 40; d.op_width = 40; d.seq = 1;
-  const auto frame = mabur::rc::pack_disc(d, g.cfg.link.key);
-  g.cards[1]->ch = 64;                                   // scout card on member 64
-  const auto f1 = g.core->disc_for_card(frame, 1);
-  const auto p1 = mabur::rc::parse_disc(f1.data(), f1.size());
-  REQUIRE(p1.has_value());
-  CHECK(p1->op_channel == 64);
-  g.cards[1]->ch = 60;                                   // not a member
-  const auto f2 = g.core->disc_for_card(frame, 1);
-  CHECK(f2 == frame);
-}
-
 TEST(session_opened_elsewhere_moves_op_there) {
   Rig g(2, 0);
   g.core->on_rc_body(64);               // the ack arrived on member 64
   mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, 1000.0);
+  ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, 1000.0);
   CHECK(g.core->op() == 64);
   CHECK(g.vrx->proposal() == 64);
   CHECK(g.sink.has_line("drone found on 64 (op 40): the link forms there"));
@@ -206,20 +193,62 @@ TEST(session_opened_elsewhere_moves_op_there) {
   CHECK(g.sink.has_move(MoveReason::LinkFound));
 }
 
-TEST(session_opened_with_key_mismatch_or_foreign_nonce_is_ignored) {
+TEST(drone_found_off_the_set_or_on_op_or_unknown_is_ignored) {
   Rig g(2, 0);
-  g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1;
-  ack.agreed_channel = 64; ack.flags = mabur::rc::kAckKeyMismatch;
-  g.core->on_session_opened(ack, 1000.0);
+  g.core->on_drone_found(60, 1000.0);   // not a member
   CHECK(g.core->op() == 40);
-  ack.flags = 0; ack.vrx_nonce = g.vrx->rz_nonce() + 1;
-  g.core->on_session_opened(ack, 1000.0);
+  g.core->on_drone_found(0, 1000.0);    // no channel known
   CHECK(g.core->op() == 40);
-  g.core->on_rc_body(60);               // not a member
-  ack.vrx_nonce = g.vrx->rz_nonce();
-  g.core->on_session_opened(ack, 1000.0);
-  CHECK(g.core->op() == 40);
+  g.core->on_drone_found(40, 1000.0);   // already there
+  CHECK(!g.sink.has_line("drone found"));
+}
+
+// A version-mismatched drone is found like any other: the search must stop
+// on its channel, or the cards keep scanning and UPD? would flicker. A
+// pinned rig (no boot pick) reads the search request straight off
+// lease_state(). The link was up once, so the search waits search_after_ms
+// after loss; run well past it with and without version_mismatch.
+static LeaseState lease_after_loss(bool version_mismatch) {
+  Rig g(2, 0, /*pinned=*/true, 40);
+  for (int i = 0; i < 10; ++i) g.tick(true);        // linked once
+  for (int i = 0; i < 700; ++i) {                   // 7 s > search_after_ms
+    auto in = g.in(false);
+    in.version_mismatch = version_mismatch;
+    g.core->tick(in);
+    g.clk.ms += 10;
+  }
+  return g.core->lease_state();
+}
+TEST(version_mismatch_stops_the_search_on_the_found_channel) {
+  CHECK(lease_after_loss(false) == LeaseState::Search);   // a lost link searches
+  CHECK(lease_after_loss(true) != LeaseState::Search);    // a mismatched drone is found
+}
+
+// VERSION_MISMATCH falls back to BEACONING three keep-alives after the
+// mismatched drone's last ack; the search then resumes search_after_ms later.
+TEST(version_mismatch_fallback_resumes_the_search) {
+  Rig g(2, 0, /*pinned=*/true, 40);
+  for (int i = 0; i < 10; ++i) g.tick(true);
+  mabur::rc::DiscAck ack;
+  ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 7; ack.channel = 40;
+  ack.seq = g.vrx->stamp_disc(static_cast<double>(g.clk.ms));
+  auto w = rc_test::ack_at_version(mabur::rc::pack_disc_ack(ack, g.cfg.link.key), 18,
+                                   g.cfg.link.key);
+  g.vrx->on_rc_frame(w.data(), w.size(), static_cast<double>(g.clk.ms));
+  REQUIRE(g.vrx->version_mismatch());
+  bool searched_in_mismatch = false;
+  for (int i = 0; i < 900; ++i) {                   // 9 s: 3 s hold + 5 s search_after_ms
+    g.vrx->step(static_cast<double>(g.clk.ms), LinkHealth{});
+    auto in = g.in(false);
+    in.version_mismatch = g.vrx->version_mismatch();
+    g.core->tick(in);
+    if (in.version_mismatch && g.core->lease_state() == LeaseState::Search)
+      searched_in_mismatch = true;
+    g.clk.ms += 10;
+  }
+  CHECK(!searched_in_mismatch);
+  CHECK(!g.vrx->version_mismatch());
+  CHECK(g.core->lease_state() == LeaseState::Search);
 }
 
 // Needs step_scout_inputs_ -- the search request goes false once the plan
@@ -384,8 +413,8 @@ TEST(mechanical_retune_skips_scout_card_and_follows_desired) {
   REQUIRE(g.core->scout_owns_card(1));
   // a found-elsewhere session moves op for every card: desired(0) and desired(1) become 64
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   g.cards[1]->calls.clear();
   // core->tick() directly; the check is specifically
   // for the CORE's mechanical "retune 64" on card 1 -- the scout's own
@@ -404,7 +433,8 @@ TEST(mechanical_retune_skips_scout_card_and_follows_desired) {
 // sees them.
 static void link_up(Rig& g) {
   mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE; ack.agreed_channel = g.core->op(); ack.seq = 1;
+  ack.channel = g.core->op();
+  ack.seq = g.vrx->stamp_disc(static_cast<double>(g.clk.ms));
   const auto wire = mabur::rc::pack_disc_ack(ack);
   g.vrx->on_rc_frame(wire.data(), wire.size(), static_cast<double>(g.clk.ms));
   const LinkHealth healthy{true, 0.0, 0.0, false};
@@ -616,8 +646,8 @@ TEST(pinned_one_card_never_hops_on_interference) {
 TEST(pinned_relocation_is_not_failed_by_a_dirty_pin) {
   Rig g(2, 0, /*pinned=*/true, 40);
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   link_up(g);
   for (int i = 0; i < 200 && !g.sink.has_line("relocate 64 -> 40 placed"); ++i) g.tick(true);
   REQUIRE(g.sink.has_line("relocate 64 -> 40 placed"));
@@ -863,8 +893,8 @@ TEST(session_loss_mid_order_withdraws) {
 TEST(cal_running_holds_relocation_and_move_edge) {
   Rig g(2, 0, true, 40);
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));   // link formed on 64, want = 40
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));   // link formed on 64, want = 40
   link_up(g);
   CHECK(g.core->op() == 64);
   for (int i = 0; i < 20; ++i) g.tick(true, /*cal=*/true);
@@ -875,7 +905,7 @@ TEST(cal_running_holds_relocation_and_move_edge) {
   // the edge fires. Held during cal => the step never reads agreed, so no
   // "not in our set" line and no plan move.
   const auto ack60 = [](Rig& r, const mabur::rc::DiscAck& base) {
-    mabur::rc::DiscAck rep = base; rep.chip_caps = mabur::rc::CAP_FRAME_WIRE; rep.agreed_channel = 60; rep.seq = 2;
+    mabur::rc::DiscAck rep = base; rep.channel = 60; rep.seq = r.vrx->stamp_disc(static_cast<double>(r.clk.ms));
     const auto wire = mabur::rc::pack_disc_ack(rep);
     r.vrx->on_rc_frame(wire.data(), wire.size(), static_cast<double>(r.clk.ms));
     REQUIRE(r.vrx->agreed_channel() == 60);
@@ -938,8 +968,8 @@ TEST(relocate_lands_on_verify_pass_and_freezes_relocated) {
   // Confirm/Verify/VerifyPass.
   Rig g(2, 0, /*pinned=*/true, 40);
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   link_up(g);
   for (int i = 0; i < 200 && !g.sink.has_line("relocate 64 -> 40 placed"); ++i) g.tick(true);
   REQUIRE(g.sink.has_line("relocate 64 -> 40 placed"));
@@ -966,8 +996,8 @@ TEST(boot_relocate_waits_for_video_on_a_disc_only_session) {
   Rig g(2, 0, /*pinned=*/true, 40);
   g.video = false;
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   REQUIRE(g.core->op() == 64);
   for (int i = 0; i < 90; ++i) g.tick(true);        // DISC-only session, no video
   CHECK(!g.sink.has_line("relocate 64 -> 40 placed"));
@@ -1005,8 +1035,8 @@ TEST(auto_want_pick_relocates_linked_drone_to_the_pick) {
   REQUIRE(visits(144) < mr);                // not mature yet
   REQUIRE(g.core->pick_open());             // ... so nothing committed unlinked
   g.core->on_rc_body(64);
-  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.agreed_channel = 64; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1; ack.channel = 64; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   link_up(g);
   REQUIRE(g.core->op() == 64);
   for (int i = 0; i < 6000 && !g.sink.has_line("boot pick wants"); ++i) g.tick(true);
@@ -1165,7 +1195,7 @@ TEST(shutdown_joins_threads_and_is_idempotent) {
   VrxController vrx(vrx_cfg_from(cfg, 40));
   RecordingSink sink;
   Aggregator agg(cfg.uep_layers(), 32, 2, 0);
-  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key; cc.start_ch = 40; cc.n_usb = 2;
+  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.start_ch = 40; cc.n_usb = 2;
   cc.width_mhz = 40;
   auto now_ms = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
   auto now_us = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
@@ -1217,7 +1247,7 @@ TEST(threaded_two_card_burst_runs_off_the_core_thread) {
   VrxController vrx(vrx_cfg_from(cfg, 40));
   RecordingSink sink;
   Aggregator agg(cfg.uep_layers(), 32, 2, 0);
-  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.key = cfg.link.key; cc.start_ch = 40; cc.n_usb = 2;
+  ChannelCoreCfg cc; cc.radio = cfg.radio; cc.hop = cfg.hop; cc.start_ch = 40; cc.n_usb = 2;
   cc.width_mhz = 40;
   auto now_ms = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
   auto now_us = [] { return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); };
@@ -1415,7 +1445,7 @@ static void rebuild_with_set(Rig& g, std::vector<uint8_t> set, int n_usb = 0) {
   g.cfg.radio.channels = std::move(set);
   g.core.reset();
   g.vrx = std::make_unique<VrxController>(vrx_cfg_from(g.cfg, 40));
-  ChannelCoreCfg cc; cc.radio = g.cfg.radio; cc.hop = g.cfg.hop; cc.key = g.cfg.link.key;
+  ChannelCoreCfg cc; cc.radio = g.cfg.radio; cc.hop = g.cfg.hop;
   cc.width_mhz = g.width;
   cc.start_ch = 40; cc.n_usb = n_usb; cc.threaded = false; cc.store_name = "s";
   g.core = std::make_unique<ChannelCore>(cc, g.ptrs, *g.vrx, g.sink,
@@ -2904,8 +2934,8 @@ TEST(pin_reloc_lands_when_the_link_comes_back_on_the_pin) {
   REQUIRE(g.core->op() == 40);
   g.core->on_rc_body(112);                      // the drone answers on the pin
   mabur::rc::DiscAck ack; ack.vrx_nonce = g.vrx->rz_nonce(); ack.vtx_nonce = 1;
-  ack.chip_caps = mabur::rc::CAP_FRAME_WIRE; ack.agreed_channel = 112; ack.seq = 1;
-  g.core->on_session_opened(ack, static_cast<double>(g.clk.ms));
+  ack.channel = 112; ack.seq = 1;
+  g.core->on_drone_found(ack.channel, static_cast<double>(g.clk.ms));
   REQUIRE(g.core->op() == 112);
   link_up(g);
   for (int i = 0; i < 20; ++i) live_tick(g);

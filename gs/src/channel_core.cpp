@@ -235,7 +235,7 @@ ChannelTickOut ChannelCore::tick(const ChannelTickIn& in) {
     if (cfg_.threaded) scout_thread_ = std::thread([this] { scout_->run(); });
   }
   if (!cfg_.threaded && scout_started_) run_scout_step();
-  plan_.tick(in.now_ms, in.in_session || in.cal_running);
+  plan_.tick(in.now_ms, in.in_session || in.cal_running || in.version_mismatch);
   step_scout_inputs_();
   step_boot_pick_(in);
   step_store_();
@@ -329,19 +329,16 @@ void ChannelCore::shutdown() {
 }
 void ChannelCore::on_rc_body(uint8_t rx_ch) { rc_body_rx_ch_ = rx_ch; }
 
-void ChannelCore::on_session_opened(const mabur::rc::DiscAck& ack, double now_ms) {
-  // The link forms where the drone is found. Only the ack
-  // that OPENED the session -- our nonce, not key-mismatch flagged, so a
-  // stranger's drone cannot drag the cards -- and only on the rx_channel of
-  // this body. plan.link_found() moves op to it for every card; the
-  // relocation to plan.want(), if any, is an ordinary hop order (BootPick).
-  const uint8_t x = rc_body_rx_ch_;
-  if (ack.vrx_nonce == vrx_.rz_nonce() && !(ack.flags & mabur::rc::kAckKeyMismatch) &&
-      x != 0 && x != plan_.op() && plan_.member(x) && !plan_.hopping()) {
+void ChannelCore::on_drone_found(uint8_t x, double now_ms) {
+  // The link forms where the drone is found. plan.link_found() moves op to
+  // it for every card; the relocation to plan.want(), if any, is an
+  // ordinary hop order (BootPick). The caller vouches for the ack (verified
+  // and fresh), so a stranger's drone cannot drag the cards.
+  if (x != 0 && x != plan_.op() && plan_.member(x) && !plan_.hopping()) {
     sink_.log(logf_("maburgs channel: drone found on %u (op %u): the link forms there",
                     static_cast<unsigned>(x), static_cast<unsigned>(plan_.op())));
     plan_.link_found(now_ms, x);
-    vrx_.set_proposal(plan_.op());   // a DISC proposes the channel it is sent on: stay
+    vrx_.set_proposal(plan_.op());
   }
 }
 
@@ -358,13 +355,6 @@ bool ChannelCore::may_send(int card) const {
     return false;
   }
   return true;
-}
-
-std::vector<uint8_t> ChannelCore::disc_for_card(const std::vector<uint8_t>& frame, int card) const {
-  // A DISC proposes the channel it is sent on.
-  const uint8_t ch = cards_[static_cast<size_t>(card)]->channel();
-  if (plan_.member(ch)) return disc_for_channel(frame, ch, cfg_.key);
-  return frame;
 }
 
 void ChannelCore::note_sent(bool sent_ok, bool is_rcf) {

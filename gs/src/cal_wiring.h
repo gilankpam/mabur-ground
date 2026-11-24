@@ -53,10 +53,10 @@ size_t route_cal_body(CalSession& s, int card, const uint8_t* body, size_t len, 
 void feed_cal_packet(CalSession& s, const uint8_t* bytes, size_t n, uint64_t now_ms);
 
 // The widest sweep a run may ask for: the narrower of the GS's own derived
-// receiver width and the linked drone's (its DiscAck agreed_width, 0 = not
-// heard yet). A GS flying 40 still cannot calibrate 40 against a drone that
-// flies only 20; unlinked or before a DiscAck, the GS's width stands (a
-// start refuses on a down link anyway).
+// receiver width and the linked drone's (its Telem width, 0 = no Telem yet).
+// A GS flying 40 still cannot calibrate 40 against a drone that flies only
+// 20; unlinked or before the first Telem, the GS's width stands (a start
+// refuses on a down link anyway).
 uint8_t cal_effective_width(uint8_t gs_width, bool linked, uint8_t peer_width);
 
 // The sideport's link.cal input: present only while the run owns the air.

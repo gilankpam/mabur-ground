@@ -168,6 +168,12 @@ TEST(start_refuses_without_capability_or_link) {
   CHECK(!s.start(1, {{Kind::Power, 20}}, 0, &err));
   CHECK(err.find("CAP_CALIBRATE") != std::string::npos);
 
+  // Linked, but no Telem yet: the caps are unknown, not missing.
+  s.set_peer(/*linked=*/true, /*cal_capable=*/std::nullopt);
+  CHECK(!s.start(1, {{Kind::Power, 20}}, 0, &err));
+  CHECK(err.find("waiting for drone telemetry") != std::string::npos);
+  CHECK(err.find("CAP_CALIBRATE") == std::string::npos);
+
   s.set_peer(true, true);
   REQUIRE(s.start(1, {{Kind::Power, 20}}, 0, &err));
   CHECK(!s.start(2, {{Kind::Power, 20}}, 10, &err));
