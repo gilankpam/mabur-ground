@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
   std::printf("w t_ms ready_ms valid sum busy_pct duration b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11\n");
   for (int w = 0; w < a.windows && !g_devourer_should_stop; ++w) {
     const auto ta = std::chrono::steady_clock::now();
-    if (!dev->ArmNhmBusy(period)) {
+    if (!dev->ArmNhmBusy(uint32_t{period} * 4)) {
       std::fprintf(stderr, "error: ArmNhmBusy refused\n");
       break;
     }

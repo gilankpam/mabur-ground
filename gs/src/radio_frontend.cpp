@@ -355,7 +355,9 @@ ScoutEnergy RadioFrontend::read_energy_scout() {
 
 bool RadioFrontend::arm_nhm_busy(uint16_t period_4us) {
   if (!ready_.load(std::memory_order_acquire) || !device_) return false;
-  return device_->ArmNhmBusy(period_4us);
+  // shortcut: ticks are 4 us only at >= 20 MHz (8/16 us at 10/5) — fine while
+  // the GS never runs narrowband; NhmBusy.period comes back in those ticks.
+  return device_->ArmNhmBusy(uint32_t{period_4us} * 4) != 0;
 }
 
 int RadioFrontend::tuned_central() {
