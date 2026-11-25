@@ -50,15 +50,19 @@ jobs:
         working-directory: mabur-ground
     steps:
       # Same two-checkout layout as ci.yml: the web build wants devourer as a
-      # sibling (web/CMakeLists.txt DEVOURER_DIR), tracking devourer master.
+      # sibling (web/CMakeLists.txt DEVOURER_DIR), at the commit mabur pins.
       - uses: actions/checkout@v5
         with:
           path: mabur-ground
           submodules: true
+      # The devourer commit mabur pins (a gitlink in mabur's tree; the nested
+      # submodule itself is never checked out).
+      - id: pin
+        run: echo "devourer=$(git -C third_party/mabur rev-parse HEAD:third_party/devourer)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         with:
           repository: gilankpam/devourer
-          ref: master
+          ref: ${{ steps.pin.outputs.devourer }}
           path: devourer
 
       - uses: cachix/install-nix-action@v31.11.1

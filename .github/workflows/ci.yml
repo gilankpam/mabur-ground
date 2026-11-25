@@ -31,18 +31,20 @@ jobs:
       # The build wants devourer as a SIBLING directory (DEVOURER_DIR defaults
       # to ../devourer), and tests/integration/run_gs_e2e.sh imports
       # ../devourer/tools/precoder/rc_proto.py. Hence the two-checkout layout.
-      # Tracking devourer's master mirrors the dev box; mabur's own
-      # third_party/devourer submodule is never checked out or used.
+      # The sibling is the commit mabur pins as its third_party/devourer;
+      # that nested submodule is never checked out.
       - uses: actions/checkout@v5
         with:
           path: mabur-ground
           # Top level only: the build reads devourer from the sibling
-          # checkout below, never mabur's own third_party/devourer.
+          # checkout below.
           submodules: true
+      - id: pin
+        run: echo "devourer=$(git -C third_party/mabur rev-parse HEAD:third_party/devourer)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         with:
           repository: gilankpam/devourer
-          ref: master
+          ref: ${{ steps.pin.outputs.devourer }}
           path: devourer
 
       - uses: cachix/install-nix-action@v31.11.1

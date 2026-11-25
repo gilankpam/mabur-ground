@@ -16,7 +16,8 @@
 #   MABUR_DIR         mabur checkout to build against (default: the
 #                     third_party/mabur pin; ../mabur for a change that spans
 #                     both repos)
-#   DEVOURER_VERSION  devourer commit (default: devourer master at make time)
+#   DEVOURER_VERSION  devourer commit (default: the one the mabur being built
+#                     pins as its third_party/devourer)
 #   VERSION           image version for os-release (default: the exact tag,
 #                     else the short sha, with -dirty for local changes)
 set -eo pipefail
@@ -41,6 +42,13 @@ MABUR_SRC="${MABUR_DIR:-$TREE/third_party/mabur}"
 [ -f "$MABUR_SRC/common/CMakeLists.txt" ] ||
     die "no mabur checkout at $MABUR_SRC: run \`git submodule update --init third_party/mabur\` (or set MABUR_DIR)"
 MABUR_SRC=$(cd "$MABUR_SRC" && pwd)
+
+# devourer follows mabur: the gitlink in mabur's tree, no submodule checkout.
+if [ -z "$DEVOURER_VERSION" ]; then
+    DEVOURER_VERSION=$(git -C "$MABUR_SRC" rev-parse HEAD:third_party/devourer) ||
+        die "cannot read the devourer pin of $MABUR_SRC"
+fi
+export DEVOURER_VERSION
 
 if [ -z "$VERSION" ]; then
     VERSION=$(git -C "$TREE" describe --tags --exact-match 2>/dev/null ||

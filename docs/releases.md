@@ -111,7 +111,7 @@ file's md5.
 - **maburgs, maburplay, maburtop, maburcal** and their bundled configs and
   init scripts from this tree (`firmware/package/mabur`, Buildroot `local`
   site), against **mabur** at the pin (or `MABUR_DIR`).
-- **devourer** master, resolved once per workflow run.
+- **devourer** at the commit the mabur pin pins (its `third_party/devourer`).
 - **Kernels**: `radxa/kernel` at the commit the RK3566 base config pins; on
   the Orange Pi an Armbian-patched 6.18.35 source tarball hosted on this
   repo's `opi-zero2w-kernel-6.18.35` pre-release
