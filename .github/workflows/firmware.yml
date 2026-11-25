@@ -46,7 +46,6 @@ jobs:
       kind: ${{ steps.v.outputs.kind }}
       pr: ${{ steps.v.outputs.pr }}
       sha: ${{ steps.v.outputs.sha }}
-      devourer: ${{ steps.v.outputs.devourer }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -83,11 +82,8 @@ jobs:
             pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --json number -q '.[0].number')
             if [ -n "$pr" ]; then version=pr$pr-$sha; else version=$(echo "$GITHUB_REF_NAME" | tr '/' '-')-$sha; fi
           fi
-          devourer=$(git ls-remote https://github.com/gilankpam/devourer refs/heads/master | cut -f1)
-          [ -n "$devourer" ] || { echo "cannot resolve devourer master"; exit 1; }
           {
             echo "kind=$kind"; echo "version=$version"; echo "pr=$pr"; echo "sha=$full"
-            echo "devourer=$devourer"
           } | tee -a "$GITHUB_OUTPUT"
 
   build:
@@ -105,7 +101,6 @@ jobs:
           - orangepi_zero2w
     env:
       VERSION: ${{ needs.version.outputs.version }}
-      DEVOURER_VERSION: ${{ needs.version.outputs.devourer }}
     steps:
       - name: Display free disk space
         run: df -hT
