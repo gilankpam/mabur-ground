@@ -112,6 +112,7 @@ add_mtest(test_display_lock_core test_display_lock_core.cpp LIBS mabur_player_co
 add_mtest(test_lat_log test_lat_log.cpp LIBS mabur_player_core)
 add_mtest(test_fb_cache test_fb_cache.cpp LIBS mabur_player_core)
 add_mtest(test_rec_button test_rec_button.cpp LIBS mabur_player_core)
+add_mtest(test_arm_record test_arm_record.cpp LIBS mabur_player_core)
 add_mtest(test_key_timer test_key_timer.cpp LIBS mabur_player_core)
 add_mtest(test_menu_model test_menu_model.cpp LIBS mabur_player_core)
 add_mtest(test_menu_apply test_menu_apply.cpp LIBS mabur_player_core pthread)

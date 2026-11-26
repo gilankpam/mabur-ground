@@ -604,6 +604,24 @@ TEST(hopped_keys_on_scan_pick_not_home) {
   CHECK(!s.hopped);
 }
 
+TEST(drone_armed_parses_and_defaults_unknown) {
+  GsSnapshot s;
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {"armed": true}})", &s));
+  REQUIRE(s.armed.has_value());
+  CHECK(*s.armed);
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {"armed": false}})", &s));
+  REQUIRE(s.armed.has_value());
+  CHECK(!*s.armed);
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {"armed": null}})", &s));
+  CHECK(!s.armed.has_value());
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {}})", &s));
+  CHECK(!s.armed.has_value());
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": null})", &s));
+  CHECK(!s.armed.has_value());
+  REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {"armed": "yes"}})", &s));
+  CHECK(!s.armed.has_value());
+}
+
 TEST(drone_low_power_parses_and_defaults_false) {
   GsSnapshot s;
   REQUIRE(parse(R"({"link": {"channel": 136}, "drone": {"low_power": true}})", &s));

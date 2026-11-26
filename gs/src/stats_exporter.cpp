@@ -714,6 +714,13 @@ bool StatsExporter::poll(uint64_t now_ms, const StatsInput& in) {
     // the drone is deliberately at low_power.bitrate_kbps / fps because
     // the FC reports DISARMED. maburtop shows LP; the compact OSD tints fps.
     d["low_power"] = (t.flags & 0x80) != 0;
+    // The FC's arm state (flags bit2 known + bit5 armed): null while the
+    // drone has no fresh MSP_STATUS reply, so "disarmed" and "no FC data"
+    // stay apart. The DVR's record-on-arm reads it.
+    if (t.flags & mabur::rc::kTelemArmKnown)
+      d["armed"] = (t.flags & mabur::rc::kTelemArmed) != 0;
+    else
+      d["armed"] = nullptr;
     // Control-frame auth rejections this telemetry period, flags bit1
     // (link pairing). One period around a drone restart is the
     // expected transient; sustained = a bug or two controllers at once.

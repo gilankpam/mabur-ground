@@ -568,6 +568,31 @@ TEST(stream_rows_ignore_telem_use_commanded_overhead) {
   CHECK(std::abs(j["link"]["streams"][1]["ov"].get<double>() - 0.5) < 1e-9);
 }
 
+// drone.armed: Telem flags bit2 (known) + bit5 (armed); null while the
+// drone does not know (FC silent), and null for armed-without-known.
+TEST(drone_armed_from_flags) {
+  Capture cap;
+  StatsExporter ex(1, 500, cap.fn());
+  StatsInput in = base_input();
+  mabur::rc::Telem t;
+  t.tlm_seq = 1;
+  in.telem_rx_ms = 900;
+  const struct { uint8_t flags; const char* want; } cases[] = {
+      {0x00, "null"}, {mabur::rc::kTelemArmKnown, "false"},
+      {mabur::rc::kTelemArmKnown | mabur::rc::kTelemArmed, "true"},
+      {mabur::rc::kTelemArmed, "null"}};
+  uint64_t now = 1000;
+  for (const auto& c : cases) {
+    t.flags = c.flags;
+    in.telem = t;
+    ex.poll(now, in);
+    now += 500;
+    const json j = cap.last();
+    REQUIRE(j["drone"].contains("armed"));
+    CHECK(j["drone"]["armed"].dump() == c.want);
+  }
+}
+
 TEST(drone_section_null_then_rates) {
   Capture cap;
   StatsExporter ex(1, 500, cap.fn());

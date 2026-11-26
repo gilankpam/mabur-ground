@@ -625,6 +625,7 @@ struct PFake {
     h.next_start = [](const maburplay::Config&) {};
     h.menu = [](const maburplay::Config&) {};
     h.refresh_sync = [](const maburplay::Config&) {};
+    h.arm_record = [](const maburplay::Config&) {};
     return h;
   }
 };

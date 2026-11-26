@@ -72,9 +72,9 @@ class TestExpectedPairs(unittest.TestCase):
         for key, away, back in gsparam.expected_pairs("gs"):
             self.assertNotEqual(away, back, key)
 
-    def test_player_has_eleven_keys(self):
+    def test_player_has_thirteen_keys(self):
         pairs = gsparam.expected_pairs("player")
-        self.assertEqual(len(pairs), 11)
+        self.assertEqual(len(pairs), 13)
 
     def test_player_keys_match_live_table_order(self):
         pairs = gsparam.expected_pairs("player")
@@ -90,6 +90,8 @@ class TestExpectedPairs(unittest.TestCase):
             "dvr.burned.size",
             "menu.show_advanced",
             "menu.scale",
+            "dvr.record_on_arm",
+            "dvr.disarm_stop_s",
         ])
 
     def test_player_screen_mode_away_from_alt_mode(self):

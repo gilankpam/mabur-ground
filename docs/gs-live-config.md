@@ -201,13 +201,16 @@ the live derived width throughout (`docs/observability.md`).
 | `dvr.burned.bitrate_kbps` | int | read at the next recording's start | |
 | `dvr.burned.every` | int | read at the next recording's start | |
 | `dvr.burned.size` | string (`"WxH"` or `""` for the decoded size) | read at the next recording's start | |
+| `dvr.record_on_arm` | bool | taken onto the live config; the player loop acts on it from its next iteration, and turning it on opens the sideport intake if neither the GS bar nor the menu holds it | Starts a recording (to `dvr.target`, as the record button would) when sideport `drone.armed` turns true, and stops it `dvr.disarm_stop_s` after it turns false; `null`, a stale sideport or `drone.tlm_age_ms` over 2000 never starts or stops anything. A config file without the key gains its line on the first set. |
+| `dvr.disarm_stop_s` | int (0–300) | same as `dvr.record_on_arm` | Seconds after disarm before the recording stops; 0 = at once. Re-arming within it keeps one recording. A file without the key gains it on the first set. |
 | `menu.show_advanced` | bool | taken onto the live config; the running settings menu shows or hides its advanced rows on its next tick; no presenter rebuild, no recording touched | Decides whether the settings menu shows its advanced rows. |
 | `menu.scale` | string (`"normal"`/`"large"`/`"larger"`) | taken onto the live config; the running settings menu re-lays out at the new size on its next tick; no presenter rebuild, no recording touched | The settings menu's size, ×1/×1.25/×1.5 (`docs/gs-menu.md` "Screen anatomy"). |
 | `display.refresh_sync` | string (`"off"`/`"nudge"`/`"follow"`) | swaps the lock's actuator in process | `"nudge"` moves the display's refresh one line a frame, one way only, for a panel that blanks on a larger change (past its reach -- the camera drifting a line a frame or more, as on the drone's trim at 100 fps -- or on another rate than the camera's, the player falls back to the sensor steer for the presenter's life; a changed set of this key clears that); `"follow"` bends every frame's length to the camera's, for a panel that takes any frame length (a camera more than 0.5 % faster than the mode falls back the same way); `"off"` returns to steering the drone's sensor rate instead. On a GS that is not an RK356x (no VOP2 frame-length register) the set still applies and writes the value, but the player keeps steering the sensor and logs it. Also settable from the goggles menu's "Phase lock by" row (`video.refresh_sync`, `docs/gs-menu.md`: Camera / Display (nudge) / Display (follow)), which warns `n/a` when a Display choice cannot act on this GS. |
 
 A running recording keeps the plan (`RecPlan`: `gs`/`vtx`/`burned` and
 the `dvr.burned.*` size, cadence and bitrate) it was started with; a
-`dvr.*` set never changes a recording already in progress, including a
+`dvr.*` set (other than `dvr.record_on_arm` / `dvr.disarm_stop_s`, which
+act at once) never changes a recording already in progress, including a
 burned recorder restarted inside it (below), which starts with the
 latched settings. A presenter rebuild (`screen_mode`, `colortrans.enable`, or an
 OSD switch that changes the plane) restarts a *burned* recording in

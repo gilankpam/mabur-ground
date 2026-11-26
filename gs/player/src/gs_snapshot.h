@@ -160,6 +160,10 @@ struct GsSnapshot {
   // 15 fps) because the FC reports DISARMED. False when the drone block is
   // null/absent (no telemetry yet, older maburgs) or the key is not a bool.
   bool low_power = false;
+  // drone.armed (Telem flags bit2 + bit5): the FC's arm state. nullopt while
+  // the drone does not know it (null), when the drone block is null/absent,
+  // or the key is not a bool.
+  std::optional<bool> armed;
   // drone.rec (VTX recorder): the drone recorder's state
   // (0 off, 1 recording, 2 error) and error code. Empty when the drone
   // block is null/absent or the keys are missing or mistyped.

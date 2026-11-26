@@ -1037,6 +1037,40 @@ std::vector<Choice> rec_size_choices(const Deps& d) {
 }
 
 std::vector<MenuNode> rec_rows(const Deps& d) {
+  // Record on arm acts at once (the player reads it every iteration), so
+  // neither row says "at next recording".
+  MenuNode arm = choice_row("rec.arm", "Record on arm", Owner::kPlayer, "dvr.record_on_arm");
+  arm.choices = on_off;
+  arm.current = [d] { return bool_text(d->cfg->dvr.record_on_arm); };
+  arm.help = text("Starts recording when the drone arms.");
+  // On, with a live link, but the drone sends no arm state (an older drone
+  // build, its msp.enable off, an FC that does not answer MSP_STATUS): the
+  // feature would never fire.
+  arm.warn = [d] {
+    const bool live = d->snap && !(d->snap_stale && d->snap_stale()) && d->snap->drone_tlm_age_ms &&
+                      *d->snap->drone_tlm_age_ms <= 2000;
+    return d->cfg->dvr.record_on_arm && live && !d->snap->armed ? std::string("No arm state from drone")
+                                                                : std::string();
+  };
+
+  MenuNode arm_stop = choice_row("rec.arm.stop", "  Stop after disarm", Owner::kPlayer, "dvr.disarm_stop_s");
+  arm_stop.visible = [d] { return d->cfg->dvr.record_on_arm; };
+  arm_stop.choices = [d] {
+    std::vector<Choice> cs{{"0", "At once", "", true},
+                           {"5", "5 s", "", true},
+                           {"10", "10 s", "", true},
+                           {"30", "30 s", "", true}};
+    // A hand-edited value off the list goes first, so the row never reads
+    // as a choice the file does not hold.
+    const std::string cur = std::to_string(d->cfg->dvr.disarm_stop_s);
+    bool listed = false;
+    for (const Choice& c : cs) listed = listed || c.value == cur;
+    if (!listed) cs.insert(cs.begin(), {cur, cur + " s", "", true});
+    return cs;
+  };
+  arm_stop.current = [d] { return std::to_string(d->cfg->dvr.disarm_stop_s); };
+  arm_stop.help = text("How long after disarm the recording stops. Re-arming in time keeps one file.");
+
   MenuNode target = choice_row("rec.target", "REC records to", Owner::kPlayer, "dvr.target", quoted);
   target.choices = [] {
     return std::vector<Choice>{{"gs", "GS", "", true}, {"vtx", "VTX SD card", "", true}, {"both", "Both", "", true}};
@@ -1133,7 +1167,7 @@ std::vector<MenuNode> rec_rows(const Deps& d) {
   vtx_size.confirm = [](const std::string&) { return std::string(kPause); };
   vtx_size.help = text("Onboard recording resolution, same aspect ratio as the camera's.");
 
-  return {target, mode, bitrate, every, size, vtx_enable, vtx_bitrate, vtx_fps, vtx_size};
+  return {arm, arm_stop, target, mode, bitrate, every, size, vtx_enable, vtx_bitrate, vtx_fps, vtx_size};
 }
 
 // --- OSD ---------------------------------------------------------------

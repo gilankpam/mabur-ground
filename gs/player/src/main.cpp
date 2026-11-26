@@ -29,6 +29,7 @@
 #include "mabur/dvr_name.h"
 #include "mabur/raw_dvr.h"
 #include "gs_font.h"
+#include "arm_record.h"
 #include "gs_metrics.h"
 #include "gs_layer.h"
 #include "osd_compose.h"
@@ -979,8 +980,9 @@ int main(int argc, char** argv) {
   // re-checked per iteration, so getting here does not guarantee anything
   // is ever drawn. The intake (gs_src) also feeds the settings menu's link
   // state: with the menu on it opens at startup and stays open for the
-  // run, and the bar's switch only adds or drops its layers. Without the
-  // menu it opens and closes with the bar, as the bar's live gate.
+  // run, and the bar's switch only adds or drops its layers. Record on arm
+  // (dvr.record_on_arm) holds it open the same way, for drone.armed.
+  // Without either it opens and closes with the bar, as the bar's live gate.
   //
   // Three layers, not one: two DRM buffers plus the burned DVR's index map,
   // all three needing their own record of what they already show. See
@@ -1000,9 +1002,9 @@ int main(int argc, char** argv) {
     return true;
   };
   // The bar's layers are gone (dropped, or a layout they do not fit): the
-  // intake goes with them unless the menu still reads it.
+  // intake goes with them unless the menu or record on arm still reads it.
   auto release_gs_source = [&]() {
-    if (!menu_on) gs_src.reset();
+    if (!menu_on && !cfg.dvr.record_on_arm) gs_src.reset();
   };
   auto open_gs_osd = [&](maburplay::RecTarget t, std::string* err) -> bool {
     if (!open_gs_source(err)) return false;
@@ -1030,6 +1032,13 @@ int main(int argc, char** argv) {
     std::string err;
     if (!open_gs_source(&err))
       std::fprintf(stderr, "maburplay: menu: no link state -- %s\n", err.c_str());
+  }
+  // Record on arm reads the drone's arm state off the same intake, so it
+  // keeps it open with the bar and the menu both off.
+  if (cfg.dvr.record_on_arm && !gs_src) {
+    std::string err;
+    if (!open_gs_source(&err))
+      std::fprintf(stderr, "maburplay: rec: record on arm has no arm state -- %s\n", err.c_str());
   }
   // The menu's two layers, laid out on the first real surface like the bar.
   if (menu_on) {
@@ -2328,6 +2337,21 @@ int main(int argc, char** argv) {
   live_hooks.osd_layers = apply_display;
   live_hooks.next_start = apply_dvr;
   live_hooks.menu = [&](const maburplay::Config& c) { cfg.menu = c.menu; };
+  // dvr.record_on_arm / dvr.disarm_stop_s act on the next loop iteration;
+  // turning it on opens the sideport intake if neither the bar nor the menu
+  // holds it, turning it off lets it go again under the same rule.
+  live_hooks.arm_record = [&](const maburplay::Config& c) {
+    cfg.dvr.record_on_arm = c.dvr.record_on_arm;
+    cfg.dvr.disarm_stop_s = c.dvr.disarm_stop_s;
+    if (cfg.dvr.record_on_arm && !gs_src) {
+      std::string err;
+      if (!open_gs_source(&err))
+        std::fprintf(stderr, "maburplay: rec: record on arm has no arm state -- %s\n",
+                     err.c_str());
+    } else if (!cfg.dvr.record_on_arm && gs_src && !composer.gs_present()) {
+      release_gs_source();
+    }
+  };
   // display.refresh_sync: the running lock takes the new mode (nudge <->
   // follow restarts its window; off releases the register to the mode's
   // own value) and a NUDGE reach latch is dropped. Housekeeping's actuator
@@ -2527,6 +2551,12 @@ int main(int argc, char** argv) {
   // Set once ui-ready is marked; while the page still shows that run, the
   // record button and SIGUSR1 start no recording on the rootfs being written.
   bool upgrade_rec_held = false;
+  // Record on arm (dvr.record_on_arm): edge tracker over drone.armed.
+  maburplay::ArmRecord arm_rec;
+  // drone.armed older than this is not acted on: the drone sends Telem at
+  // 1 Hz (and at once on an arm change), so one lost Telem plus the
+  // sideport's own period still counts as current.
+  constexpr int64_t kArmTlmMaxAgeMs = 2000;
 
   // MABUR_MENU_DEBUG's "key" verb queues here; drained into the exact same
   // per-tick loop that consumes bank.poll() below, so an injected event
@@ -2580,6 +2610,35 @@ int main(int argc, char** argv) {
         follow_live_rec();  // a dvr.* set during the recording takes over now
       } else {
         rec_start();
+      }
+      arm_rec.on_manual();
+    }
+    // Record on arm: the drone's arm state, when it is known and current.
+    // A quiet sideport or telemetry older than the drone's own freshness
+    // window reads Unknown, which never starts or stops anything.
+    {
+      const uint64_t now_ms = mono_ms();
+      maburplay::ArmState arm = maburplay::ArmState::Unknown;
+      if (gs_src && gs_src->have_any() && !gs_src->stale(now_ms)) {
+        const maburplay::GsSnapshot& snap = gs_src->snapshot();
+        const bool fresh = snap.drone_tlm_age_ms && *snap.drone_tlm_age_ms <= kArmTlmMaxAgeMs;
+        if (snap.armed && fresh)
+          arm = *snap.armed ? maburplay::ArmState::Armed : maburplay::ArmState::Disarmed;
+      }
+      const bool held = upgrade_rec_held && upgrade_flow->page().running;
+      switch (arm_rec.step(cfg.dvr.record_on_arm && !held, cfg.dvr.disarm_stop_s, arm, rec_on,
+                           now_ms)) {
+        case maburplay::ArmAction::Start:
+          std::fprintf(stderr, "maburplay: rec: arm START\n");
+          rec_start();
+          break;
+        case maburplay::ArmAction::Stop:
+          std::fprintf(stderr, "maburplay: rec: disarm STOP\n");
+          rec_stop();
+          follow_live_rec();
+          break;
+        case maburplay::ArmAction::None:
+          break;
       }
     }
     // A live set: its apply runs here, between two iterations' work.
