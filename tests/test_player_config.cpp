@@ -55,6 +55,24 @@ TEST(values_and_strictness) {
   CHECK(threw);  // floor 100
 }
 
+// Record on arm: off by default, 5 s stop delay, delay bounded 0-300.
+TEST(dvr_record_on_arm_defaults_and_bounds) {
+  auto c = maburplay::load_config(write_tmp_play("[dvr]\nautostart = false\n"));
+  CHECK(!c.dvr.record_on_arm);
+  CHECK(c.dvr.disarm_stop_s == 5);
+  c = maburplay::load_config(write_tmp_play("[dvr]\nrecord_on_arm = true\ndisarm_stop_s = 0\n"));
+  CHECK(c.dvr.record_on_arm);
+  CHECK(c.dvr.disarm_stop_s == 0);
+  c = maburplay::load_config(write_tmp_play("[dvr]\ndisarm_stop_s = 300\n"));
+  CHECK(c.dvr.disarm_stop_s == 300);
+  for (const char* bad : {"[dvr]\ndisarm_stop_s = -1\n", "[dvr]\ndisarm_stop_s = 301\n"}) {
+    std::string msg;
+    try { maburplay::load_config(write_tmp_play(bad)); }
+    catch (const std::exception& e) { msg = e.what(); }
+    CHECK(msg.find("dvr.disarm_stop_s") != std::string::npos);
+  }
+}
+
 TEST(the_old_dvr_enabled_key_is_rejected) {
   // The rename is breaking on purpose: an un-updated /etc/maburplay.toml
   // must fail boot loudly rather than silently reverting to the default.

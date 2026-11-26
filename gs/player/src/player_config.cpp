@@ -151,7 +151,8 @@ Config load_config(const std::string& path, std::vector<std::string>* defaulted)
 
   if (j.contains("dvr")) {
     const Value& r = j["dvr"];
-    check_keys(r, "dvr", {"autostart", "dir", "fragment_ms", "mode", "target", "burned"});
+    check_keys(r, "dvr", {"autostart", "dir", "fragment_ms", "mode", "target", "burned",
+                          "record_on_arm", "disarm_stop_s"});
     c.dvr.autostart = get_bool(r, "autostart", c.dvr.autostart, "dvr");
     c.dvr.dir = get_str(r, "dir", "/media/dvr", "dvr");
     c.dvr.fragment_ms = static_cast<int>(get_int(r, "fragment_ms", 1000, 100, 10000, "dvr"));
@@ -161,6 +162,8 @@ Config load_config(const std::string& path, std::vector<std::string>* defaulted)
     c.dvr.target = get_str(r, "target", "gs", "dvr");
     if (c.dvr.target != "gs" && c.dvr.target != "vtx" && c.dvr.target != "both")
       fail("dvr.target", "must be \"gs\", \"vtx\" or \"both\"");
+    c.dvr.record_on_arm = get_bool(r, "record_on_arm", c.dvr.record_on_arm, "dvr");
+    c.dvr.disarm_stop_s = static_cast<int>(get_int(r, "disarm_stop_s", 5, 0, 300, "dvr"));
     if (r.contains("burned")) {
       const Value& b = r["burned"];
       check_keys(b, "dvr.burned", {"bitrate_kbps", "every", "size"});

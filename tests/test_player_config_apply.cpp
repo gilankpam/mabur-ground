@@ -86,6 +86,7 @@ struct PFake {
   std::vector<Config> osd_calls;
   std::vector<Config> menu_calls;
   std::vector<Config> refresh_sync_calls;
+  std::vector<Config> arm_record_calls;
   int next_start_calls = 0;
   bool reacquire_ok = true;
   std::string reacquire_err;
@@ -104,6 +105,7 @@ struct PFake {
     h.next_start = [this](const Config&) { ++next_start_calls; };
     h.menu = [this](const Config& c) { menu_calls.push_back(c); };
     h.refresh_sync = [this](const Config& c) { refresh_sync_calls.push_back(c); };
+    h.arm_record = [this](const Config& c) { arm_record_calls.push_back(c); };
     return h;
   }
 };
@@ -123,8 +125,10 @@ PlayerApplyResult drive(PlayerConfigApplier& a) {
 
 }  // namespace
 
-TEST(player_live_table_has_twelve_keys) {
-  REQUIRE(kPlayerLiveKeys.size() == 12);
+TEST(player_live_table_has_fourteen_keys) {
+  REQUIRE(kPlayerLiveKeys.size() == 14);
+  CHECK(std::string(kPlayerLiveKeys[12].key) == "dvr.record_on_arm");
+  CHECK(std::string(kPlayerLiveKeys[13].key) == "dvr.disarm_stop_s");
   CHECK(std::string(kPlayerLiveKeys[0].key) == "screen_mode");
   CHECK(std::string(kPlayerLiveKeys[8].key) == "dvr.burned.size");
   CHECK(std::string(kPlayerLiveKeys[9].key) == "menu.show_advanced");
@@ -147,6 +151,8 @@ TEST(render_player_live_value_renders_each_type) {
   CHECK(render_player_live_value(c, *player_live_key("menu.show_advanced")) == "true");
   CHECK(render_player_live_value(c, *player_live_key("menu.scale")) == "\"normal\"");
   CHECK(render_player_live_value(c, *player_live_key("display.refresh_sync")) == "\"nudge\"");
+  CHECK(render_player_live_value(c, *player_live_key("dvr.record_on_arm")) == "false");
+  CHECK(render_player_live_value(c, *player_live_key("dvr.disarm_stop_s")) == "5");
 }
 
 TEST(player_apply_rule_presenter_only_when_the_osd_plane_want_changes) {
@@ -358,18 +364,72 @@ TEST(player_applier_osd_switch_keeping_the_plane_opens_layers_in_place) {
   CHECK(f.osd_calls.size() == 1);
 }
 
+TEST(player_apply_rule_arm_record) {
+  Config b = bundle();
+  Config a = b;
+  a.dvr.record_on_arm = true;
+  CHECK(player_apply_rule(*player_live_key("dvr.record_on_arm"), b, a) == PlayerApplyRule::ArmRecord);
+  a.dvr.disarm_stop_s = 30;
+  CHECK(player_apply_rule(*player_live_key("dvr.disarm_stop_s"), b, a) == PlayerApplyRule::ArmRecord);
+}
+
+// Record on arm acts on the running player at once (it is read every loop
+// iteration), not at the next recording start.
+TEST(a_record_on_arm_set_calls_the_arm_record_hook_and_publishes) {
+  ScratchPlayerBundle sb;
+  PFake f;
+  PlayerConfigApplier a(sb.path(), bundle(), BuildCaps{true, false}, f.hooks(), nullptr);
+  std::string why;
+  REQUIRE(a.submit("dvr.record_on_arm", "true", &why));
+  PlayerApplyResult r = drive(a);
+  CHECK(r.ok);
+  REQUIRE(f.arm_record_calls.size() == 1);
+  CHECK(f.arm_record_calls[0].dvr.record_on_arm);
+  CHECK(f.next_start_calls == 0);
+  CHECK(a.live().dvr.record_on_arm);
+  CHECK(load_config(sb.path()).dvr.record_on_arm);
+  REQUIRE(a.submit("dvr.disarm_stop_s", "30", &why));
+  r = drive(a);
+  CHECK(r.ok);
+  CHECK(f.arm_record_calls.size() == 2);
+  CHECK(load_config(sb.path()).dvr.disarm_stop_s == 30);
+}
+
+// A config written before these keys existed has no line for them: the
+// set inserts it instead of refusing.
+TEST(a_record_on_arm_set_inserts_the_key_into_an_older_config) {
+  std::string text = bundle_text();
+  for (const char* key : {"record_on_arm", "disarm_stop_s"}) {
+    const size_t at = text.find(std::string("\n") + key);
+    if (at != std::string::npos) text.erase(at + 1, text.find('\n', at + 1) - at);
+  }
+  REQUIRE(text.find("record_on_arm") == std::string::npos);
+  ScratchPlayerBundle sb(text);
+  PFake f;
+  PlayerConfigApplier a(sb.path(), load_config(sb.path()), BuildCaps{true, false}, f.hooks(), nullptr);
+  std::string why;
+  REQUIRE(a.submit("dvr.record_on_arm", "true", &why));
+  PlayerApplyResult r = drive(a);
+  CHECK(r.ok);
+  CHECK(load_config(sb.path()).dvr.record_on_arm);
+  REQUIRE(a.submit("dvr.disarm_stop_s", "10", &why));
+  CHECK(drive(a).ok);
+  CHECK(load_config(sb.path()).dvr.disarm_stop_s == 10);
+}
+
 TEST(player_applier_refuses_an_unset_hook) {
   // An empty std::function throws bad_function_call on the housekeeping
   // thread at the first set that reaches it; the constructor says so first.
   ScratchPlayerBundle sb;
   PFake f;
-  for (int missing = 0; missing < 5; ++missing) {
+  for (int missing = 0; missing < 6; ++missing) {
     PlayerApplyHooks h = f.hooks();
     if (missing == 0) h.reacquire_display = nullptr;
     if (missing == 1) h.osd_layers = nullptr;
     if (missing == 2) h.next_start = nullptr;
     if (missing == 3) h.menu = nullptr;
     if (missing == 4) h.refresh_sync = nullptr;
+    if (missing == 5) h.arm_record = nullptr;
     bool threw = false;
     try {
       PlayerConfigApplier a(sb.path(), bundle(), BuildCaps{true, false}, h, nullptr);

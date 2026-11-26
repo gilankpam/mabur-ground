@@ -1249,6 +1249,7 @@ TEST(the_string_values_pass_maburplays_setter) {
   h.next_start = [](const maburplay::Config&) {};
   h.menu = [](const maburplay::Config&) {};
   h.refresh_sync = [](const maburplay::Config&) {};
+  h.arm_record = [](const maburplay::Config&) {};
   maburplay::PlayerConfigApplier a(d.file, f.cfg, maburplay::BuildCaps{true, false}, h, nullptr);
   auto set = [&](const SetStep& s) {
     std::string why;
@@ -1610,6 +1611,64 @@ TEST(checking_wins_over_the_mark) {
   f.available = "v0.1.2";
   f.upgrade_busy = true;
   CHECK(f.node("fw.gs.stable").value_text() == "Checking…");
+}
+
+
+// Record on arm: an On/Off row and its stop delay, which shows only while
+// the feature is on. Both act at once, so neither says "at next recording".
+TEST(record_on_arm_rows) {
+  Fx f;
+  f.cfg.dvr.record_on_arm = false;
+  MenuNode arm = f.node("rec.arm");
+  CHECK(arm.current() == "false");
+  CHECK((arm.steps("true") == std::vector<SetStep>{{Owner::kPlayer, "dvr.record_on_arm", "true"}}));
+  f.rec = true;
+  CHECK(f.node("rec.arm").saved_text == nullptr);
+  CHECK(!vis(f.node("rec.arm.stop")));
+  f.cfg.dvr.record_on_arm = true;
+  CHECK(f.node("rec.arm").current() == "true");
+  MenuNode stop = f.node("rec.arm.stop");
+  CHECK(vis(stop));
+  CHECK(stop.saved_text == nullptr);
+  const auto cs = stop.choices();
+  REQUIRE(cs.size() == 4);
+  CHECK(cs[0].value == "0" && cs[0].label == "At once");
+  CHECK(cs[1].value == "5" && cs[1].label == "5 s");
+  CHECK(cs[2].value == "10" && cs[2].label == "10 s");
+  CHECK(cs[3].value == "30" && cs[3].label == "30 s");
+  CHECK((stop.steps("10") == std::vector<SetStep>{{Owner::kPlayer, "dvr.disarm_stop_s", "10"}}));
+  f.cfg.dvr.disarm_stop_s = 5;
+  CHECK(f.node("rec.arm.stop").current() == "5");
+  // A hand-edited value off the list is shown first, so the row never
+  // reads as a choice the file does not hold.
+  f.cfg.dvr.disarm_stop_s = 7;
+  const auto off = f.node("rec.arm.stop").choices();
+  REQUIRE(off.size() == 5);
+  CHECK(off[0].value == "7" && off[0].label == "7 s");
+}
+
+// The feature on with a live link but no arm state from the drone (an
+// older drone build, msp.enable off, a TX-only FC UART) would record
+// nothing: the row says so.
+TEST(record_on_arm_warns_without_arm_state) {
+  Fx f;
+  f.cfg.dvr.record_on_arm = true;
+  f.snap.drone_tlm_age_ms = 100;
+  REQUIRE(f.node("rec.arm").warn != nullptr);
+  CHECK(f.node("rec.arm").warn() == "No arm state from drone");
+  f.snap.armed = false;
+  CHECK(f.node("rec.arm").warn().empty());
+  f.snap.armed.reset();
+  f.stale = true;
+  CHECK(f.node("rec.arm").warn().empty());
+  f.stale = false;
+  f.snap.drone_tlm_age_ms = 5000;
+  CHECK(f.node("rec.arm").warn().empty());
+  f.snap.drone_tlm_age_ms.reset();
+  CHECK(f.node("rec.arm").warn().empty());
+  f.snap.drone_tlm_age_ms = 100;
+  f.cfg.dvr.record_on_arm = false;
+  CHECK(f.node("rec.arm").warn().empty());
 }
 
 MTEST_MAIN

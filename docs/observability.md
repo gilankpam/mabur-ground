@@ -372,6 +372,11 @@ fields once per `drone.tlm_seq` (`flightreport.py` does).
   ([`docs/link-adaptation.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-adaptation.md), "Low-power (disarmed) mode"). maburtop shows
   `LP` on the summary SYS row and on the DRONE panel's SoC line; the compact
   OSD tints its fps cell caution while set and the sideport is fresh.
+- `armed` (flags bit2 known + bit5 armed) — the FC's arm state from
+  `MSP_STATUS`, polled whenever the drone's `msp.enable` is on: `true` /
+  `false`, or `null` while the drone has no reply fresher than 1.5 s, so
+  "disarmed" and "no FC data" stay apart. The player's `dvr.record_on_arm`
+  records on it.
 - `auth_reject` (flags bit1) — control-frame auth rejections this period,
   [`docs/link-pairing.md`](https://github.com/gilankpam/mabur/blob/master/docs/link-pairing.md).
 - `rec = {state, err}` — the VTX onboard SD recorder ([`docs/vtx-recorder.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-recorder.md)).
@@ -1147,9 +1152,15 @@ Files are `record-NNNN.mp4` under `dvr.dir`, indexed one past the highest
 timestamp, since the GS RTC is wrong at boot — so the index climbs across
 boots and never overwrites an earlier flight; files not matching the
 pattern are ignored. `dvr.autostart` picks whether the player boots
-recording or armed. There is no config kill switch and no `--no-dvr` flag:
-`autostart = false` with no button is a player that never records, so give
-a `--decode-only` measurement run a config with `autostart = false` —
+recording or armed. `dvr.record_on_arm` (default false) additionally
+starts a recording when sideport `drone.armed` turns true and stops it
+`dvr.disarm_stop_s` (default 5, 0 = at once) after it turns false; an
+unknown or stale arm state never starts or stops anything, the record
+button keeps working, and each press drops a pending disarm stop. It logs
+`rec: arm START` / `rec: disarm STOP`. There is no config kill switch and no `--no-dvr` flag:
+`autostart = false` and `record_on_arm = false` with no button is a player
+that never records, so give a `--decode-only` measurement run a config with
+both off —
 otherwise the decode gate writes a raw file and charges SD-card I/O to the
 fps number. Startup logs the resolved mapping and every toggle logs
 START/STOP; the OSD REC field is the live indicator. GPIO failures (pin not

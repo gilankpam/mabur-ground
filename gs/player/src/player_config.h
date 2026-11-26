@@ -31,6 +31,13 @@ struct DvrCfg {
   // Where the record button records:
   // "gs" = this GS's DVR only, "vtx" = the drone's SD card only, "both".
   std::string target = "gs";
+  // Record on arm: start recording (to `target`, as the button would) when
+  // the drone reports ARMED, stop disarm_stop_s after it reports DISARMED
+  // (0 = at once; re-arming within the delay keeps one recording). An
+  // unknown arm state never starts or stops anything. The record button
+  // keeps working throughout.
+  bool record_on_arm = false;
+  int disarm_stop_s = 5;
 };
 
 // MSP DisplayPort OSD. `port` must match maburgs' msp.out.port -- separate

@@ -31,6 +31,7 @@ add_library(mabur_player_core STATIC
   src/gs_layer.cpp
   src/gs_compact.cpp
   src/gs_metrics.cpp
+  src/arm_record.cpp
   src/osd_layout.cpp
   src/osd_raster.cpp
   src/osd_compose.cpp

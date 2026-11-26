@@ -143,6 +143,7 @@ bool parse_gs_snapshot(const char* data, size_t n, GsSnapshot* out) {
   if (const json* drone = obj(j, "drone")) {
     auto it = drone->find("low_power");
     out->low_power = it != drone->end() && it->is_boolean() && it->get<bool>();
+    if (auto a = drone->find("armed"); a != drone->end() && a->is_boolean()) out->armed = a->get<bool>();
     out->drone_tlm_age_ms = integer(*drone, "tlm_age_ms");
     if (const json* rec = obj(*drone, "rec")) {
       out->rec_state = integer(*rec, "state");

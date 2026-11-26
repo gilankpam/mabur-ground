@@ -71,6 +71,7 @@ struct PFake {
     h.next_start = [](const Config&) {};
     h.menu = [](const Config&) {};
     h.refresh_sync = [](const Config&) {};
+    h.arm_record = [](const Config&) {};
     return h;
   }
 };
