@@ -8,7 +8,7 @@ namespace cal = mabur::cal;
 TEST(wall_sweep_fields) {
   const auto c = make_wall_sweep(7, 2, 40, 112);
   CHECK(c.kind == cal::Kind::Wall && c.bw == 40 && c.channel == 112 && c.nonce == 7 && c.seq == 2);
-  CHECK(sweep_duration_ms(c) == 20000);
+  CHECK(sweep_duration_ms(c) == kWallDeadlineMs);
 }
 
 TEST(capacity_sweep_is_eight_two_second_points) {
