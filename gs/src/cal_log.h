@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "log_writer.h"
@@ -25,7 +26,9 @@ struct CapResult;
 // tests/test_cal_log.cpp depend on the exact byte layout):
 //
 //   callog 6                                           # once, first line
-//   R <nonce> <margin_db> <ch> <pick> <ldpc 0|1>       # once per calibration run
+//   R <nonce> <margin_db> <ch> <pick> <ldpc 0|1|->     # once per calibration run;
+//                                                       # `-` when no ack announced
+//                                                       # the stamp flags first
 //   S <seq> <wall|capacity> <bw> <param>               # once per sweep the drone
 //                                                       # accepted; param is the
 //                                                       # measured channel for a
@@ -134,8 +137,9 @@ class CalLog {
   // and later ones sharing a session directory -- this is what a reader
   // keys a run's lines by and what delimits one run's lines from the next.
   // `pick` is one of auto|pinned|onecard|stayed, written verbatim.
+  // `ldpc` nullopt (no ack heard before the run's first record) writes `-`.
   void run(uint32_t nonce, double margin_db, uint8_t ch, const char* pick,
-           bool ldpc);
+           std::optional<bool> ldpc);
   // One sweep's own parameters: `S <seq> <wall|capacity> <bw> <param>`,
   // param the measured channel (wall) or the dwell in ms (capacity).
   // Scopes every P row that follows, up to the next sweep() call, to this

@@ -263,7 +263,9 @@ def _parse_cal_log(path):
                         cur = _Run(version, int(tok[1]), float(tok[2]))
                         cur.channel = int(tok[3])
                         cur.pick = tok[4]
-                        cur.ldpc = (tok[5] == "1")
+                        # callog 6 writes "-" when no ack announced the
+                        # stamp flags before the run's first record.
+                        cur.ldpc = {"1": True, "0": False}.get(tok[5])
                     elif version == 3:
                         cur = _Run(version, int(tok[1]), float(tok[2]))
                     else:
@@ -454,7 +456,7 @@ def _apply_status_line_v4(run):
 
 def _render_run_v6(run):
     pick = run.pick if run.pick is not None else "-"
-    ldpc = 1 if run.ldpc else 0
+    ldpc = "-" if run.ldpc is None else (1 if run.ldpc else 0)
     lines = [f"run nonce={run.nonce} margin={run.margin_db:.2f}dB "
              f"ch={run.channel} pick={pick} ldpc={ldpc}"]
     # One line per wall sweep, as the drone measured it: walls relative to

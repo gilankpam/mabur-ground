@@ -500,6 +500,99 @@ TEST(a_late_wall_report_is_ignored_by_the_next_sweep) {
   CHECK(s.snapshot().fail_reason.empty());
 }
 
+// --- a wall sweep whose ack is lost ----------------------------------------
+
+TEST(a_wall_report_stands_in_for_a_lost_ack) {
+  const std::string dir = fresh_dir("cal_session_implicit");
+  CalLog log(dir);
+  log.header();
+  FakePicker p = pinned(36);
+  CalSession s(CalSessionCfg{}, &log, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(61, {{Kind::Wall, 20}, {Kind::Capacity, 20}}, 0, &err));
+  REQUIRE(as<cal::SweepCmd>(s.due_mav(0)).has_value());
+  REQUIRE(s.state() == State::AwaitAck);
+  s.on_mav(wall_done(61, 0, 36, 20), 1500);  // no ack ever arrived
+  CHECK(s.snapshot().walls.size() == 1);
+  CHECK(s.state() == State::AwaitAck);  // the capacity sweep's
+  const auto next = as<cal::SweepCmd>(s.due_mav(1500));
+  REQUIRE(next.has_value());
+  CHECK(next->kind == Kind::Capacity && next->seq == 1);
+  // Another sweep's or run's report is no ack.
+  CalSession t(CalSessionCfg{}, nullptr, &p);
+  t.set_peer(true, true);
+  REQUIRE(t.start(62, {{Kind::Wall, 20}}, 0, &err));
+  REQUIRE(t.due_mav(0).has_value());
+  t.on_mav(wall_done(62, 1, 36, 20), 100);
+  t.on_mav(wall_done(99, 0, 36, 20), 100);
+  CHECK(t.state() == State::AwaitAck);
+  // No ack announced the stamp flags: the R line's ldpc is unknown.
+  log.flush();
+  const auto lines = cal_log_lines(dir);
+  REQUIRE(lines.size() >= 4);
+  CHECK(lines[1] == "R 61 1.00 36 pinned -");
+  CHECK(lines[2] == "S 0 wall 20 36");
+  CHECK(lines[3] == "W 20 36 39 -306 63 63 63 63 44 26 24 20");
+}
+
+TEST(a_lost_ack_goes_silent_and_takes_a_late_report) {
+  const std::string dir = fresh_dir("cal_session_lost_ack");
+  CalLog log(dir);
+  log.header();
+  CalSessionCfg cfg;
+  FakePicker p = pinned(36);
+  CalSession s(cfg, &log, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(63, {{Kind::Wall, 20}}, 0, &err));
+  uint64_t last_cmd = 0;
+  for (uint64_t t = 0; t < cfg.ack_timeout_ms; t += 50)
+    if (as<cal::SweepCmd>(s.due_mav(t))) last_cmd = t;
+  REQUIRE(last_cmd == 2800);
+  CHECK(!s.radio_silent(cfg.ack_timeout_ms - 1));
+  // The ack timeout does not fail a wall sweep: the drone may be measuring.
+  CHECK(!s.due_mav(cfg.ack_timeout_ms).has_value());
+  CHECK(s.state() == State::Sweep);
+  CHECK(s.radio_silent(cfg.ack_timeout_ms));
+  for (uint64_t t = cfg.ack_timeout_ms; t < 6000; t += 100) {
+    CHECK(!s.due_mav(t).has_value());  // no SweepCmd repeats into the measurement
+    CHECK(s.radio_silent(t));
+  }
+  s.on_mav(wall_done(63, 0, 36, 20), 6000);
+  CHECK(s.state() == State::Done);
+  CHECK(s.snapshot().walls.size() == 1);
+  CHECK(!s.radio_silent(6000));
+  // The late report is recorded as an accepted sweep's.
+  const auto lines = cal_log_lines(dir);
+  REQUIRE(lines.size() == 4);
+  CHECK(lines[1] == "R 63 1.00 36 pinned -");
+  CHECK(lines[2] == "S 0 wall 20 36");
+  CHECK(lines[3].rfind("W 20 36 ", 0) == 0);
+}
+
+TEST(a_lost_ack_and_no_report_fail_when_the_window_closes) {
+  CalSessionCfg cfg;
+  FakePicker p = pinned(36);
+  CalSession s(cfg, nullptr, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(64, {{Kind::Wall, 20}, {Kind::Capacity, 20}}, 0, &err));
+  for (uint64_t t = 0; t < cfg.ack_timeout_ms; t += 50) s.due_mav(t);
+  // The last SweepCmd copy went out at 2800; the drone may have accepted
+  // only that one, starting 200 ms later.
+  const uint64_t close = 2800 + 200 + kWallDeadlineMs + cfg.phase_slack_ms;
+  for (uint64_t t = cfg.ack_timeout_ms; t < close; t += 100) {
+    CHECK(!s.due_mav(t).has_value());
+    CHECK(s.radio_silent(t));
+  }
+  CHECK(s.state() == State::AwaitDone);
+  s.due_mav(close);
+  CHECK(s.state() == State::Failed);
+  CHECK(s.snapshot().fail_reason == "no ack and no wall report from the drone");
+  CHECK(!s.radio_silent(close));
+}
+
 TEST(no_link_channel_fails_before_sending) {
   CalSession s(CalSessionCfg{});
   s.set_peer(true, true);
@@ -979,7 +1072,7 @@ TEST(ack_timeout_fails_without_an_apply) {
   CalSession s(cfg);
   s.set_peer(true, true);
   std::string err;
-  REQUIRE(s.start(22, {{Kind::Wall, 20, 36}}, 0, &err));
+  REQUIRE(s.start(22, {{Kind::Capacity, 20}}, 0, &err));
   int applies = 0, aborts = 0;
   for (uint64_t t = 0; t <= cfg.ack_timeout_ms + 1000; t += 50) {
     const auto m = s.due_mav(t);

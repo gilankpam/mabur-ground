@@ -34,7 +34,8 @@ class CalPicker;
 
 struct CalSessionCfg {
   CalThresholds th;
-  // How long a SweepCmd is repeated without an ack before the run fails.
+  // How long a SweepCmd is repeated without an ack before the run fails --
+  // or, for a wall sweep, before the GS goes silent for its window anyway.
   uint32_t ack_timeout_ms = 3000;
   // How long past a sweep's planned end the GS keeps listening (and stays
   // silent) for late frames and the drone's SweepDone.
@@ -114,8 +115,8 @@ class CalSession {
   // sweep refused as Unsupported (a chip that cannot measure itself) is
   // skipped and the run goes on; any other refusal fails the run. A
   // SweepDone closes a wall sweep at once -- failing the run unless the
-  // measurement is Ok -- and a capacity sweep once its frames have been
-  // quiet for tail_quiet_ms.
+  // measurement is Ok, and standing in for an ack that never arrived -- and
+  // a capacity sweep once its frames have been quiet for tail_quiet_ms.
   void on_mav(const mabur::cal::CalMsg& m, uint64_t now_ms);
 
   // The caller's once-per-pass tick, called after the pass has handled the
@@ -145,7 +146,9 @@ class CalSession {
   // True whenever a GS transmit would corrupt the measurement: from the
   // ack (or the frame that stood in for it) until the sweep ends or its
   // listen window closes. The drone itself stays silent through a wall
-  // measurement, so the GS hears nothing until its report.
+  // measurement, so the GS hears nothing until its report; a wall sweep
+  // whose ack never came goes silent at the ack timeout, for the window the
+  // last SweepCmd copy would have opened.
   bool radio_silent(uint64_t now_ms) const;
 
   // AwaitAck through Apply: a run owns the air. Picking is not included
@@ -192,8 +195,11 @@ class CalSession {
   void step_picking(uint64_t now_ms);
   void finish_pick(const char* pick, uint64_t now_ms);
   void begin_sweep(size_t i, uint64_t now_ms);
-  void log_run(uint8_t flags);  // cal.log's R line, once per run
-  void on_accepted(uint8_t flags, uint16_t start_in_ms, uint64_t now_ms);
+  // cal.log's R line, once per run; nullopt flags = no ack heard yet.
+  void log_run(std::optional<uint8_t> flags);
+  void log_accepted();  // R (once) and the sweep's S line
+  // nullopt flags: an implicit ack that carried none (a wall report).
+  void on_accepted(std::optional<uint8_t> flags, uint16_t start_in_ms, uint64_t now_ms);
   void finish_sweep(uint64_t now_ms);
   void finish_wall(uint64_t now_ms);
   bool analyze_capacity_sweep();   // true: an apply is due
@@ -247,6 +253,10 @@ class CalSession {
 
   // Sweep / AwaitDone windows.
   uint8_t ack_flags_ = 0;
+  bool flags_known_ = false;    // some ack of this run announced ack_flags_
+  // A wall sweep whose ack never came: the GS went silent for the window
+  // anyway, and the drone's report is the only proof it ran.
+  bool unacked_ = false;
   uint64_t accepted_ms_ = 0;    // the running sweep's ack
   uint64_t sweep_end_ms_ = 0;   // planned end: AwaitDone opens here
   uint64_t window_end_ms_ = 0;  // AwaitDone closes here

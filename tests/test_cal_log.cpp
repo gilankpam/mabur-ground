@@ -104,6 +104,16 @@ TEST(run_record_prints_ldpc_off_and_the_pick_word_verbatim) {
   CHECK(ls[1] == "R 7 0.50 64 onecard 0");
 }
 
+TEST(run_record_prints_an_unknown_ldpc_as_a_dash) {
+  // A run whose first record is a wall report that stood in for a lost ack:
+  // no ack announced the stamp flags.
+  const auto d = fresh_dir("callog_run3");
+  { CalLog l(d); l.header(); l.run(7, 1.0, 36, "pinned", std::nullopt); }
+  const auto ls = lines_of(d);
+  REQUIRE(ls.size() == 2);
+  CHECK(ls[1] == "R 7 1.00 36 pinned -");
+}
+
 TEST(two_runs_in_one_session_append_two_run_records) {
   // The normal retry path (start, see a narrow/saturated flag, move the
   // drone, start again) shares one session directory across two runs --

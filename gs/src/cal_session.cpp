@@ -112,6 +112,7 @@ bool CalSession::start(uint32_t nonce, std::vector<cal::SweepSpec> sweeps, uint6
   stamp_mismatch_ = 0;
   cell_i_ = 0;
   ack_flags_ = 0;
+  flags_known_ = false;
   done_.reset();
   width_ = {};
   walls_.clear();
@@ -156,8 +157,17 @@ void CalSession::on_mav(const cal::CalMsg& m, uint64_t now_ms) {
     }
     on_accepted(a->flags, a->start_in_ms, now_ms);
   } else if (const auto* d = std::get_if<cal::SweepDone>(&m)) {
-    if (state_ != State::Sweep && state_ != State::AwaitDone) return;
     if (d->nonce != nonce_ || d->seq != cmd_.seq) return;
+    // A wall report is proof the drone accepted the sweep whose ack was
+    // lost: nothing airs during the measurement, so it is the first thing
+    // the GS can hear. It carries no stamp flags.
+    if (cmd_.kind == cal::Kind::Wall) {
+      if (state_ == State::AwaitAck)
+        on_accepted(std::nullopt, 0, now_ms);
+      else if (state_ == State::Sweep && unacked_)
+        log_accepted();
+    }
+    if (state_ != State::Sweep && state_ != State::AwaitDone) return;
     done_ = *d;
     // A capacity sweep's tail may still be airing; step() closes it once
     // the tail has gone quiet. A wall report closes its sweep at once.
@@ -229,7 +239,8 @@ void CalSession::on_cal_frame(int card, const cal::CalFrameInfo& f, int rssi_dbm
     on_accepted(f.flags, 0, now_ms);
   }
   if (state_ == State::Sweep || state_ == State::AwaitDone) {
-    if (f.kind != cmd_.kind || f.bw != cmd_.bw || f.flags != ack_flags_) {
+    if (cmd_.kind != cal::Kind::Capacity || f.kind != cmd_.kind || f.bw != cmd_.bw ||
+        f.flags != ack_flags_) {
       ++stamp_mismatch_;
       return;
     }
@@ -313,7 +324,19 @@ void CalSession::step(uint64_t now_ms) {
       step_picking(now_ms);
       break;
     case State::AwaitAck:
-      if (now_ms - phase_start_ms_ >= cfg_.ack_timeout_ms) fail("calibration ack timeout");
+      if (now_ms - phase_start_ms_ < cfg_.ack_timeout_ms) break;
+      if (cmd_.kind != cal::Kind::Wall) {
+        fail("calibration ack timeout");
+        break;
+      }
+      // Every ack may have been lost while the drone measures: it airs
+      // nothing until its report, re-acks included. Go silent for the
+      // window the last SweepCmd copy would have opened and wait for it.
+      unacked_ = true;
+      accepted_ms_ = last_sent_ms_;
+      sweep_end_ms_ = last_sent_ms_ + 200 + kWallDeadlineMs;
+      window_end_ms_ = sweep_end_ms_ + cfg_.phase_slack_ms;
+      state_ = State::Sweep;
       break;
     case State::Sweep:
     case State::AwaitDone:
@@ -413,27 +436,39 @@ void CalSession::begin_sweep(size_t i, uint64_t now_ms) {
   last_cap_seen_ms_ = 0;
   cap_fresh_ = false;
   done_.reset();
+  unacked_ = false;
   cell_i_ = 0;
   phase_start_ms_ = now_ms;
   sent_once_ = false;
   state_ = State::AwaitAck;
 }
 
-void CalSession::log_run(uint8_t flags) {
+void CalSession::log_run(std::optional<uint8_t> flags) {
   if (picker_) channel_ = picker_->op();
   if (run_logged_) return;
   // The GS has no LDPC setting of its own: the drone's stamp flags are the
-  // truth about what this run flies.
-  if (log_) log_->run(nonce_, cfg_.margin_db, channel_, pick_, (flags & cal::kFlagLdpc) != 0);
+  // truth about what this run flies, unknown when no ack has been heard.
+  std::optional<bool> ldpc;
+  if (flags) ldpc = (*flags & cal::kFlagLdpc) != 0;
+  if (log_) log_->run(nonce_, cfg_.margin_db, channel_, pick_, ldpc);
   run_logged_ = true;
 }
 
-void CalSession::on_accepted(uint8_t flags, uint16_t start_in_ms, uint64_t now_ms) {
-  ack_flags_ = flags;
-  log_run(flags);
+void CalSession::log_accepted() {
+  log_run(flags_known_ ? std::optional<uint8_t>(ack_flags_) : std::nullopt);
   if (log_)
     log_->sweep(cmd_.seq, cmd_.kind, cmd_.bw,
                 cmd_.kind == cal::Kind::Capacity ? cmd_.dwell_ms : cmd_.channel);
+}
+
+void CalSession::on_accepted(std::optional<uint8_t> flags, uint16_t start_in_ms,
+                             uint64_t now_ms) {
+  // An implicit ack (a wall report) keeps the flags of an earlier ack.
+  if (flags) {
+    ack_flags_ = *flags;
+    flags_known_ = true;
+  }
+  log_accepted();
   accepted_ms_ = now_ms;
   sweep_end_ms_ = now_ms + start_in_ms + sweep_duration_ms(cmd_);
   window_end_ms_ = sweep_end_ms_ + cfg_.phase_slack_ms;
@@ -487,7 +522,7 @@ void CalSession::finish_wall(uint64_t now_ms) {
   // The drone measures, stores and flies the walls itself: there is
   // nothing to analyse or apply, only the report to record.
   if (!done_) {
-    fail("no wall report from the drone");
+    fail(unacked_ ? "no ack and no wall report from the drone" : "no wall report from the drone");
     return;
   }
   if (done_->wall_result != cal::WallResult::Ok) {

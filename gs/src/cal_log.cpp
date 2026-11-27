@@ -59,11 +59,11 @@ void CalLog::header() {
 }
 
 void CalLog::run(uint32_t nonce, double margin_db, uint8_t ch,
-                  const char* pick, bool ldpc) {
+                  const char* pick, std::optional<bool> ldpc) {
   if (s_ == LogWriter::kBadStream) return;
   char b[96];
-  const int n = std::snprintf(b, sizeof(b), "R %u %.2f %d %s %d", nonce,
-                              margin_db, ch, pick, ldpc ? 1 : 0);
+  const int n = std::snprintf(b, sizeof(b), "R %u %.2f %d %s %s", nonce,
+                              margin_db, ch, pick, !ldpc ? "-" : *ldpc ? "1" : "0");
   if (n > 0)
     w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
 }

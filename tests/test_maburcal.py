@@ -540,6 +540,11 @@ class TestReportV6(unittest.TestCase):
         self.assertLess(lines.index(row5),
                         lines.index("skipped power40 (sweep 2): unsupported"))
 
+    def test_an_unknown_ldpc_renders_as_a_dash(self):
+        out = render(GOOD6.replace("R 9 1.00 144 pinned 1", "R 9 1.00 144 pinned -"))
+        self.assertIn("ldpc=-", out.splitlines()[0])
+        self.assertIn("ldpc=1", render(GOOD6).splitlines()[0])
+
     def test_walls_only_run_claims_no_config_write(self):
         text = ("callog 6\nR 9 1.00 144 pinned 1\nS 0 wall 20 112\n"
                 "W 20 112 41 -298 63 63 63 60 40 22 21 18\n")
@@ -588,7 +593,7 @@ class TestStartArgs(unittest.TestCase):
             sent.append(message)
             if message.startswith("start"):
                 return "ok started power40,cap20"
-            return "ok state=done sweep=1/1 kind=power bw=40 cell=0/0"
+            return "ok state=done sweep=1/1 kind=wall bw=40 cell=0/20"
 
         orig = maburcal._send_cmd
         maburcal._send_cmd = fake_send_cmd
@@ -606,7 +611,7 @@ class TestStartArgs(unittest.TestCase):
             sent.append(message)
             if message.startswith("start"):
                 return "ok started power20,cap20"
-            return "ok state=done sweep=1/1 kind=power bw=20 cell=0/0"
+            return "ok state=done sweep=1/1 kind=wall bw=20 cell=0/20"
 
         orig = maburcal._send_cmd
         maburcal._send_cmd = fake_send_cmd

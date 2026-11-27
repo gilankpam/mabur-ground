@@ -177,25 +177,29 @@ struct SimPower : mabur::CalSweep::PowerCtl {
 
 // The drone's wall measurement: refuses or accepts like DeviceWallCtl's
 // check, holds the radio quiet from start to finish or cancel (nothing the
-// drone sends airs meanwhile), and finishes after three steps with the
-// unit's walls or `result`.
+// drone sends airs meanwhile), and finishes after three steps -- and no
+// sooner than `measure_ms` after its start -- with the unit's walls or
+// `result`.
 struct FakeWallCtl : mabur::CalSweep::WallCtl {
   cal::AckResult check_result = cal::AckResult::Accepted;
   cal::WallResult result = cal::WallResult::Ok;
+  uint32_t measure_ms = 0;
+  uint64_t t0 = 0;
   bool quiet = false;
   int steps = 0, starts = 0, finishes = 0, cancels = 0;
   uint8_t ch = 0, width = 0;
   std::vector<std::pair<uint8_t, uint8_t>> measured;  // (channel, bw) per start
   cal::AckResult check(uint8_t, uint8_t) override { return check_result; }
-  void start(uint8_t channel, uint8_t bw, uint64_t) override {
+  void start(uint8_t channel, uint8_t bw, uint64_t now_ms) override {
     ++starts;
+    t0 = now_ms;
     ch = channel;
     width = bw;
     steps = 0;
     quiet = true;
     measured.emplace_back(channel, bw);
   }
-  bool step(uint64_t) override { return ++steps < 3; }
+  bool step(uint64_t now_ms) override { return ++steps < 3 || now_ms < t0 + measure_ms; }
   cal::SweepDone finish() override {
     ++finishes;
     quiet = false;
@@ -268,6 +272,8 @@ struct Kit {
   // Knobs.
   int drop_gs_to_drone_pct = 0;   // control plane, GS -> drone
   int drop_drone_to_gs_pct = 0;   // control plane, drone -> GS
+  // Every SweepAck for this seq is lost on the way to the GS (-1 = none).
+  int drop_acks_for_seq = -1;
   // The drone's published session lapses 3 s into each sweep (the GS is
   // radio-silent for the whole sweep, longer than the link failsafe).
   bool lapse_session = false;
@@ -316,6 +322,7 @@ struct Kit {
   int dones_sent = 0, quiet_drops = 0;
   int latch_drops = 0, late_cal = 0, non_cal_frames = 0;
   int gs_msgs_sent = 0;
+  int gs_seq0_cmds = 0;  // SweepCmd copies of the run's first sweep
   int dropped_gs_to_drone = 0, dropped_drone_to_gs = 0;
   bool gs_talked_while_silent = false;
   bool gs_talked_while_measuring = false;
@@ -342,6 +349,7 @@ struct Kit {
     gs.set_peer(true, true);
     if (auto m = gs.due_mav(t)) {
       ++gs_msgs_sent;
+      if (const auto* c = std::get_if<cal::SweepCmd>(&*m); c && c->seq == 0) ++gs_seq0_cmds;
       if (gs.radio_silent(t)) gs_talked_while_silent = true;
       if (wall.quiet) gs_talked_while_measuring = true;
       const auto bytes = cal::encode(*m, 255, 190, mabur::mav::kChanGsLocal);
@@ -379,6 +387,11 @@ struct Kit {
     // Nothing airs during a wall measurement (radio_quiet).
     if (wall.quiet) {
       ++quiet_drops;
+      return;
+    }
+    if (const auto* a = std::get_if<cal::SweepAck>(&msg);
+        a && static_cast<int>(a->seq) == drop_acks_for_seq) {
+      ++dropped_drone_to_gs;
       return;
     }
     const auto bytes = cal::encode(msg, mabur::MavComponent::sys_id(),
@@ -743,6 +756,42 @@ TEST(an_unparked_measurement_fails_the_run_and_leaves_the_drone_idle) {
   CHECK(!k.pwr.diffs_zeroed);
   CHECK(k.applies_ok == 0);
   CHECK(k.read() == std::string(kFixture));
+}
+
+// The wall sweep's ack is lost: the drone's report, once its measurement
+// ends, is the ack.
+TEST(a_lost_wall_ack_is_answered_by_the_report) {
+  Kit k("lostack");
+  k.drop_acks_for_seq = 0;
+  REQUIRE(k.start({{cal::Kind::Wall, 20}, {cal::Kind::Capacity, 20}}));
+  k.run();
+  REQUIRE(k.gs.state() == State::Done);
+  CHECK(k.dropped_drone_to_gs >= 1);
+  // The report ended the GS's SweepCmd repeats within a copy or two, long
+  // before the ack timeout would have sent it silent.
+  CHECK(k.gs_seq0_cmds <= 3);
+  CHECK(k.gs.snapshot().walls.size() == 1);
+  CHECK(k.wall.starts == 1);
+  CHECK(k.applies_ok == 1);
+  CHECK(!k.gs_talked_while_silent);
+}
+
+// ...and the measurement outlasts the GS's ack timeout: the GS goes silent
+// at the timeout and still takes the report.
+TEST(a_lost_wall_ack_and_a_long_measurement_still_complete) {
+  Kit k("lostacklong");
+  k.drop_acks_for_seq = 0;
+  k.wall.measure_ms = 6000;
+  REQUIRE(k.start({{cal::Kind::Wall, 20}, {cal::Kind::Capacity, 20}}));
+  k.run();
+  REQUIRE(k.gs.state() == State::Done);
+  CHECK(k.gs.snapshot().walls.size() == 1);
+  CHECK(k.wall.starts == 1);
+  CHECK(k.wall.cancels == 0);
+  CHECK(k.applies_ok == 1);
+  CHECK(!k.gs_talked_while_silent);
+  k.drain();
+  CHECK(k.restores == 1);
 }
 
 TEST(a_named_channel_is_measured_without_moving_the_pair) {
