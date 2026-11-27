@@ -277,6 +277,10 @@ struct Kit {
   // The drone's published session lapses 3 s into each sweep (the GS is
   // radio-silent for the whole sweep, longer than the link failsafe).
   bool lapse_session = false;
+  // Every Abort the GS sends is lost on the way to the drone; the count is
+  // how many it sent.
+  bool drop_aborts = false;
+  int gs_aborts_sent = 0;
 
   // Simulated clock, ms. Both loops tick once per ms; a capacity dwell
   // advances it from inside blast().
@@ -353,7 +357,9 @@ struct Kit {
       if (gs.radio_silent(t)) gs_talked_while_silent = true;
       if (wall.quiet) gs_talked_while_measuring = true;
       const auto bytes = cal::encode(*m, 255, 190, mabur::mav::kChanGsLocal);
-      if (drop(drop_gs_to_drone_pct))
+      const bool is_abort = std::holds_alternative<cal::Abort>(*m);
+      if (is_abort) ++gs_aborts_sent;
+      if (drop(drop_gs_to_drone_pct) || (is_abort && drop_aborts))
         ++dropped_gs_to_drone;
       else
         drone_mav_rx(bytes);
@@ -855,6 +861,25 @@ TEST(session_lapse_mid_run_does_not_stop_the_apply) {
   CHECK(k.latched_aborts >= 1);
   CHECK(!k.sweep.active());
   CHECK(k.restores == 1);
+}
+
+// The operator aborts mid-measurement and the drone misses every Abort: it
+// finishes and reports anyway, and the GS answers that report with another
+// round rather than leave the drone holding the radio.
+// Reverting the SweepDone branch's abort answer leaves gs_aborts_sent at 3 (the operator's own round).
+TEST(a_report_after_an_abort_the_drone_missed_is_answered_with_an_abort) {
+  Kit k("abortmissed");
+  k.wall.measure_ms = 6000;
+  REQUIRE(k.start({{cal::Kind::Wall, 20}}));
+  while (!k.wall.quiet && k.t < 5000) k.step();
+  REQUIRE(k.wall.quiet);
+  k.drop_aborts = true;
+  k.gs.abort("operator abort");
+  for (int i = 0; i < 8000 && k.dones_sent == 0; ++i) k.step();
+  REQUIRE(k.dones_sent >= 1);
+  CHECK(k.aborts_received == 0);
+  for (int i = 0; i < 1000; ++i) k.step();
+  CHECK(k.gs_aborts_sent >= 6);
 }
 
 TEST(abort_mid_sweep_restores_power_and_writes_nothing) {

@@ -571,6 +571,46 @@ TEST(a_lost_ack_goes_silent_and_takes_a_late_report) {
   CHECK(lines[3].rfind("W 20 36 ", 0) == 0);
 }
 
+// The report can land after the measurement window's nominal end, with the
+// session already in AwaitDone: it still logs the sweep it implies.
+// Reverting the AwaitDone arm in on_mav leaves the S row missing.
+TEST(a_late_report_in_await_done_still_logs_the_sweep) {
+  const std::string dir = fresh_dir("cal_session_late_done");
+  CalLog log(dir);
+  log.header();
+  CalSessionCfg cfg;
+  FakePicker p = pinned(36);
+  CalSession s(cfg, &log, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(65, {{Kind::Wall, 20}}, 0, &err));
+  for (uint64_t t = 0; t < cfg.ack_timeout_ms; t += 50) s.due_mav(t);
+  const uint64_t past = 2800 + 200 + kWallDeadlineMs + 10;
+  for (uint64_t t = cfg.ack_timeout_ms; t < past; t += 100) s.due_mav(t);
+  REQUIRE(s.state() == State::AwaitDone);
+  s.on_mav(wall_done(65, 0, 36, 20), past);
+  CHECK(s.state() == State::Done);
+  const auto lines = cal_log_lines(dir);
+  REQUIRE(lines.size() == 4);
+  CHECK(lines[2] == "S 0 wall 20 36");
+  CHECK(lines[3].rfind("W 20 36 ", 0) == 0);
+}
+
+// A capacity frame is no ack for a wall sweep, and not a mismatch of one
+// either: nothing of a wall sweep airs to be tallied.
+// Reverting the capacity-only guard in on_cal_frame counts it as a mismatch.
+TEST(a_capacity_frame_is_ignored_while_a_wall_sweep_awaits_its_ack) {
+  FakePicker p = pinned(36);
+  CalSession s(CalSessionCfg{}, nullptr, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(66, {{Kind::Wall, 20}}, 0, &err));
+  REQUIRE(s.due_mav(0).has_value());
+  s.on_cal_frame(0, stamp(Kind::Capacity, 0, 0, 20, kFlags), -50, true, 100, 100);
+  CHECK(s.state() == State::AwaitAck);
+  CHECK(s.snapshot().stamp_mismatch == 0);
+}
+
 TEST(a_lost_ack_and_no_report_fail_when_the_window_closes) {
   CalSessionCfg cfg;
   FakePicker p = pinned(36);

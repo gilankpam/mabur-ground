@@ -10,9 +10,10 @@ namespace maburgs {
 
 constexpr uint16_t kCapDwellMs = 2000, kCapSettleMs = 300;
 
-// The drone's own deadline on one wall measurement: it reports by then or
-// gives the measurement up, so the GS's listen window is sized to it.
-constexpr uint32_t kWallDeadlineMs = 20000;
+// The drone's own deadline on one wall measurement (shared with the drone):
+// it reports by then or gives the measurement up, so the GS's listen window
+// is sized to it.
+using mabur::cal::kWallDeadlineMs;
 
 // The drone measures the TX walls of `channel` at `bw` itself; nothing
 // airs for the GS to tally.

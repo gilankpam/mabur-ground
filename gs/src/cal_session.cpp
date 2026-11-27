@@ -157,14 +157,22 @@ void CalSession::on_mav(const cal::CalMsg& m, uint64_t now_ms) {
     }
     on_accepted(a->flags, a->start_in_ms, now_ms);
   } else if (const auto* d = std::get_if<cal::SweepDone>(&m)) {
-    if (d->nonce != nonce_ || d->seq != cmd_.seq) return;
+    if (d->nonce != nonce_) return;
+    // A DONE for this run after the operator stopped it: the drone missed
+    // every Abort copy and is finishing (and repeating DONE) on its own.
+    // Answer with one more round rather than leave it holding the radio.
+    if (!running() && reached_drone_) {
+      if (!pending_abort_) queue_abort();
+      return;
+    }
+    if (d->seq != cmd_.seq) return;
     // A wall report is proof the drone accepted the sweep whose ack was
     // lost: nothing airs during the measurement, so it is the first thing
     // the GS can hear. It carries no stamp flags.
     if (cmd_.kind == cal::Kind::Wall) {
       if (state_ == State::AwaitAck)
         on_accepted(std::nullopt, 0, now_ms);
-      else if (state_ == State::Sweep && unacked_)
+      else if (unacked_ && (state_ == State::Sweep || state_ == State::AwaitDone))
         log_accepted();
     }
     if (state_ != State::Sweep && state_ != State::AwaitDone) return;
@@ -223,7 +231,7 @@ void CalSession::on_cal_frame(int card, const cal::CalFrameInfo& f, int rssi_dbm
   now_ms = advance(now_ms);
   step(now_ms);
   if (card < 0 || card > 1 || f.rate > 7) return;
-  if (state_ == State::AwaitAck) {
+  if (state_ == State::AwaitAck && cmd_.kind == cal::Kind::Capacity) {
     // The ack rides a lossy uplink; a frame of the commanded sweep proves
     // what it would have -- the drone accepted this sweep and is airing it
     // -- and its stamp carries the flags the ack would have announced.
