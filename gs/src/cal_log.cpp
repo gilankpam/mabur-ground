@@ -10,10 +10,11 @@
 #include <unistd.h>
 
 #include "cal_analysis.h"
+#include "cal_session.h"
 
 namespace maburgs {
 namespace {
-constexpr char kCalLogMarker[] = "callog 5";
+constexpr char kCalLogMarker[] = "callog 6";
 }  // namespace
 
 bool cal_log_header_due(const std::string& dir) {
@@ -70,39 +71,28 @@ void CalLog::run(uint32_t nonce, double margin_db, uint8_t ch,
 void CalLog::sweep(uint8_t seq, mabur::cal::Kind kind, uint8_t bw,
                     uint32_t param) {
   if (s_ == LogWriter::kBadStream) return;
-  // Verify shares the `power` word with an ordinary power sweep: both are
-  // frame-count measurements, and only Capacity's dwell_ms param means
-  // something different enough to need its own word.
-  const char* k =
-      kind == mabur::cal::Kind::Capacity ? "capacity" : "power";
+  const char* k = kind == mabur::cal::Kind::Capacity ? "capacity" : "wall";
   char b[64];
   const int n = std::snprintf(b, sizeof(b), "S %d %s %d %u", seq, k, bw, param);
   if (n > 0)
     w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
 }
 
-void CalLog::cell(uint8_t rate, int idx, const CalCell& c) {
+void CalLog::wall(const WallReport& w) {
   if (s_ == LogWriter::kBadStream) return;
-  // -999 (kRssiNone) whenever a card had no reading, never the raw
-  // rssi_dbm slot -- a caller that forgets to gate on have_rssi must not
-  // leak a stale or zero-initialized value into the record.
-  const int rssi0 = c.have_rssi[0] ? c.rssi_dbm[0] : kRssiNone;
-  const int rssi1 = c.have_rssi[1] ? c.rssi_dbm[1] : kRssiNone;
-  char b[160];
-  const int n = std::snprintf(
-      b, sizeof(b), "C %d %d %d %d %d %d %d %d", rate, idx,
-      c.expected, c.received[0], c.received[1], c.corrupt, rssi0, rssi1);
+  char b[128];
+  const int n = std::snprintf(b, sizeof(b), "W %d %d %d %d %d %d %d %d %d %d %d %d", w.bw,
+                              w.channel, w.anchor, w.floor_evm_x10, w.walls[0], w.walls[1],
+                              w.walls[2], w.walls[3], w.walls[4], w.walls[5], w.walls[6],
+                              w.walls[7]);
   if (n > 0)
     w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
 }
 
-void CalLog::wall(uint8_t rate, const RateWall& w) {
+void CalLog::skipped(uint8_t seq, const std::string& token, const char* reason) {
   if (s_ == LogWriter::kBadStream) return;
-  char b[128];
-  const int n = std::snprintf(b, sizeof(b), "W %d %d %d %d %u", rate, w.wall,
-                              w.floor_idx, w.best_card, w.flags);
-  if (n > 0)
-    w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
+  const std::string line = "X " + std::to_string(seq) + " " + token + " " + reason;
+  w_.line(s_, line.c_str(), line.size());
 }
 
 void CalLog::cap(uint8_t rate, const CapCell& c, const CapResult& r) {
@@ -114,14 +104,6 @@ void CalLog::cap(uint8_t rate, const CapCell& c, const CapResult& r) {
       b, sizeof(b), "P %d %u %u %llu %d %u %u %u", rate, c.offered,
       c.frames[bi], static_cast<unsigned long long>(c.air_bits[bi]),
       eff_x1000, c.blocked_pct, r.flags, r.span_ms);
-  if (n > 0)
-    w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
-}
-
-void CalLog::verify(uint8_t rate, int idx, int pct) {
-  if (s_ == LogWriter::kBadStream) return;
-  char b[64];
-  const int n = std::snprintf(b, sizeof(b), "V %d %d %d", rate, idx, pct);
   if (n > 0)
     w_.line(s_, b, std::min(static_cast<size_t>(n), sizeof(b) - 1));
 }

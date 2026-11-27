@@ -17,13 +17,13 @@ namespace cal = mabur::cal;
 using State = CalSession::State;
 
 namespace {
-const std::vector<cal::SweepSpec> kRun = {{cal::Kind::Power, 20}, {cal::Kind::Capacity, 20}};
+const std::vector<cal::SweepSpec> kRun = {{cal::Kind::Wall, 20, 36}, {cal::Kind::Capacity, 20}};
 
 std::vector<uint8_t> drone_packet(const cal::CalMsg& m) {
   return cal::encode(m, mabur::mav::kSysId, 191, mabur::mav::kChanGsLocal);
 }
 
-CalSnapshot snap(State st, size_t sweep_i, cal::SweepSpec cur = {cal::Kind::Power, 20}) {
+CalSnapshot snap(State st, size_t sweep_i, cal::SweepSpec cur = {cal::Kind::Wall, 20, 36}) {
   CalSnapshot s;
   s.state = st;
   s.sweep_i = sweep_i;
@@ -42,7 +42,6 @@ TEST(air_bytes_count_the_qos_data_header_and_the_fcs) {
   // 24-byte dot11 header plus 2 bytes of QoS control, then the body, then
   // the 4-byte FCS.
   CHECK(kCalDot11HeaderLen == 26);
-  CHECK(cal_air_bytes(mabur::cal::kCalPayloadLen) == 26 + 64 + 4);
   CHECK(cal_air_bytes(1405) == 1435);
 }
 
@@ -52,10 +51,8 @@ TEST(a_received_body_charges_the_fcs_once) {
   // arrives without one (a MAC that strips it) is charged the same.
   CalSession s(CalSessionCfg{});
   const uint8_t fcs[4] = {0xDE, 0xAD, 0xBE, 0xEF};
-  for (const size_t payload : {mabur::cal::kCalPayloadLen, size_t{1405}}) {
-    const cal::Kind kind = payload == mabur::cal::kCalPayloadLen ? cal::Kind::Power
-                                                                 : cal::Kind::Capacity;
-    auto body = cal::build_cal_payload(kind, 3, 5, 20, cal::kFlagStbc, 9, payload);
+  for (const size_t payload : {size_t{64}, size_t{1405}}) {
+    auto body = cal::build_cal_payload(cal::Kind::Capacity, 3, 5, 20, cal::kFlagStbc, 9, payload);
     CHECK(route_cal_body(s, 0, body.data(), body.size(), -60, true, 1000) == 26 + payload + 4);
     body.insert(body.end(), fcs, fcs + 4);
     CHECK(route_cal_body(s, 0, body.data(), body.size(), -60, true, 1000) == 26 + payload + 4);
@@ -110,7 +107,7 @@ TEST(sideport_block_is_absent_while_no_run_owns_the_air) {
   CHECK(in.present);
   CHECK(in.state == "await_ack");
   CHECK(in.sweep_k == 1 && in.sweep_n == 2);
-  CHECK(in.kind == "power");
+  CHECK(in.kind == "wall");
   CHECK(in.bw == 20);
   s.abort("operator abort");
   CHECK(!cal_sideport(s).present);
@@ -118,11 +115,8 @@ TEST(sideport_block_is_absent_while_no_run_owns_the_air) {
 
 // --- naming helpers ------------------------------------------------------
 
-TEST(sweep_tokens_and_kind_names) {
-  CHECK(cal_sweep_token({cal::Kind::Power, 40}) == "power40");
-  CHECK(cal_sweep_token({cal::Kind::Capacity, 20}) == "cap20");
-  CalSnapshot v = snap(State::Verify, 0);
-  CHECK(std::string(cal_kind_name(v)) == "verify");
+TEST(kind_names) {
+  CHECK(std::string(cal_kind_name(snap(State::Sweep, 0))) == "wall");
   CHECK(std::string(cal_kind_name(snap(State::Sweep, 1, {cal::Kind::Capacity, 20}))) ==
         "capacity");
   CHECK(std::string(cal_state_name(State::AwaitDone)) == "await_done");
@@ -137,7 +131,7 @@ TEST(narrator_names_the_run_once_at_the_first_command) {
   auto l = n.observe(snap(State::AwaitAck, 0), kRun);
   REQUIRE(l.size() == 1);
   CHECK(l[0] ==
-        "calibration started -> /x/cal.log sweeps=[power20,cap20] ch=149 "
+        "calibration started -> /x/cal.log sweeps=[power20@36,cap20] ch=149 "
         "(auto: 149 is the best member)");
   CHECK(n.observe(snap(State::Sweep, 0), kRun).empty());
   CHECK(n.observe(snap(State::AwaitDone, 0), kRun).empty());
@@ -147,13 +141,10 @@ TEST(narrator_reports_each_apply_each_sweep_and_the_end) {
   CalNarrator n("/x/cal.log");
   n.observe(snap(State::Idle, 0), kRun);
   n.observe(snap(State::AwaitAck, 0), kRun);
-  n.observe(snap(State::Apply, 0), kRun);
-  auto l = n.observe(snap(State::Verify, 0), kRun);
+  n.observe(snap(State::Sweep, 0), kRun);
+  auto l = n.observe(snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20}), kRun);
   REQUIRE(l.size() == 1);
-  CHECK(l[0] == "calibration apply 1/2 power20: ok");
-  l = n.observe(snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20}), kRun);
-  REQUIRE(l.size() == 1);
-  CHECK(l[0] == "calibration sweep 1/2 power20 done");
+  CHECK(l[0] == "calibration sweep 1/2 power20@36 done");
   n.observe(snap(State::Apply, 1, {cal::Kind::Capacity, 20}), kRun);
   l = n.observe(snap(State::Done, 1, {cal::Kind::Capacity, 20}), kRun);
   REQUIRE(l.size() == 3);
@@ -163,28 +154,26 @@ TEST(narrator_reports_each_apply_each_sweep_and_the_end) {
   CHECK(n.observe(snap(State::Done, 1, {cal::Kind::Capacity, 20}), kRun).empty());
 }
 
-// Revert (always "ok"): the drone's note never reaches /tmp/maburgs.log.
-TEST(narrator_carries_the_drones_note_on_an_adopted_apply) {
+TEST(narrator_names_a_skipped_wall_sweep) {
   CalNarrator n("/x/cal.log");
-  n.observe(snap(State::AwaitAck, 0, {cal::Kind::Power, 40}), kRun);
-  n.observe(snap(State::Apply, 0, {cal::Kind::Power, 40}), kRun);
-  CalSnapshot v = snap(State::Verify, 0, {cal::Kind::Power, 40});
-  v.width[1].applied = true;
-  v.width[1].apply_reason = "ok; mcs6 kept from the 20 MHz table";
-  auto l = n.observe(v, kRun);
+  n.observe(snap(State::AwaitAck, 0), kRun);
+  CalSnapshot next = snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20});
+  next.skipped = {"power20@36"};
+  auto l = n.observe(next, kRun);
   REQUIRE(l.size() == 1);
-  CHECK(l[0] == "calibration apply 1/2 power40: ok; mcs6 kept from the 20 MHz table");
+  CHECK(l[0] == "calibration sweep 1/2 power20@36 skipped: the drone cannot measure its walls");
 }
 
 TEST(narrator_reports_a_refused_apply_with_its_reason) {
+  const cal::SweepSpec cap{cal::Kind::Capacity, 20};
   CalNarrator n("/x/cal.log");
-  n.observe(snap(State::AwaitAck, 0), kRun);
-  n.observe(snap(State::Apply, 0), kRun);
-  CalSnapshot f = snap(State::Failed, 0);
+  n.observe(snap(State::AwaitAck, 1, cap), kRun);
+  n.observe(snap(State::Apply, 1, cap), kRun);
+  CalSnapshot f = snap(State::Failed, 1, cap);
   f.fail_reason = "apply refused by the drone: no offset mode";
   auto l = n.observe(f, kRun);
   REQUIRE(l.size() == 2);
-  CHECK(l[0] == "calibration apply 1/2 power20: apply refused by the drone: no offset mode");
+  CHECK(l[0] == "calibration apply 2/2 cap20: apply refused by the drone: no offset mode");
   CHECK(l[1] == "calibration failed: apply refused by the drone: no offset mode");
 }
 
@@ -202,7 +191,7 @@ TEST(narrator_reports_an_abort) {
   m.observe(snap(State::AwaitDone, 0), kRun);
   l = m.observe(snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20}), kRun);
   REQUIRE(l.size() == 1);
-  CHECK(l[0] == "calibration sweep 1/2 power20 done");
+  CHECK(l[0] == "calibration sweep 1/2 power20@36 done");
 }
 
 // --- effective width -----------------------------------------------------
@@ -234,12 +223,12 @@ TEST(a_bare_start_on_a_40_gs_linked_to_a_20_drone_runs_two_sweeps) {
 
 // --- CalSession::is_running ----------------------------------------------
 
-TEST(is_running_is_await_ack_through_verify) {
+TEST(is_running_is_await_ack_through_apply) {
   CHECK(!CalSession::is_running(State::Idle));
   CHECK(!CalSession::is_running(State::Picking));
   CHECK(CalSession::is_running(State::AwaitAck));
   CHECK(CalSession::is_running(State::Analyze));
-  CHECK(CalSession::is_running(State::Verify));
+  CHECK(CalSession::is_running(State::Apply));
   CHECK(!CalSession::is_running(State::Done));
   CHECK(!CalSession::is_running(State::Failed));
 }

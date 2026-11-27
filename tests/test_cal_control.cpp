@@ -1,5 +1,6 @@
 #include "mtest.h"
 #include "cal_control.h"
+#include "cal_picker.h"
 #include "cal_session.h"
 #include "ladder_controller.h"
 
@@ -10,8 +11,20 @@ using namespace maburgs;
 namespace cal = mabur::cal;
 
 namespace {
-const std::vector<cal::SweepSpec> kDefault20 = {{cal::Kind::Power, 20},
+const std::vector<cal::SweepSpec> kDefault20 = {{cal::Kind::Wall, 20},
                                                  {cal::Kind::Capacity, 20}};
+
+// The link's channel, pinned: a wall sweep naming none measures this one.
+struct PinnedPicker : CalPicker {
+  Mode mode() const override { return Mode::Pinned; }
+  uint8_t op() const override { return 36; }
+  void begin_measure(uint64_t) override {}
+  std::optional<uint8_t> measured_best() override { return op(); }
+  bool order_relocate(uint8_t) override { return false; }
+  std::optional<bool> relocate_settled() override { return std::nullopt; }
+  void cancel() override {}
+};
+PinnedPicker g_picker;
 }  // namespace
 
 // --- default_sweeps -----------------------------------------------------
@@ -20,7 +33,7 @@ TEST(default_sweeps_is_two_for_a_20_mhz_gs) {
   LadderCfg ladder;  // every rung defaults to bw 20
   const auto sweeps = default_sweeps(/*rx_width=*/20, ladder);
   REQUIRE(sweeps.size() == 2);
-  CHECK(sweeps[0].kind == cal::Kind::Power);
+  CHECK(sweeps[0].kind == cal::Kind::Wall);
   CHECK(sweeps[0].bw == 20);
   CHECK(sweeps[1].kind == cal::Kind::Capacity);
   CHECK(sweeps[1].bw == 20);
@@ -53,12 +66,12 @@ TEST(default_sweeps_is_two_for_a_40_gs_with_no_40_rung) {
 // --- CalControl::apply: start ------------------------------------------
 
 TEST(start_with_no_tokens_uses_the_defaults) {
-  CalSession s(CalSessionCfg{});
+  CalSession s(CalSessionCfg{}, nullptr, &g_picker);
   s.set_peer(true, true);
   std::string reply;
   CHECK(CalControl::apply("start", s, &reply, kDefault20, /*rx_width=*/20));
   CHECK(reply == "ok started power20,cap20");
-  CHECK(s.state() != CalSession::State::Idle);
+  CHECK(s.state() == CalSession::State::AwaitAck);
   REQUIRE(s.sweeps().size() == 2);
 }
 
@@ -66,7 +79,7 @@ TEST(start_with_tokens_builds_that_list) {
   CalSession s(CalSessionCfg{});
   s.set_peer(true, true);
   std::string reply;
-  // Any order, plus a duplicate -- the session sorts (20 before 40, power
+  // Any order, plus a duplicate -- the session sorts (20 before 40, wall
   // before capacity within a width) and drops the repeat.
   CHECK(CalControl::apply("start cap40 power20 cap20 power40 power20", s, &reply,
                           kDefault20, /*rx_width=*/40));
@@ -82,6 +95,42 @@ TEST(start_power40_on_a_20_gs_is_refused_with_nothing_started) {
                            /*rx_width=*/20));
   CHECK(reply == "err refused: GS receiver width is 20 (load a 40 MHz ladder to calibrate 40 MHz)");
   CHECK(s.state() == CalSession::State::Idle);
+}
+
+TEST(channel_tokens) {
+  for (const char* bad :
+       {"power20@", "power20@0", "power20@abc", "power20@999", "power20@112x", "cap20@112",
+        "power20@11x", "power20@+12"}) {
+    CalSession s(CalSessionCfg{});
+    s.set_peer(true, true);
+    std::string reply;
+    CHECK(!CalControl::apply(std::string("start ") + bad, s, &reply, kDefault20, 20));
+    CHECK(reply == std::string("err bad token: ") + bad);
+    CHECK(s.state() == CalSession::State::Idle);
+  }
+  CalSession s(CalSessionCfg{});
+  s.set_peer(true, true);
+  std::string reply;
+  CHECK(CalControl::apply("start power20@112 cap20", s, &reply, kDefault20, 20));
+  CHECK(reply == "ok started power20@112,cap20");
+  REQUIRE(s.sweeps().size() == 2);
+  CHECK(s.sweeps()[0].channel == 112);
+  CHECK(s.sweeps()[1].channel == 0);
+  // 177 is the top of the range, and a 40 MHz wall sweep takes a channel too.
+  CalSession t(CalSessionCfg{});
+  t.set_peer(true, true);
+  CHECK(CalControl::apply("start power40@177", t, &reply, kDefault20, 40));
+  CHECK(reply == "ok started power40@177");
+}
+
+// Two wall sweeps of one width on different channels both run; only an
+// exact repeat is dropped.
+TEST(two_channels_at_one_width_both_run) {
+  CalSession s(CalSessionCfg{});
+  s.set_peer(true, true);
+  std::string reply;
+  CHECK(CalControl::apply("start power20@144 power20@112 power20@112", s, &reply, kDefault20, 20));
+  CHECK(reply == "ok started power20@112,power20@144");
 }
 
 TEST(bad_token_is_an_error) {
@@ -115,7 +164,7 @@ TEST(status_never_changes_state) {
 }
 
 TEST(status_renders_the_snapshot) {
-  CalSession s(CalSessionCfg{});
+  CalSession s(CalSessionCfg{}, nullptr, &g_picker);
   s.set_peer(true, true);
   std::string reply;
   REQUIRE(CalControl::apply("start", s, &reply, kDefault20, /*rx_width=*/20));
@@ -123,23 +172,9 @@ TEST(status_renders_the_snapshot) {
   CHECK(!CalControl::apply("status", s, &reply, kDefault20, /*rx_width=*/20));
   CHECK(reply.find("ok state=") == 0);
   CHECK(reply.find("sweep=1/2") != std::string::npos);
-  CHECK(reply.find("kind=power") != std::string::npos);
+  CHECK(reply.find("kind=wall") != std::string::npos);
   CHECK(reply.find("bw=20") != std::string::npos);
   CHECK(reply.find("cell=") != std::string::npos);
-}
-
-TEST(render_status_shows_verify_kind_during_the_verify_phase) {
-  // The running sweep's own kind (Power/Capacity) never includes Verify --
-  // that phase has to be read off the session state, not off `cur`.
-  CalSnapshot snap;
-  snap.state = CalSession::State::Verify;
-  snap.sweep_i = 1;
-  snap.sweep_n = 2;
-  snap.cur = {cal::Kind::Power, 40};
-  snap.cell_i = 5;
-  snap.cell_n = 8;
-  CHECK(CalControl::render_status(snap) ==
-        "state=verify sweep=2/2 kind=verify bw=40 cell=5/8");
 }
 
 TEST(render_status_shows_capacity_kind_during_a_capacity_sweep) {
@@ -148,10 +183,10 @@ TEST(render_status_shows_capacity_kind_during_a_capacity_sweep) {
   snap.sweep_i = 2;
   snap.sweep_n = 4;
   snap.cur = {cal::Kind::Capacity, 40};
-  snap.cell_i = 312;
-  snap.cell_n = 840;
+  snap.cell_i = 3;
+  snap.cell_n = 8;
   CHECK(CalControl::render_status(snap) ==
-        "state=sweep sweep=3/4 kind=capacity bw=40 cell=312/840");
+        "state=sweep sweep=3/4 kind=capacity bw=40 cell=3/8");
 }
 
 TEST(render_status_carries_the_failure_reason_when_failed) {
@@ -159,7 +194,7 @@ TEST(render_status_carries_the_failure_reason_when_failed) {
   snap.state = CalSession::State::Failed;
   snap.sweep_i = 0;
   snap.sweep_n = 1;
-  snap.cur = {cal::Kind::Power, 20};
+  snap.cur = {cal::Kind::Wall, 20};
   snap.cell_i = 0;
   snap.cell_n = 0;
   snap.fail_reason = "calibration ack timeout";
@@ -175,24 +210,24 @@ TEST(render_status_shows_stamp_mismatches_only_when_there_are_some) {
   snap.state = CalSession::State::Sweep;
   snap.sweep_i = 0;
   snap.sweep_n = 1;
-  snap.cur = {cal::Kind::Power, 20};
+  snap.cur = {cal::Kind::Wall, 20};
   snap.cell_i = 3;
-  snap.cell_n = 840;
+  snap.cell_n = 20;
   CHECK(CalControl::render_status(snap).find("mismatch") == std::string::npos);
   snap.stamp_mismatch = 12;
   CHECK(CalControl::render_status(snap) ==
-        "state=sweep sweep=1/1 kind=power bw=20 cell=3/840 mismatch=12");
+        "state=sweep sweep=1/1 kind=wall bw=20 cell=3/20 mismatch=12");
   snap.state = CalSession::State::Failed;
   snap.fail_reason = "calibration ack timeout";
   CHECK(CalControl::render_status(snap) ==
-        "state=failed sweep=1/1 kind=power bw=20 cell=3/840 mismatch=12 "
+        "state=failed sweep=1/1 kind=wall bw=20 cell=3/20 mismatch=12 "
         "fail_reason=calibration ack timeout");
 }
 
 // --- abort / loopback (unchanged behaviour) ------------------------------
 
 TEST(abort_stops_a_running_session) {
-  CalSession s(CalSessionCfg{});
+  CalSession s(CalSessionCfg{}, nullptr, &g_picker);
   s.set_peer(true, true);
   std::string reply;
   REQUIRE(CalControl::apply("start", s, &reply, kDefault20, /*rx_width=*/20));

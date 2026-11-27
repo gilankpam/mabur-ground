@@ -227,14 +227,16 @@ once a UDP client has sent the endpoint a datagram. maburtop draws a
 
 `link.cal{state, sweep, kind, bw, cell}`: a `maburcal` run's progress
 (`CalSession`, via `cal_sideport()` in `gs/src/cal_wiring.h`), present only
-while the run owns the air — `await_ack` through `verify`; absent while
+while the run owns the air — `await_ack` through `apply`; absent while
 the channel pick runs and after `done`/`failed`. `state` is the name
 `maburcal status` prints; `sweep` is `"k/n"` (1-based, of the run's sweep
-list); `kind` is `power`, `capacity` or `verify`; `bw` 20 or 40; `cell` is
-`"i/n"`, the cell of the latest frame tallied in the running sweep or
-verify pass. maburtop draws `CAL <kind><bw> <i>/<n>` (e.g. `CAL power40
-312/840`, warn colour) on the top bar after the `mav` cell and in the
-compact header. Design: [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md).
+list); `kind` is `wall` or `capacity`; `bw` 20 or 40; `cell` is `"i/n"`:
+for a capacity sweep the rate of the latest frame tallied, out of the
+sweep's rates, for a wall sweep the whole seconds since the drone's ack,
+out of its 20 s deadline. maburtop draws `CAL <kind><bw> <i>/<n>` for a
+capacity sweep (e.g. `CAL capacity40 3/8`) and `CAL <kind><bw> <i>s` for a
+wall sweep (e.g. `CAL wall20 7s`), warn colour, on the top bar after the
+`mav` cell and in the compact header. Design: [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md).
 
 ### `link.vtx` — the drone's parameters
 
@@ -729,11 +731,15 @@ counters `flushes= recstarts=`; reglog 2 rows end at `ioctl=` and carry
 the phase-lock fields `lock= lerr= loff= lctr=` ([mabur docs/phase-lock.md](https://github.com/gilankpam/mabur/blob/master/docs/phase-lock.md));
 reglog 1 rows end at `lslot=` before `present=`.
 
-### `cal.log` (`callog 5`)
+### `cal.log` (`callog 6`)
 
 The calibration record (`gs/src/cal_log.h`): per run an `R` line, then per
-sweep an `S` line scoping the power cells (`C`), walls (`W`), capacity
-points (`P`), apply outcomes (`A`) and verify cells (`V`) to its width. It
+sweep the drone accepted an `S` line (`S <seq> <wall|capacity> <bw>
+<param>`, param the measured channel or the dwell in ms) scoping the
+capacity points (`P`) below it to its width; a `W <bw> <ch> <anchor>
+<floor_evm_x10> <w0>..<w7>` line per finished wall sweep, as the drone
+reported it; an `X <seq> <token> <reason>` line per sweep the drone could
+not run (`X 0 power20 unsupported`); and an `A` line per apply. It
 writes regardless of `debug_log.enable` — a calibration run is a bounded
 trace on a deliberate operator action, not continuous flight logging —
 into the session directory, or `<debug_log.dir>/cal` with logging off.
@@ -1284,10 +1290,11 @@ all.
   characterization; they are not monitoring tools. The drone radio RX can
   wedge after a linkbench run — restart maburd.
 - **TX-power walls and air capacity → `maburcal`** (`gs/bundle/maburcal`,
-  [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md)). `maburcal start` measures a unit's per-rate PA
-  compression walls and delivered air efficiency at each width the GS
-  flies and writes them to the drone; `maburcal report <cal.log>`
-  re-renders a saved run offline.
+  [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md)). `maburcal start` has the drone measure its own
+  per-rate TX walls on the link's channel (or a named one, `power20@112`)
+  and measures delivered air efficiency at each width the GS flies,
+  writing it to the drone; `maburcal report <cal.log>` re-renders a saved
+  run offline.
 
 ## maburd debug endpoint
 

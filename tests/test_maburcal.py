@@ -101,6 +101,32 @@ GOOD5 = (GOOD4.replace("callog 4", "callog 5", 1)
          .replace("P 3 4000 2000 30000000 500 20 64\n",
                   "P 3 4000 2000 30000000 500 20 576 140\n"))
 
+# callog 6: the drone measured its own walls on 144 at 20 MHz, could not
+# measure at 40, and a capacity sweep ran at 20 (mcs5 tx_bound).
+GOOD6 = """callog 6
+R 9 1.00 144 pinned 1
+S 0 wall 20 144
+W 20 144 39 -306 63 63 63 63 44 26 24 20
+S 1 capacity 20 2000
+P 0 4000 3950 58000000 910 72 0 2287
+P 5 4000 3950 58000000 710 20 64 2287
+X 2 power40 unsupported
+A 20 1
+"""
+
+# What master's maburcal printed for GOOD5 before callog 6 existed, byte for
+# byte: a callog 5 file on the DVR must keep rendering exactly so.
+GOOD5_REPORT = (
+    "run nonce=42 margin=1.00dB ch=149 pick=auto ldpc=1\n"
+    "                20 MHz                    40 MHz          \n"
+    "rate    wall  park verify    eff     wall  park verify    eff   flags\n"
+    "mcs0      63    59   100%      -       60    56    98%      -   20:no_dip 40:no_dip\n"
+    "mcs3      42    38    99%    .73       40    36    95%      -   40:tx_bound,short_span\n"
+    "mcs5      -1    -5    97%      -        -     -      -      -\n"
+    "mcs7       -     -      -      -        -     -      -      -   20:undetermined\n"
+    "legacy 63 (from 20 MHz mcs0)\n"
+    "written: /etc/mabur.toml (backup /etc/mabur.toml.pre-cal)\n")
+
 
 def render(text):
     with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as f:
@@ -491,6 +517,46 @@ class TestReportV5(unittest.TestCase):
         self.assertNotIn(3, self._parse(text)[0].caps_by_bw[20])
 
 
+class TestReportV6(unittest.TestCase):
+    """callog 6: W is the drone's own wall report, X a sweep it could not
+    run; no C or V rows."""
+
+    def test_report_reads_callog_6(self):
+        out = render(GOOD6)
+        line = [l for l in out.splitlines() if l.startswith("walls ch=")][0]
+        self.assertEqual(
+            line, "walls ch=144 20 MHz anchor=39 floor=-30.6dB: 63 63 63 63 44 26 24 20")
+        row0 = [l for l in out.splitlines() if l.startswith("mcs0")][0]
+        self.assertEqual(row0.split(), ["mcs0", ".91"])
+        # A tx_bound point is measured, never written: "-" and the flag.
+        row5 = [l for l in out.splitlines() if l.startswith("mcs5")][0]
+        self.assertEqual(row5.split(), ["mcs5", "-", "20:tx_bound"])
+        self.assertIn("skipped power40 (sweep 2): unsupported", out)
+        self.assertIn("walls stored by the drone (/etc/mabur.walls)", out)
+        self.assertIn("written: /etc/mabur.toml", out)
+        # The capacity table comes after the walls and before the skips.
+        lines = out.splitlines()
+        self.assertLess(lines.index(line), lines.index(row0))
+        self.assertLess(lines.index(row5),
+                        lines.index("skipped power40 (sweep 2): unsupported"))
+
+    def test_walls_only_run_claims_no_config_write(self):
+        text = ("callog 6\nR 9 1.00 144 pinned 1\nS 0 wall 20 112\n"
+                "W 20 112 41 -298 63 63 63 60 40 22 21 18\n")
+        out = render(text)
+        self.assertIn("walls ch=112 20 MHz anchor=41 floor=-29.8dB:", out)
+        self.assertNotIn("/etc/mabur.toml", out)
+        self.assertNotIn("not written", out)
+
+    def test_a_callog_5_shaped_w_row_in_a_callog_6_file_is_skipped(self):
+        out = render(GOOD6 + "W 0 63 -40 0 1\nV 0 59 100\n")
+        self.assertEqual(len([l for l in out.splitlines() if l.startswith("walls ch=")]), 1)
+        self.assertNotIn("59", out)
+
+    def test_report_still_reads_callog_5(self):
+        self.assertEqual(render(GOOD5), GOOD5_REPORT)
+
+
 class TestCallogVersions(unittest.TestCase):
     """The marker versions the FILE. maburgs writes 1; 2 is accepted because
     bench runs in that shape (the reverted EVM columns, docs/calibration.md)
@@ -550,6 +616,24 @@ class TestStartArgs(unittest.TestCase):
             maburcal._send_cmd = orig
 
         self.assertEqual(sent[0], "start")
+
+    def test_start_passes_channel_tokens(self):
+        sent = []
+
+        def fake_send_cmd(message, timeout=1.0):
+            sent.append(message)
+            if message.startswith("start"):
+                return "ok started power20@112"
+            return "ok state=done sweep=1/1 kind=wall bw=20 cell=3/20"
+
+        orig = maburcal._send_cmd
+        maburcal._send_cmd = fake_send_cmd
+        try:
+            maburcal.cmd_start(argparse.Namespace(tokens=["power20@112"]))
+        finally:
+            maburcal._send_cmd = orig
+
+        self.assertEqual(sent[0], "start power20@112")
 
 
 if __name__ == "__main__":
