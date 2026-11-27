@@ -442,11 +442,10 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
   // and every retired writer reaches the disk -- after they are gone.
   maburgs::LogWriterReaper log_reaper;
   std::unique_ptr<maburgs::LogWriter> log_writer;
-  // cal.log: the calibration run's raw per-cell record. Unlike
-  // ctl.log/probe.log/au.log below, this uses its own private LogWriter
-  // (cal_log.h) rather
-  // than the shared `log_writer` -- a calibration run is rare and
-  // short-lived, so there is nothing to gain from the fixed-slot session
+  // cal.log: the calibration run's raw record (runs, sweeps, walls,
+  // capacity cells, applies). Unlike ctl.log/probe.log/au.log below, this
+  // uses its own private LogWriter (cal_log.h) rather than the shared
+  // `log_writer` -- a calibration run is rare and short-lived, so there is nothing to gain from the fixed-slot session
   // writer. header() writes the file's format marker at most once per
   // FILE.
   //
@@ -488,7 +487,7 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
     if (cal_log_new_file) cal_log->header();
   } else {
     // Non-fatal by cal_log.h's own contract: the walls still get measured
-    // and applied with no trace, which is bad but not as bad as refusing
+    // (by the drone) and applied with no trace, which is bad but not as bad as refusing
     // to calibrate over a logging directory problem.
     std::fprintf(stderr,
                  "warning: calibration log directory %s unusable; a "
@@ -1649,12 +1648,12 @@ static int run_radio(const maburgs::Config& cfg, const std::string& cfg_path) {
       // rendezvous traffic, not RCFs — the drone never ages against them,
       // so they are not matchable sends. The 1 Hz DISC keepalive is slotted
       // like any other send (it killed a PPDU per second when it bypassed).
-      // Radio silence during a calibration sweep (design "Radio silence
-      // during a sweep phase"): RcfSlotter hides sends in the drone's
-      // inter-AU idle, but a sweep has no AUs at all -- rcf_slot.h says
-      // plainly that with no recent AU everything passes through, which
-      // would put RCF and the DISC keepalive (both ride this one path)
-      // straight into the drone's back-to-back sweep transmissions.
+      // Radio silence during a calibration sweep: RcfSlotter hides sends in
+      // the drone's inter-AU idle, but a sweep has no AUs at all --
+      // rcf_slot.h says plainly that with no recent AU everything passes
+      // through, which would put RCF and the DISC keepalive (both ride this
+      // one path) into a capacity sweep's back-to-back transmissions or a
+      // wall measurement's quiet window.
       // radio_silent() is the predicate that actually knows a sweep is
       // running, so it gates the send itself rather than trusting the
       // slotter's AU-cadence guess to have degraded safely.

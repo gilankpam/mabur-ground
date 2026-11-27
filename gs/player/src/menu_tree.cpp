@@ -949,9 +949,8 @@ MenuNode airtime_row(const Deps& d) {
 MenuNode ldpc_row(const Deps& d) {
   MenuNode n = drone_bool(d, "link.ldpc", "LDPC coding", "RADIO_LDPC");
   n.advanced = true;
-  // The drone's own calibration keeps a wall-margin note tied to LDPC; a
-  // row that just turned it off (or on) keeps showing it rather than
-  // fading like a plain "✓ saved".
+  // An accepted set the drone follows with a warning STATUSTEXT, if it
+  // sends one, keeps showing it rather than fading like a plain "✓ saved".
   n.warn_after_ok = [d] {
     const VtxRow* r = d->snap ? vtx_row(*d->snap, "RADIO_LDPC") : nullptr;
     if (r && r->st == "accepted" && !r->status.empty()) return r->status;

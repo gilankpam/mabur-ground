@@ -104,7 +104,7 @@ bool cal_log_header_due(const std::string& dir);
 // cal.log.callog<N>.
 //
 // The once-per-file marker rule means one file holds exactly one format's
-// rows, and nothing else enforces it -- appending today's C rows under
+// rows, and nothing else enforces it -- appending today's rows under
 // yesterday's marker produces a file that misreports its own shape, which is
 // the one thing the marker exists to prevent. Retiring rather than deleting
 // keeps the old run's data on the DVR readable as what it is (CLAUDE.md:

@@ -278,7 +278,7 @@ TEST(a_rejoined_session_directory_with_no_cal_log_is_still_due_a_marker) {
 
 TEST(a_cal_log_from_an_older_format_is_retired_rather_than_appended_to) {
   // The once-per-FILE marker rule means a cal.log can only ever hold one
-  // format's C rows, and nothing else enforces that: cal_log_header_due
+  // format's rows, and nothing else enforces that: cal_log_header_due
   // alone says "file exists, no header needed", so a maburgs carrying a
   // newer schema would append its rows under the older file's marker and
   // leave a file that lies about its own shape. Rotating the old one aside

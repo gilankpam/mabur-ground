@@ -171,10 +171,9 @@ test('rowStatus: saved while the accepted result is fresh, nothing once idle', (
 });
 
 test('rowStatus: an accepted set with a drone warning says Saved and keeps the warning', () => {
-  // The drone accepts RADIO_LDPC against walls measured under the other
-  // setting and follows the ack with a WARNING; it stays on the row (no
-  // fade) until the next set clears it.
-  const warn = 'radio: 20 MHz walls were measured with ldpc on; radio.ldpc is off — re-run maburcal';
+  // The drone accepts a set and may follow the ack with a WARNING; it
+  // stays on the row (no fade) until the next set clears it.
+  const warn = 'radio: warning text the drone chose to send';
   for (const age_ms of [0, 60000]) {
     assert.deepEqual(statusOf({ state: 'accepted', value: 'false', age_ms, status: warn }),
       { kind: 'warn', text: '✓ Saved', reason: warn });

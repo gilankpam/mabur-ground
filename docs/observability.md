@@ -238,6 +238,19 @@ capacity sweep (e.g. `CAL capacity40 3/8`) and `CAL <kind><bw> <i>s` for a
 wall sweep (e.g. `CAL wall20 7s`), warn colour, on the top bar after the
 `mav` cell and in the compact header. Design: [`docs/calibration.md`](https://github.com/gilankpam/mabur/blob/master/docs/calibration.md).
 
+Where the GS is silent during a run (bench notes): a wall sweep whose acks
+are all lost is not silent for its 3 s ack wait -- SweepCmd repeats keep
+going -- and goes quiet only at the timeout, for the rest of the drone's
+20 s measurement window. A SWEEP that never reached the drone silences the
+GS for that whole window (about 21 s) before the run fails with "no ack and
+no wall report". An operator abort that the drone misses (all three copies) leaves it
+finishing the measurement and repeating its DONE for up to 15 s before it
+restores video; the GS answers each such DONE with another round of Aborts.
+A measurement that finished before an Abort was heard has already stored its
+walls, so the drone's cache can then hold that run's result rather than the
+pre-run table, unlike the "cache is as it was" in the drone's calibration
+page.
+
 ### `link.vtx` — the drone's parameters
 
 `link.vtx{linked, alive, table_mismatch, list, pending, rows[], stats}`:
