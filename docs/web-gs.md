@@ -808,8 +808,8 @@ refuses the commit outright), the row's widget is rebuilt on the drone's
 value, so a refused toggle or edit never stays on screen beside its
 refusal. On success the bar fills, the status reads "✓ Saved", and both
 fade after about 1.5 s — unless the drone followed its `ACCEPTED` with a
-warning `STATUSTEXT` (a `RADIO_LDPC` set against walls measured under the
-other setting, [`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)): then "✓ Saved" stays in amber with the
+warning `STATUSTEXT`, if the drone sends one
+([`docs/vtx-config-mavlink.md`](https://github.com/gilankpam/mabur/blob/master/docs/vtx-config-mavlink.md)): then "✓ Saved" stays in amber with the
 warning as a reason line under the hint until the next set of that row.
 On an error the control gives one small shake, the
 status turns red, and a reason line appears under the hint (the only time

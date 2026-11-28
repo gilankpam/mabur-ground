@@ -25,7 +25,6 @@ const char* cal_state_name(CalSession::State st) {
     case CalSession::State::AwaitDone: return "await_done";
     case CalSession::State::Analyze: return "analyze";
     case CalSession::State::Apply: return "apply";
-    case CalSession::State::Verify: return "verify";
     case CalSession::State::Done: return "done";
     case CalSession::State::Failed: return "failed";
   }
@@ -33,13 +32,7 @@ const char* cal_state_name(CalSession::State st) {
 }
 
 const char* cal_kind_name(const CalSnapshot& snap) {
-  if (snap.state == CalSession::State::Verify) return "verify";
-  return snap.cur.kind == cal::Kind::Capacity ? "capacity" : "power";
-}
-
-std::string cal_sweep_token(const cal::SweepSpec& spec) {
-  const char* k = spec.kind == cal::Kind::Capacity ? "cap" : "power";
-  return std::string(k) + std::to_string(spec.bw);
+  return snap.cur.kind == cal::Kind::Capacity ? "capacity" : "wall";
 }
 
 size_t route_cal_body(CalSession& s, int card, const uint8_t* body, size_t len, int rssi_dbm,
@@ -111,20 +104,23 @@ std::vector<std::string> CalNarrator::observe(const CalSnapshot& snap,
       (snap.state != CalSession::State::Apply || !same_sweep)) {
     const std::string what = "calibration apply " + k_of_n(prev.sweep_i, prev.sweep_n) + " " +
                              cal_sweep_token(prev.cur) + ": ";
-    if (snap.state == CalSession::State::Failed || snap.state == CalSession::State::Idle) {
-      out.push_back(what + snap.fail_reason);
-    } else {
-      // An adopted apply that kept something the GS did not send carries
-      // the drone's note ("ok; mcs6 kept from the 20 MHz table").
-      const std::string& note = snap.width[prev.cur.bw == 40 ? 1 : 0].apply_reason;
-      out.push_back(what + (note.empty() ? std::string("ok") : note));
-    }
+    const bool ended = snap.state == CalSession::State::Failed ||
+                       snap.state == CalSession::State::Idle;
+    out.push_back(what + (ended ? snap.fail_reason : std::string("ok")));
   }
   if (snap.state != CalSession::State::Failed && snap.state != CalSession::State::Idle) {
     const size_t end = snap.state == CalSession::State::Done ? snap.sweep_i + 1 : snap.sweep_i;
-    for (size_t i = prev.sweep_i; i < end && i < sweeps.size(); ++i)
-      out.push_back("calibration sweep " + k_of_n(i, sweeps.size()) + " " +
-                    cal_sweep_token(sweeps[i]) + " done");
+    for (size_t i = prev.sweep_i; i < end && i < sweeps.size(); ++i) {
+      const std::string tok = cal_sweep_token(sweeps[i]);
+      const auto sk = std::find(snap.skipped.begin(), snap.skipped.end(), tok);
+      std::string how = " done";
+      if (sk != snap.skipped.end()) {
+        how = " skipped: the drone cannot measure its walls";
+        const size_t k = static_cast<size_t>(sk - snap.skipped.begin());
+        if (k < snap.skip_reason.size() && snap.skip_reason[k] == "unparked") how += " on this channel";
+      }
+      out.push_back("calibration sweep " + k_of_n(i, sweeps.size()) + " " + tok + how);
+    }
   }
   if (snap.state == CalSession::State::Done)
     out.push_back("calibration done");

@@ -195,11 +195,15 @@ def _mav_cell(link):
 
 def _cal_cell(link):
     """Calibration run cell (link.cal): `CAL <kind><bw> <cell i/n>`, or ''
-    while no run owns the air (the key is absent then)."""
+    while no run owns the air (the key is absent then). A wall sweep's cell
+    counts seconds since its ack, shown as `<i>s`."""
     cal = link.get("cal")
     if not isinstance(cal, dict):
         return ""
-    return f"CAL {_s(cal.get('kind'))}{_s(cal.get('bw'))} {_s(cal.get('cell'))}"
+    cell = _s(cal.get("cell"))
+    if cal.get("kind") == "wall":
+        cell = cell.split("/")[0] + "s"
+    return f"CAL {_s(cal.get('kind'))}{_s(cal.get('bw'))} {cell}"
 
 
 def _s(v, prec=None):

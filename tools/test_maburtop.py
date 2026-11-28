@@ -138,6 +138,14 @@ class TopBarTest(unittest.TestCase):
         self.assertIn((start, len("CAL capacity20 3/8"), "warn"), spans)
         compact = " ".join(render_rows_compact(_fresh(d), 100.2, 200))
         self.assertIn("CAL capacity20 3/8", compact)
+        # A wall sweep is measured on the drone: seconds since its ack.
+        d = dict(DGRAM, link=dict(DGRAM["link"],
+                                  cal={"state": "sweep", "sweep": "1/4",
+                                       "kind": "wall", "bw": 20,
+                                       "cell": "7/20"}))
+        text, _ = panel_topbar(_fresh(d), 100.2)[0]
+        self.assertIn("CAL wall20 7s", text)
+        self.assertNotIn("7/20", text)
 
     def test_key_mismatch_state_bad_span(self):
         d = dict(DGRAM, link=dict(DGRAM["link"], state="key_mismatch"))

@@ -112,7 +112,7 @@ real values.
 | `link.nack` "Retransmit (NACK)" (advanced) | gs | `link.nack.enable` | On/off. |
 | `link.bitrate` "Max bitrate" | drone | `ENC_BITRATE_MAX` | 1–100 Mb/s step 1; the wire key is kbps. |
 | `link.airtime` "Airtime share" (advanced) | drone | `ENC_AIRTIME` | 5–100 % step 5; the wire key is a 0–1 fraction. |
-| `link.ldpc` "LDPC coding" (advanced) | drone | `RADIO_LDPC` | On/off. Keeps its applied row's `status` text amber in the help line (`warn_after_ok`) rather than a plain "✓ saved" once the set lands `accepted` with a non-empty status — the drone's calibration ties a wall-margin note to this flag. |
+| `link.ldpc` "LDPC coding" (advanced) | drone | `RADIO_LDPC` | On/off. Keeps its applied row's `status` text amber in the help line (`warn_after_ok`) rather than a plain "✓ saved" once the set lands `accepted` with a non-empty status — the drone's warning STATUSTEXT, if it sends one. |
 | **Recording** | | | |
 | `rec.target` "REC records to" | player | `dvr.target` | GS / VTX SD card / Both. Saved text is "✓ at next recording" (2200 ms) while a recording runs, else "✓ saved" (1300 ms) — same rule on every recording row below. Warns "SD recorder off" while routed at least partly to the VTX SD card (`vtx`/`both`) and `REC_ENABLE == "0"`. |
 | `rec.mode` "GS recording" | player | `dvr.mode` | Burned (with OSD) / Raw (as received); hidden when `dvr.target` does not record to the GS. |

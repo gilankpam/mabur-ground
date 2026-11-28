@@ -1,6 +1,7 @@
 #include "mtest.h"
 #include "cal_log.h"
 #include "cal_analysis.h"
+#include "cal_session.h"
 #include "mabur/cal_wire.h"
 #include "scratch.h"
 
@@ -39,7 +40,7 @@ std::string fresh_dir(const char* name) {
 
 }  // namespace
 
-TEST(header_is_callog_5) {
+TEST(header_is_callog_6) {
   // The marker is what versions this FILE, independent of any run's data --
   // the schema itself is free to change provided maburcal changes in the
   // same commit.
@@ -47,7 +48,44 @@ TEST(header_is_callog_5) {
   { CalLog l(d); l.header(); }
   const auto ls = lines_of(d);
   REQUIRE(!ls.empty());
-  CHECK(ls[0] == "callog 5");
+  CHECK(ls[0] == "callog 6");
+}
+
+TEST(callog_6_lines) {
+  // A run with one wall sweep and one skipped sweep, as the session writes
+  // them.
+  const auto d = fresh_dir("callog6");
+  WallReport w;
+  w.bw = 20;
+  w.channel = 144;
+  w.anchor = 39;
+  w.floor_evm_x10 = -306;
+  w.walls = {63, 63, 63, 63, 44, 26, 24, 20};
+  {
+    CalLog l(d);
+    l.header();
+    l.run(9, 1.0, 144, "pinned", true);
+    l.sweep(0, mabur::cal::Kind::Wall, 20, 144);
+    l.wall(w);
+    l.skipped(2, "power40", "unsupported");
+  }
+  const auto lines = lines_of(d);
+  auto has_line = [&](const char* want) {
+    for (const auto& l : lines)
+      if (l == want) return true;
+    return false;
+  };
+  auto no_line_starts_with = [&](const char* p) {
+    for (const auto& l : lines)
+      if (l.rfind(p, 0) == 0) return false;
+    return true;
+  };
+  REQUIRE(!lines.empty());
+  CHECK(lines[0] == "callog 6");
+  CHECK(has_line("S 0 wall 20 144"));
+  CHECK(has_line("W 20 144 39 -306 63 63 63 63 44 26 24 20"));
+  CHECK(has_line("X 2 power40 unsupported"));
+  CHECK(no_line_starts_with("C ") && no_line_starts_with("V "));
 }
 
 TEST(run_record_carries_channel_pick_and_ldpc) {
@@ -66,26 +104,36 @@ TEST(run_record_prints_ldpc_off_and_the_pick_word_verbatim) {
   CHECK(ls[1] == "R 7 0.50 64 onecard 0");
 }
 
+TEST(run_record_prints_an_unknown_ldpc_as_a_dash) {
+  // A run whose first record is a wall report that stood in for a lost ack:
+  // no ack announced the stamp flags.
+  const auto d = fresh_dir("callog_run3");
+  { CalLog l(d); l.header(); l.run(7, 1.0, 36, "pinned", std::nullopt); }
+  const auto ls = lines_of(d);
+  REQUIRE(ls.size() == 2);
+  CHECK(ls[1] == "R 7 1.00 36 pinned -");
+}
+
 TEST(two_runs_in_one_session_append_two_run_records) {
   // The normal retry path (start, see a narrow/saturated flag, move the
   // drone, start again) shares one session directory across two runs --
   // nothing about starting a run rotates the session. Each run gets its
   // own R line so a reader can tell which nonce/margin/channel/pick a
-  // later C/W/P/V line belongs to, and where one run's lines end.
+  // later line belongs to, and where one run's lines end.
   const auto d = fresh_dir("callog_tworuns");
   {
     CalLog l(d);
     l.header();
     l.run(42, 1.0, 149, "auto", true);
-    l.verify(0, 10, 90);
+    l.applied(20, true, "");
     l.run(43, 1.5, 149, "stayed", true);
-    l.verify(0, 12, 95);
+    l.applied(20, true, "");
   }
   const auto ls = lines_of(d);
   int header_count = 0;
   std::vector<std::string> run_lines;
   for (const auto& line : ls) {
-    if (line == "callog 5") ++header_count;
+    if (line == "callog 6") ++header_count;
     if (line.rfind("R ", 0) == 0) run_lines.push_back(line);
   }
   CHECK(header_count == 1);
@@ -97,72 +145,28 @@ TEST(two_runs_in_one_session_append_two_run_records) {
 TEST(sweep_record_scopes_the_rows_below) {
   const auto d = fresh_dir("callog_sweep");
   { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
-    l.sweep(0, mabur::cal::Kind::Power, 20, 20);
+    l.sweep(0, mabur::cal::Kind::Wall, 20, 112);
     l.sweep(1, mabur::cal::Kind::Capacity, 40, 2000); }
   const auto ls = lines_of(d);
   REQUIRE(ls.size() == 4);
-  CHECK(ls[2] == "S 0 power 20 20");
+  CHECK(ls[2] == "S 0 wall 20 112");
   CHECK(ls[3] == "S 1 capacity 40 2000");
 }
 
-TEST(a_verify_sweep_shares_the_power_word) {
-  // A verify pass is a frame-count measurement same as an ordinary power
-  // sweep -- cal::Kind::Verify is not given its own word in the log; the
-  // C-vs-V rows that follow are what tell the two apart.
-  const auto d = fresh_dir("callog_sweep_verify");
-  { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
-    l.sweep(2, mabur::cal::Kind::Verify, 20, 20); }
-  const auto ls = lines_of(d);
-  REQUIRE(ls.size() == 3);
-  CHECK(ls[2] == "S 2 power 20 20");
-}
-
-TEST(cell_record_round_trips_every_field) {
-  const auto d = fresh_dir("callog2");
-  CalCell c;
-  c.idx = 56;
-  c.expected = 100;
-  c.received = {97, 12};
-  c.corrupt = 3;
-  c.rssi_dbm = {-67, kRssiNone};
-  c.have_rssi = {true, false};
-  { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
-    l.cell(7, 56, c); }
-  const auto ls = lines_of(d);
-  REQUIRE(ls.size() == 3);
-  CHECK(ls[2] == "C 7 56 100 97 12 3 -67 -999");
-}
-
-TEST(a_minus_one_wall_is_written_verbatim) {
-  // Relative walls: -1 is an ORDINARY wall one index below the chip's
-  // anchor, not a sentinel -- mcs7 measured -4 on the bench.
-  const auto d = fresh_dir("callog3");
-  RateWall w;
-  w.wall = -1;
-  w.floor_idx = -1;
-  w.best_card = 0;
-  w.flags = 0;
-  { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true); l.wall(7, w); }
-  const auto ls = lines_of(d);
-  REQUIRE(ls.size() == 3);
-  CHECK(ls[2] == "W 7 -1 -1 0 0");
-}
-
-TEST(negative_indices_and_the_sentinel_print_verbatim) {
+TEST(negative_walls_print_verbatim) {
+  // Walls are relative to the report's anchor: a negative one is an
+  // ordinary wall below it.
   const auto d = fresh_dir("callog_neg");
-  {
-    CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
-    RateWall w; w.wall = -4; w.floor_idx = -40; w.best_card = 0; w.flags = 0;
-    l.wall(7, w);
-    RateWall u;  // default: kNoWall
-    l.wall(3, u);
-    l.verify(7, -8, 97);
-  }
+  WallReport w;
+  w.bw = 40;
+  w.channel = 36;
+  w.anchor = 52;
+  w.floor_evm_x10 = -295;
+  w.walls = {12, 8, 4, 0, -1, -4, -10, -64};
+  { CalLog l(d); l.header(); l.run(1, 1.0, 36, "auto", true); l.wall(w); }
   const auto ls = lines_of(d);
-  REQUIRE(ls.size() == 5);
-  CHECK(ls[2] == "W 7 -4 -40 0 0");
-  CHECK(ls[3] == "W 3 -128 -128 -1 0");
-  CHECK(ls[4] == "V 7 -8 97");
+  REQUIRE(ls.size() == 3);
+  CHECK(ls[2] == "W 40 36 52 -295 12 8 4 0 -1 -4 -10 -64");
 }
 
 TEST(cap_record_round_trips_every_field) {
@@ -207,15 +211,6 @@ TEST(cap_record_uses_the_other_card_when_it_is_best) {
   CHECK(ls[3] == "P 2 500 480 9000 500 10 512 140");
 }
 
-TEST(verify_record) {
-  const auto d = fresh_dir("callog4");
-  { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
-    l.verify(5, 50, 97); }
-  const auto ls = lines_of(d);
-  REQUIRE(ls.size() == 3);
-  CHECK(ls[2] == "V 5 50 97");
-}
-
 TEST(applied_record_keeps_the_reason_text) {
   const auto d = fresh_dir("callog_applied");
   { CalLog l(d); l.header(); l.run(1, 1.0, 149, "auto", true);
@@ -244,13 +239,13 @@ TEST(reopening_appends_without_a_second_header) {
   // A wrapper respawn rejoins the same session directory; two headers would
   // make maburcal read the second run's start as a corrupt record.
   const auto d = fresh_dir("callog5");
-  { CalLog l(d); l.header(); l.verify(0, 87, 100); }
-  { CalLog l(d); l.verify(1, 87, 99); }
+  { CalLog l(d); l.header(); l.applied(20, true, ""); }
+  { CalLog l(d); l.applied(40, true, ""); }
   const auto ls = lines_of(d);
   REQUIRE(ls.size() == 3);
-  CHECK(ls[0] == "callog 5");
-  CHECK(ls[1].rfind("V ", 0) == 0);
-  CHECK(ls[2].rfind("V ", 0) == 0);
+  CHECK(ls[0] == "callog 6");
+  CHECK(ls[1].rfind("A 20", 0) == 0);
+  CHECK(ls[2].rfind("A 40", 0) == 0);
 }
 
 MTEST_MAIN
@@ -283,7 +278,7 @@ TEST(a_rejoined_session_directory_with_no_cal_log_is_still_due_a_marker) {
 
 TEST(a_cal_log_from_an_older_format_is_retired_rather_than_appended_to) {
   // The once-per-FILE marker rule means a cal.log can only ever hold one
-  // format's C rows, and nothing else enforces that: cal_log_header_due
+  // format's rows, and nothing else enforces that: cal_log_header_due
   // alone says "file exists, no header needed", so a maburgs carrying a
   // newer schema would append its rows under the older file's marker and
   // leave a file that lies about its own shape. Rotating the old one aside
@@ -305,7 +300,7 @@ TEST(a_current_format_cal_log_is_left_alone) {
   CHECK(!cal_log_prepare(d));
   const auto ls = lines_of(d);
   REQUIRE(ls.size() == 2);
-  CHECK(ls[0] == "callog 5");
+  CHECK(ls[0] == "callog 6");
 }
 
 TEST(prepare_on_a_directory_with_no_cal_log_reports_the_header_is_due) {
@@ -313,12 +308,12 @@ TEST(prepare_on_a_directory_with_no_cal_log_reports_the_header_is_due) {
   CHECK(cal_log_prepare(d));
 }
 
-TEST(a_callog_4_file_is_retired_too) {
-  // callog 4's P rows time eff over the commanded dwell; a v5 row under a
-  // v4 marker would misreport what its eff means.
-  const auto d = fresh_dir("callog_stale4");
-  { std::ofstream f(d + "/cal.log"); f << "callog 4\nR 1 1.00 36 auto 1\n"; }
+TEST(a_callog_5_file_is_retired_too) {
+  // callog 5's W rows are the GS's own per-rate wall analysis; a v6 W row
+  // under a v5 marker would misreport what it holds.
+  const auto d = fresh_dir("callog_stale5");
+  { std::ofstream f(d + "/cal.log"); f << "callog 5\nR 1 1.00 36 auto 1\n"; }
   CHECK(cal_log_prepare(d));
-  std::ifstream retired(d + "/cal.log.callog4");
+  std::ifstream retired(d + "/cal.log.callog5");
   REQUIRE(retired.good());
 }

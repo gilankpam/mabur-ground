@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""maburcal -- the TX-power wall calibration kit's entire operator UI.
+"""maburcal -- the calibration kit's entire operator UI.
 
     maburcal start [tok...]         begin a run (streams progress, then the
                                     final table); with no tokens the GS
                                     runs its defaults, otherwise each token
-                                    is power20|power40|cap20|cap40, any
+                                    is power20|power40|cap20|cap40, or
+                                    power20@<ch>|power40@<ch> to have the
+                                    drone measure the walls of channel
+                                    <ch> (the link stays where it is), any
                                     order
     maburcal status                one-line progress of a running session
     maburcal abort                 abandon the running session
@@ -42,6 +45,8 @@ CAL_PORT = 8400
 # /etc/mabur.toml, always.
 CONFIG_PATH = "/etc/mabur.toml"
 CONFIG_BACKUP = CONFIG_PATH + ".pre-cal"
+# Where the drone keeps the walls it measured itself.
+WALLS_PATH = "/etc/mabur.walls"
 
 # Where `start` looks for the cal.log a just-finished run wrote, in order:
 # maburgs' own stderr log announces the resolved directory once per session
@@ -54,7 +59,11 @@ MABURGS_LOG = "/tmp/maburgs.log"
 SESSION_MARKER = "/tmp/mabur-session"
 DEFAULT_DEBUG_LOG_DIR = "/media/dvr/log"
 
-# The marker versions the FILE. 5 is what maburgs writes now: a run sweeps
+# The marker versions the FILE. 6 is what maburgs writes now: the drone
+# measures its own walls, so a wall sweep's only record is the W row of what
+# it reported (bw, channel, anchor, floor EVM, eight walls relative to that
+# anchor), an X row names a sweep the drone could not run, and there are no
+# C or V rows; S, P, A and R are 5's. 5 is a run that sweeps
 # both 20 and 40 MHz, scoping every C/W/P/V row to the width named by the
 # most recent S row, the R line carries the run's channel, channel-pick
 # outcome and LDPC state alongside nonce/margin, and each P row ends in the
@@ -70,7 +79,7 @@ DEFAULT_DEBUG_LOG_DIR = "/media/dvr/log"
 # docs/calibration.md). Since this reader has never stored C rows, a v2 file
 # renders identically to a v1 one. Every version stays readable because
 # recordings outlive the code that wrote them (CLAUDE.md).
-KNOWN_CALLOG_VERSIONS = (1, 2, 3, 4, 5)
+KNOWN_CALLOG_VERSIONS = (1, 2, 3, 4, 5, 6)
 
 # flags: 1=no_dip 2=undetermined 4=narrow 8=saturated 16=card_disagree
 # 32=drift (retired from callog 4 on, but still nameable on an older file)
@@ -126,6 +135,11 @@ class _Run:
         # blocked_pct, flags, span_ms); span_ms is None before callog 5
         self.caps_by_bw = {20: {}, 40: {}}
         self.applies = []  # [(bw, ok, reason), ...], one per A row
+        # callog 6 only: [(bw, channel, anchor, floor_evm_x10, [w0..w7])]
+        # per W row, and [(seq, token, reason)] per X row, in file order.
+        self.wall_reports = []
+        self.skips = []
+        self.cap_bws = set()  # widths a capacity S row named
 
     def undetermined(self, wall):
         """True when `wall` is the "no wall could be derived" sentinel for
@@ -157,7 +171,7 @@ class _Run:
             return  # non-numeric field: skip the line, not the file
 
     def _feed_line_v4(self, tag, tok):
-        """callog 4 and 5's shape: S scopes the width every C/W/P/V row below it
+        """callog 4-6: S scopes the width every C/W/P/V row below it
         belongs to, until the next S; A carries its own bw and is never
         scoped by S. Raises ValueError on a bad numeric field, caught by
         feed_line's own try/except -- the single place that turns a
@@ -165,6 +179,8 @@ class _Run:
         if tag == "S" and len(tok) == 5:
             self.cur_bw = int(tok[3])
             self.bws_swept.add(self.cur_bw)
+            if tok[2] == "capacity":
+                self.cap_bws.add(self.cur_bw)
             return
         if tag == "A" and len(tok) >= 3:
             bw = int(tok[1])
@@ -172,6 +188,18 @@ class _Run:
             reason = " ".join(tok[3:])
             self.applies.append((bw, ok, reason))
             return
+        if self.version >= 6:
+            # A wall report carries its own width and channel.
+            if tag == "W" and len(tok) == 13:
+                bw, ch, anchor, floor_x10 = (int(x) for x in tok[1:5])
+                self.wall_reports.append(
+                    (bw, ch, anchor, floor_x10, [int(x) for x in tok[5:13]]))
+                return
+            if tag == "X" and len(tok) == 4:
+                self.skips.append((int(tok[1]), tok[2], tok[3]))
+                return
+            if tag in ("W", "V"):
+                return  # not a callog 6 shape
         if self.cur_bw not in self.walls_by_bw:
             # A C row (not stored, as in every version), or a row that
             # arrived before any S set a scope -- nothing to attribute it
@@ -235,7 +263,9 @@ def _parse_cal_log(path):
                         cur = _Run(version, int(tok[1]), float(tok[2]))
                         cur.channel = int(tok[3])
                         cur.pick = tok[4]
-                        cur.ldpc = (tok[5] == "1")
+                        # callog 6 writes "-" when no ack announced the
+                        # stamp flags before the run's first record.
+                        cur.ldpc = {"1": True, "0": False}.get(tok[5])
                     elif version == 3:
                         cur = _Run(version, int(tok[1]), float(tok[2]))
                     else:
@@ -424,7 +454,54 @@ def _apply_status_line_v4(run):
     return "not written: this run produced no apply attempt"
 
 
+def _render_run_v6(run):
+    pick = run.pick if run.pick is not None else "-"
+    ldpc = "-" if run.ldpc is None else (1 if run.ldpc else 0)
+    lines = [f"run nonce={run.nonce} margin={run.margin_db:.2f}dB "
+             f"ch={run.channel} pick={pick} ldpc={ldpc}"]
+    # One line per wall sweep, as the drone measured it: walls relative to
+    # that channel's anchor, mcs0 first.
+    for bw, ch, anchor, floor_x10, walls in run.wall_reports:
+        lines.append(f"walls ch={ch} {bw} MHz anchor={anchor} "
+                     f"floor={floor_x10 / 10:.1f}dB: "
+                     + " ".join(str(w) for w in walls))
+    widths = sorted(run.cap_bws)
+    if widths:
+        lines.append(f"{'rate':<6}"
+                     + "".join(f"{'eff' + str(bw):>8}" for bw in widths)
+                     + "   flags")
+        for rate in range(8):
+            if not any(rate in run.caps_by_bw[bw] for bw in widths):
+                continue
+            row = f"{'mcs' + str(rate):<6}"
+            flag_parts = []
+            for bw in widths:
+                p = run.caps_by_bw[bw].get(rate)
+                # A tx_bound or lost point was measured but never sent to
+                # the drone; the flags column says why there is no number.
+                if p is None or p[5] & (TX_BOUND | LOST):
+                    eff_s = "-"
+                else:
+                    eff_s = _eff_string(p[3])
+                row += f"{eff_s:>8}"
+                if p is not None and p[5]:
+                    flag_parts.append(f"{bw}:{_flag_string(p[5])}")
+            row += "   " + " ".join(flag_parts)
+            lines.append(row.rstrip())
+    for seq, token, reason in run.skips:
+        lines.append(f"skipped {token} (sweep {seq}): {reason}")
+    if run.wall_reports:
+        lines.append(f"walls stored by the drone ({WALLS_PATH})")
+    if widths or run.applies:
+        lines.append(_apply_status_line_v4(run))
+    elif not run.wall_reports:
+        lines.append("not written: this run produced no measurements")
+    return "\n".join(lines)
+
+
 def _render_run(run):
+    if run.version >= 6:
+        return _render_run_v6(run)
     if run.version >= 4:
         return _render_run_v4(run)
     # v1/v2 files carry an absolute anchor (base_ref_idx); v3 carries none
@@ -589,12 +666,8 @@ def _render_when_ready(path):
 
 
 def cmd_start(args):
-    # `--margin` was removed: it fed only the GS's own park bookkeeping
-    # (the verify plan and this report's `park` column), while the drone
-    # applies its own radio.wall_margin_db, which cal_apply does not patch
-    # -- so it changed nothing on hardware and only made the report
-    # disagree with what the drone flew. To change the margin, edit
-    # wall_margin_db in /etc/mabur.toml on the drone and re-run.
+    # There is no `--margin`: the drone applies its own
+    # radio.wall_margin_db, set by hand in /etc/mabur.toml on the drone.
     #
     # With no tokens the GS runs its own default composition (every kind
     # it actually flies, gs/src/cal_control.h); tokens forward verbatim --
@@ -652,15 +725,16 @@ def cmd_report(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="maburcal",
-        description="TX-power wall calibration: start/status/abort a run "
+        description="TX-power wall and capacity calibration: start/status/abort a run "
                     "on the GS, or report on a saved cal.log.")
     sub = ap.add_subparsers(dest="command", required=True)
 
     p_start = sub.add_parser("start", help="begin a calibration run")
     p_start.add_argument(
         "tokens", nargs="*",
-        help="power20|power40|cap20|cap40, any order; defaults to the "
-             "GS's own composition when omitted")
+        help="power20|power40|cap20|cap40, or power20@<ch>|power40@<ch> "
+             "for a wall sweep of channel <ch> (1-177), any order; defaults "
+             "to the GS's own composition when omitted")
     p_start.set_defaults(func=cmd_start)
 
     p_status = sub.add_parser("status", help="progress of a running session")

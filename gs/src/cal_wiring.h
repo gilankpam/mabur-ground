@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "cal_plan.h"
 #include "cal_session.h"
 #include "mabur/cal_proto.h"
 #include "stats_exporter.h"
@@ -19,12 +20,8 @@ namespace maburgs {
 // The state name `maburcal status` prints ("await_ack", "sweep", ...).
 const char* cal_state_name(CalSession::State st);
 
-// "verify" during the verify pass, else the running sweep's own kind:
-// "power" or "capacity".
+// The running sweep's kind: "wall" or "capacity".
 const char* cal_kind_name(const CalSnapshot& snap);
-
-// The operator's token for one sweep: power20, power40, cap20, cap40.
-std::string cal_sweep_token(const mabur::cal::SweepSpec& spec);
 
 // The dot11 header every calibration frame flies under: the drone's
 // RadioTx sends QoS-Data, a 24-byte header plus 2 bytes of QoS control.

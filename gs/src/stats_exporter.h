@@ -220,7 +220,7 @@ struct StatsCalIn {
   bool present = false;
   std::string state;           // CalSession state name, as `maburcal status` prints it
   uint32_t sweep_k = 0, sweep_n = 0;  // 1-based running sweep, the run's total
-  std::string kind;            // "power" | "capacity" | "verify"
+  std::string kind;            // "wall" | "capacity"
   uint8_t bw = 20;
   uint32_t cell_i = 0, cell_n = 0;
 };

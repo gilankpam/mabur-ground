@@ -20,21 +20,21 @@
 
 namespace maburgs {
 
-// Every kind for every width the GS flies: 20 always, plus 40 iff the GS's
+// Wall then capacity for every width the GS flies: 20 always, plus 40 iff the GS's
 // receiver width (ChannelCore::width_mhz(), derived from the ladder or a
 // static pin) is 40 AND some rung on its ladder actually uses it -- a GS
 // that can fly 40 but whose ladder never picks it would be calibrating a
 // width nothing lands on.
 inline std::vector<mabur::cal::SweepSpec> default_sweeps(uint8_t rx_width,
                                                           const LadderCfg& ladder) {
-  std::vector<mabur::cal::SweepSpec> out = {{mabur::cal::Kind::Power, 20},
+  std::vector<mabur::cal::SweepSpec> out = {{mabur::cal::Kind::Wall, 20},
                                              {mabur::cal::Kind::Capacity, 20}};
   const bool flies_40 =
       rx_width == 40 &&
       std::any_of(ladder.ladder.begin(), ladder.ladder.end(),
                   [](const Rung& r) { return r.bw == 40; });
   if (flies_40) {
-    out.push_back({mabur::cal::Kind::Power, 40});
+    out.push_back({mabur::cal::Kind::Wall, 40});
     out.push_back({mabur::cal::Kind::Capacity, 40});
   }
   return out;
@@ -126,21 +126,18 @@ class CalControl {
   //   start [tok...]        begin a session (refuses if not linked / no
   //                         CAP_CALIBRATE / already running). With no
   //                         tokens, runs `defaults`; otherwise each token
-  //                         is power20|power40|cap20|cap40, any order,
-  //                         duplicates dropped (the session itself sorts
-  //                         and dedups).
+  //                         is power20|power40|cap20|cap40, or
+  //                         power20@<ch>|power40@<ch> for a wall sweep of
+  //                         channel <ch> (1..177; the pair stays where it
+  //                         is), any order, duplicates dropped (the
+  //                         session itself sorts and dedups).
   //   status                one-line progress, never mutates
   //   abort                 abandon the running session
   //
-  // `start` used to accept `margin=<db>`, which only moved the GS's own
-  // park bookkeeping (the verify plan's expected indices and cal.log's R
-  // line) -- the drone applies its OWN cfg.radio.wall_margin_db, and
-  // cal_apply never patches wall_margin_db, so the
-  // override changed nothing on hardware and merely made the report's
-  // `park` column disagree with what the drone flew. Calibrating
-  // wall_margin_db is an explicit non-goal: it is the operator's safety
-  // choice, hand-set in /etc/mabur.toml. A stray `margin=2.0` now reads as
-  // an unrecognized token and is refused the same way any other one is.
+  // There is no `margin=<db>`: the drone applies its own
+  // radio.wall_margin_db, the operator's safety choice hand-set in
+  // /etc/mabur.toml, and a calibration never changes it. A stray
+  // `margin=2.0` is refused as any other unrecognized token.
   static bool apply(const std::string& line, CalSession& s, std::string* reply,
                     const std::vector<mabur::cal::SweepSpec>& defaults,
                     uint8_t rx_width) {
@@ -210,15 +207,13 @@ class CalControl {
     return false;
   }
 
-  // "state=sweep sweep=2/4 kind=power bw=40 cell=312/840", plus
+  // "state=sweep sweep=2/4 kind=capacity bw=40 cell=3/8", plus
   // mismatch=<n> when frames were dropped for a kind/width/flags mismatch
   // (CalSnapshot::stamp_mismatch, omitted at 0), and fail_reason=<why>
   // appended last (free text to the end of the line) when the state is
-  // failed. sweep=k/n is
-  // 1-based (k = the running sweep's position, n = the run's total); kind
-  // reads "verify" during the verify phase instead of the running sweep's
-  // own Power/Capacity kind, since that is the only place in the run the
-  // drone is doing something other than what `cur` names.
+  // failed. sweep=k/n is 1-based (k = the running sweep's position, n =
+  // the run's total); kind is "wall" or "capacity", and a wall sweep's
+  // cell=i/n counts seconds since the ack against the drone's deadline.
   static std::string render_status(const CalSnapshot& snap) {
     const char* kind = cal_kind_name(snap);
     const size_t sweep_k = snap.sweep_n ? snap.sweep_i + 1 : 0;
@@ -236,14 +231,25 @@ class CalControl {
   }
 
  private:
-  // power20 | power40 | cap20 | cap40 -> the sweep it names. False (spec
+  // power20 | power40 | cap20 | cap40 | power20@<ch> | power40@<ch> ->
+  // the sweep it names, <ch> 1..177 in decimal digits only. False (spec
   // untouched) for anything else.
   static bool parse_token(const std::string& tok, mabur::cal::SweepSpec* spec) {
-    if (tok == "power20") { *spec = {mabur::cal::Kind::Power, 20}; return true; }
-    if (tok == "power40") { *spec = {mabur::cal::Kind::Power, 40}; return true; }
-    if (tok == "cap20") { *spec = {mabur::cal::Kind::Capacity, 20}; return true; }
-    if (tok == "cap40") { *spec = {mabur::cal::Kind::Capacity, 40}; return true; }
-    return false;
+    using mabur::cal::Kind;
+    if (tok == "cap20") { *spec = {Kind::Capacity, 20}; return true; }
+    if (tok == "cap40") { *spec = {Kind::Capacity, 40}; return true; }
+    const std::string head = tok.substr(0, tok.find('@'));
+    if (head != "power20" && head != "power40") return false;
+    const uint8_t bw = head == "power20" ? 20 : 40;
+    if (head.size() == tok.size()) { *spec = {Kind::Wall, bw}; return true; }
+    const std::string ch = tok.substr(head.size() + 1);
+    if (ch.empty() || ch.size() > 3 ||
+        !std::all_of(ch.begin(), ch.end(), [](unsigned char c) { return std::isdigit(c); }))
+      return false;
+    const int n = std::stoi(ch);
+    if (n < 1 || n > 177) return false;
+    *spec = {Kind::Wall, bw, static_cast<uint8_t>(n)};
+    return true;
   }
 
   // Comma-separated, in the order the session will actually run them --

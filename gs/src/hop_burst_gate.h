@@ -144,7 +144,7 @@ class CalMoveEdgeHold {
 // in-flight scout's flag: the scout idles while CalSession::running(), but
 // it only checks that once per dwell_period_ms, so a dwell begun just
 // before `maburcal start` is still off-channel for up to dwell_ms (250 ms)
-// after it -- against a sweep's few-millisecond settle and 20-frame cells,
+// after it -- against a capacity sweep's few-millisecond settle and 20-frame cells,
 // that card misses the first row's opening cells. Holding the command until the
 // card is back costs at most one dwell out of the 3 s ack timeout. Once the
 // run is going no new dwell starts, so the hold only ever bites at start.
