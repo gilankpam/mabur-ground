@@ -388,6 +388,7 @@ TEST(an_unsupported_drone_skips_walls_and_runs_capacity) {
   CHECK(!s.radio_silent(10));
   const auto snap = s.snapshot();
   CHECK((snap.skipped == std::vector<std::string>{"power20"}));
+  CHECK((snap.skip_reason == std::vector<std::string>{"unsupported"}));
   CHECK(snap.walls.empty());
   run_capacity(s, 53, 1, 20);
   s.on_mav(cal::Applied{53, 1, 20, true, ""}, 300);
@@ -397,6 +398,33 @@ TEST(an_unsupported_drone_skips_walls_and_runs_capacity) {
   REQUIRE(lines.size() >= 3);
   CHECK(lines[1] == "R 53 1.00 36 pinned 1");
   CHECK(lines[2] == "X 0 power20 unsupported");
+}
+
+TEST(an_unparked_channel_skips_its_wall_sweep_and_runs_capacity) {
+  // The drone cannot measure this channel: the measurement stored nothing,
+  // and the run still calibrates capacity there.
+  const std::string dir = fresh_dir("cal_session_unparked");
+  CalLog log(dir);
+  log.header();
+  FakePicker p = pinned(36);
+  CalSession s(CalSessionCfg{}, &log, &p);
+  s.set_peer(true, true);
+  std::string err;
+  REQUIRE(s.start(57, {{Kind::Wall, 20}, {Kind::Capacity, 20}}, 0, &err));
+  REQUIRE(as<cal::SweepCmd>(s.due_mav(0)).has_value());
+  ack(s, 57, 0, 10);
+  s.on_mav(wall_done(57, 0, 36, 20, cal::WallResult::Unparked), 700);
+  CHECK(s.state() == State::AwaitAck);
+  const auto snap = s.snapshot();
+  CHECK((snap.skipped == std::vector<std::string>{"power20"}));
+  CHECK((snap.skip_reason == std::vector<std::string>{"unparked"}));
+  CHECK(snap.walls.empty());
+  run_capacity(s, 57, 1, 800);
+  s.on_mav(cal::Applied{57, 1, 20, true, ""}, 1100);
+  CHECK(s.state() == State::Done);
+  log.flush();
+  const auto lines = cal_log_lines(dir);
+  CHECK(std::find(lines.begin(), lines.end(), "X 0 power20 unparked") != lines.end());
 }
 
 TEST(other_refusals_fail_the_run) {
@@ -430,13 +458,13 @@ TEST(other_refusals_fail_the_run) {
 
 TEST(an_invalid_measurement_fails_the_run) {
   const std::pair<cal::WallResult, const char*> cases[] = {
-      {cal::WallResult::Unparked, "unparked"},
       {cal::WallResult::TooFewPoints, "too_few_points"},
       {cal::WallResult::FloorTooHigh, "floor_too_high"},
       {cal::WallResult::NotSaturated, "not_saturated"},
       {cal::WallResult::Deadline, "deadline"},
       {cal::WallResult::DeviceError, "device_error"},
-      {cal::WallResult::Aborted, "aborted"}};
+      {cal::WallResult::Aborted, "aborted"},
+      {cal::WallResult::Disturbed, "disturbed"}};
   for (const auto& [res, word] : cases) {
     FakePicker p = pinned(36);
     CalSession s(CalSessionCfg{}, nullptr, &p);

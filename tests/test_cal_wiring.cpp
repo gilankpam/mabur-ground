@@ -159,9 +159,21 @@ TEST(narrator_names_a_skipped_wall_sweep) {
   n.observe(snap(State::AwaitAck, 0), kRun);
   CalSnapshot next = snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20});
   next.skipped = {"power20@36"};
+  next.skip_reason = {"unsupported"};
   auto l = n.observe(next, kRun);
   REQUIRE(l.size() == 1);
   CHECK(l[0] == "calibration sweep 1/2 power20@36 skipped: the drone cannot measure its walls");
+}
+
+TEST(narrator_names_a_wall_sweep_skipped_on_an_unparked_channel) {
+  CalNarrator n("/x/cal.log");
+  n.observe(snap(State::AwaitAck, 0), kRun);
+  CalSnapshot next = snap(State::AwaitAck, 1, {cal::Kind::Capacity, 20});
+  next.skipped = {"power20@36"};
+  next.skip_reason = {"unparked"};
+  auto l = n.observe(next, kRun);
+  REQUIRE(l.size() == 1);
+  CHECK(l[0] == "calibration sweep 1/2 power20@36 skipped: the drone cannot measure its walls on this channel");
 }
 
 TEST(narrator_reports_a_refused_apply_with_its_reason) {

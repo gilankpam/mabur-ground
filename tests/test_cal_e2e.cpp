@@ -744,13 +744,30 @@ TEST(an_unsupported_drone_skips_walls_and_completes_capacity) {
   CHECK(k.restores == 1);
 }
 
-TEST(an_unparked_measurement_fails_the_run_and_leaves_the_drone_idle) {
+TEST(an_unparked_measurement_is_skipped_and_capacity_completes) {
   Kit k("unparked");
   k.wall.result = cal::WallResult::Unparked;
   REQUIRE(k.start({{cal::Kind::Wall, 20}, {cal::Kind::Capacity, 20}}));
   k.run();
+  REQUIRE(k.gs.state() == State::Done);
+  const auto snap = k.gs.snapshot();
+  CHECK((snap.skipped == std::vector<std::string>{"power20"}));
+  CHECK(snap.walls.empty());
+  CHECK(k.wall.finishes == 1);
+  CHECK(k.applies_ok == 1);
+  k.drain();
+  CHECK(!k.sweep.active());
+  CHECK(!k.wall.quiet);
+  CHECK(k.restores == 1);
+}
+
+TEST(an_invalid_measurement_fails_the_run_and_leaves_the_drone_idle) {
+  Kit k("invalid");
+  k.wall.result = cal::WallResult::FloorTooHigh;
+  REQUIRE(k.start({{cal::Kind::Wall, 20}, {cal::Kind::Capacity, 20}}));
+  k.run();
   REQUIRE(k.gs.state() == State::Failed);
-  CHECK(k.gs.snapshot().fail_reason == "wall measurement failed: unparked");
+  CHECK(k.gs.snapshot().fail_reason == "wall measurement failed: floor_too_high");
   CHECK(k.gs.snapshot().walls.empty());
   CHECK(k.wall.finishes == 1);
   k.drain();

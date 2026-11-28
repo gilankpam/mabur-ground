@@ -114,8 +114,9 @@ class CalSession {
   // nonce, another sweep or arriving in the wrong state is ignored. A wall
   // sweep refused as Unsupported (a chip that cannot measure itself) is
   // skipped and the run goes on; any other refusal fails the run. A
-  // SweepDone closes a wall sweep at once -- failing the run unless the
-  // measurement is Ok, and standing in for an ack that never arrived -- and
+  // SweepDone closes a wall sweep at once -- skipping it when the result is
+  // Unparked (a channel the drone cannot measure), failing the run on any
+  // other result but Ok, and standing in for an ack that never arrived -- and
   // a capacity sweep once its frames have been quiet for tail_quiet_ms.
   void on_mav(const mabur::cal::CalMsg& m, uint64_t now_ms);
 
@@ -202,6 +203,7 @@ class CalSession {
   void on_accepted(std::optional<uint8_t> flags, uint16_t start_in_ms, uint64_t now_ms);
   void finish_sweep(uint64_t now_ms);
   void finish_wall(uint64_t now_ms);
+  void skip_sweep(const char* why, uint64_t now_ms);  // records it, goes on to the next sweep
   bool analyze_capacity_sweep();   // true: an apply is due
   void begin_apply(uint64_t now_ms);
   void on_applied(const mabur::cal::Applied& a, uint64_t now_ms);
@@ -276,6 +278,7 @@ class CalSession {
   std::array<WidthResult, 2> width_{};
   std::vector<WallReport> walls_;
   std::vector<std::string> skipped_;
+  std::vector<std::string> skip_reason_;
 };
 
 struct CalSnapshot {
@@ -293,6 +296,7 @@ struct CalSnapshot {
   std::array<WidthResult, 2> width;  // [0] = 20 MHz, [1] = 40 MHz
   std::vector<WallReport> walls;     // one per finished wall sweep, in run order
   std::vector<std::string> skipped;  // tokens of sweeps the drone could not run
+  std::vector<std::string> skip_reason;  // why, one per skipped token: "unsupported", "unparked"
   std::string fail_reason;
 };
 

@@ -42,7 +42,9 @@ struct CapResult;
 //                                                       # reported it
 //   X <seq> <token> <reason>                           # a sweep the drone could
 //                                                       # not run (X 0 power20
-//                                                       # unsupported)
+//                                                       # unsupported), or a wall
+//                                                       # sweep on a channel it
+//                                                       # cannot measure (unparked)
 //   P <rate> <offered> <recv_best> <air_bits_best> <eff_x1000> <blocked_pct> <flags> <span_ms>
 //                                                # one row per rate, one capacity
 //                                                # sweep's result; span_ms is the

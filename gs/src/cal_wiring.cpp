@@ -112,10 +112,14 @@ std::vector<std::string> CalNarrator::observe(const CalSnapshot& snap,
     const size_t end = snap.state == CalSession::State::Done ? snap.sweep_i + 1 : snap.sweep_i;
     for (size_t i = prev.sweep_i; i < end && i < sweeps.size(); ++i) {
       const std::string tok = cal_sweep_token(sweeps[i]);
-      const bool skipped =
-          std::find(snap.skipped.begin(), snap.skipped.end(), tok) != snap.skipped.end();
-      out.push_back("calibration sweep " + k_of_n(i, sweeps.size()) + " " + tok +
-                    (skipped ? " skipped: the drone cannot measure its walls" : " done"));
+      const auto sk = std::find(snap.skipped.begin(), snap.skipped.end(), tok);
+      std::string how = " done";
+      if (sk != snap.skipped.end()) {
+        how = " skipped: the drone cannot measure its walls";
+        const size_t k = static_cast<size_t>(sk - snap.skipped.begin());
+        if (k < snap.skip_reason.size() && snap.skip_reason[k] == "unparked") how += " on this channel";
+      }
+      out.push_back("calibration sweep " + k_of_n(i, sweeps.size()) + " " + tok + how);
     }
   }
   if (snap.state == CalSession::State::Done)

@@ -48,6 +48,7 @@ const char* wall_word(cal::WallResult r) {
     case cal::WallResult::Deadline: return "deadline";
     case cal::WallResult::DeviceError: return "device_error";
     case cal::WallResult::Aborted: return "aborted";
+    case cal::WallResult::Disturbed: return "disturbed";
   }
   return "unknown";
 }
@@ -117,6 +118,7 @@ bool CalSession::start(uint32_t nonce, std::vector<cal::SweepSpec> sweeps, uint6
   width_ = {};
   walls_.clear();
   skipped_.clear();
+  skip_reason_.clear();
   reloc_ordered_ = false;
   // pending_abort_ is deliberately kept: copies of the previous run's
   // Abort that have not gone out yet still must.
@@ -145,10 +147,7 @@ void CalSession::on_mav(const cal::CalMsg& m, uint64_t now_ms) {
       // A chip that cannot measure itself: the rest of the run still
       // calibrates what it can.
       log_run(a->flags);
-      const std::string tok = cal_sweep_token(sweeps_[sweep_i_]);
-      skipped_.push_back(tok);
-      if (log_) log_->skipped(cmd_.seq, tok, ack_word(a->result));
-      next_sweep(now_ms);
+      skip_sweep(ack_word(a->result), now_ms);
       return;
     }
     if (a->result != cal::AckResult::Accepted) {
@@ -320,6 +319,7 @@ CalSnapshot CalSession::snapshot() const {
   s.width = width_;
   s.walls = walls_;
   s.skipped = skipped_;
+  s.skip_reason = skip_reason_;
   s.fail_reason = fail_reason_;
   return s;
 }
@@ -526,11 +526,25 @@ void CalSession::finish_sweep(uint64_t now_ms) {
     next_sweep(now_ms);
 }
 
+void CalSession::skip_sweep(const char* why, uint64_t now_ms) {
+  const std::string tok = cal_sweep_token(sweeps_[sweep_i_]);
+  skipped_.push_back(tok);
+  skip_reason_.push_back(why);
+  if (log_) log_->skipped(cmd_.seq, tok, why);
+  next_sweep(now_ms);
+}
+
 void CalSession::finish_wall(uint64_t now_ms) {
   // The drone measures, stores and flies the walls itself: there is
   // nothing to analyse or apply, only the report to record.
   if (!done_) {
     fail(unacked_ ? "no ack and no wall report from the drone" : "no wall report from the drone");
+    return;
+  }
+  if (done_->wall_result == cal::WallResult::Unparked) {
+    // The drone cannot measure this channel: it stored nothing and flies
+    // its chip's table there, and the rest of the run still calibrates.
+    skip_sweep(wall_word(done_->wall_result), now_ms);
     return;
   }
   if (done_->wall_result != cal::WallResult::Ok) {
